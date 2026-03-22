@@ -507,6 +507,33 @@ app.get('/api/donations/list', async (req, res) => {
     }
 });
 
+app.get('/api/donations/download-url', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    if (!ensureDonationsEnv(req, res)) return;
+
+    const key = String(req.query.key || '');
+    if (!key || !key.startsWith('donation/') || !key.toLowerCase().endsWith('.zip')) {
+        return res.status(400).json({ error: 'Invalid key' });
+    }
+
+    try {
+        if (DONATIONS_PUBLIC_DOMAIN) {
+            const url = `${DONATIONS_PUBLIC_DOMAIN}/${encodeURIComponent(key)}`;
+            return res.json({ url });
+        }
+
+        const command = new GetObjectCommand({
+            Bucket: DONATIONS_BUCKET_NAME,
+            Key: key
+        });
+        const url = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
+        res.json({ url });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Failed to generate download link' });
+    }
+});
+
 app.get('/api/donations/download', async (req, res) => {
     if (!requireAdmin(req, res)) return;
     if (!ensureDonationsEnv(req, res)) return;

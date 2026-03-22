@@ -224,9 +224,9 @@
                     </tr>
                     <tr v-for="item in donations" :key="item.key">
                         <td style="color:#ce9178;">{{ item.key }}</td>
-                        <td style="color:#b5cea8; font-size: 12px;">{{ item.lastModified || '-' }}</td>
+                        <td style="color:#b5cea8; font-size: 12px;">{{ item.lastModified ? new Date(item.lastModified).toLocaleString() : '-' }}</td>
                         <td style="text-align:right;">
-                            <a class="btn" :href="'/api/donations/download?key=' + encodeURIComponent(item.key)" target="_blank">Download</a>
+                            <button class="btn" @click="downloadDonation(item.key)">Download</button>
                         </td>
                     </tr>
                 </tbody>
@@ -344,14 +344,37 @@
                         const res = await fetch('/api/donations/list', {
                             headers: { 'password': this.password }
                         });
+                        const contentType = (res.headers.get('content-type') || '').toLowerCase();
+                        if (!contentType.includes('application/json')) {
+                            const text = await res.text();
+                            throw new Error(`Unexpected response (${res.status}): ${text.slice(0, 120)}`);
+                        }
                         const json = await res.json();
-                        if (!res.ok) throw new Error(json.error || 'Failed to load donations');
+                        if (!res.ok) throw new Error(json.error || `Failed to load donations (${res.status})`);
                         this.donations = Array.isArray(json.items) ? json.items : [];
                     } catch (e) {
                         alert(String(e.message || e));
                         this.donations = [];
                     } finally {
                         this.donationsLoading = false;
+                    }
+                },
+                async downloadDonation(key) {
+                    try {
+                        const res = await fetch(`/api/donations/download-url?key=${encodeURIComponent(key)}`, {
+                            headers: { 'password': this.password }
+                        });
+                        const contentType = (res.headers.get('content-type') || '').toLowerCase();
+                        if (!contentType.includes('application/json')) {
+                            const text = await res.text();
+                            throw new Error(`Unexpected response (${res.status}): ${text.slice(0, 120)}`);
+                        }
+                        const json = await res.json();
+                        if (!res.ok) throw new Error(json.error || `Failed to create link (${res.status})`);
+                        if (!json.url) throw new Error('No URL returned');
+                        window.open(json.url, '_blank', 'noopener,noreferrer');
+                    } catch (e) {
+                        alert(String(e.message || e));
                     }
                 },
                 openFilePicker() {
