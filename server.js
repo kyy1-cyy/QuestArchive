@@ -8,6 +8,7 @@ import {
     S3Client,
     GetObjectCommand,
     PutObjectCommand,
+    ListObjectsV2Command,
     CreateMultipartUploadCommand,
     UploadPartCommand,
     CompleteMultipartUploadCommand,
@@ -96,6 +97,7 @@ const s3Client = new S3Client({
 
 const DB_PATH = path.join(__dirname, 'data', 'database.txt');
 const R2_DB_KEY = process.env.R2_DB_KEY || '';
+const DONATIONS_PUBLIC_DOMAIN = process.env.DONATIONS_PUBLIC_DOMAIN || '';
 
 // Helper to read DB
 async function readDB() {
@@ -470,6 +472,65 @@ app.post('/api/donations/abort', async (req, res) => {
         res.status(500).json({
             error: err?.message ? `Failed to abort upload: ${err.message}` : 'Failed to abort upload'
         });
+    }
+});
+
+app.get('/api/donations/list', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    if (!ensureDonationsEnv(req, res)) return;
+
+    try {
+        const command = new ListObjectsV2Command({
+            Bucket: DONATIONS_BUCKET_NAME,
+            Prefix: 'donation/'
+        });
+        const result = await s3Client.send(command);
+        const items = (result.Contents || [])
+            .filter(o => o.Key && o.Key.toLowerCase().endsWith('.zip'))
+            .map(o => ({
+                key: o.Key,
+                lastModified: o.LastModified ? o.LastModified.toISOString() : null,
+                size: typeof o.Size === 'number' ? o.Size : null
+            }))
+            .sort((a, b) => {
+                const at = a.lastModified ? Date.parse(a.lastModified) : 0;
+                const bt = b.lastModified ? Date.parse(b.lastModified) : 0;
+                return bt - at;
+            });
+
+        res.json({ items });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({
+            error: err?.message ? `Failed to list donations: ${err.message}` : 'Failed to list donations'
+        });
+    }
+});
+
+app.get('/api/donations/download', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    if (!ensureDonationsEnv(req, res)) return;
+
+    const key = String(req.query.key || '');
+    if (!key || !key.startsWith('donation/') || !key.toLowerCase().endsWith('.zip')) {
+        return res.status(400).send('Invalid key');
+    }
+
+    try {
+        if (DONATIONS_PUBLIC_DOMAIN) {
+            const url = `${DONATIONS_PUBLIC_DOMAIN}/${encodeURIComponent(key)}`;
+            return res.redirect(302, url);
+        }
+
+        const command = new GetObjectCommand({
+            Bucket: DONATIONS_BUCKET_NAME,
+            Key: key
+        });
+        const presignedUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
+        res.redirect(302, presignedUrl);
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Failed to generate download link');
     }
 });
 

@@ -34,6 +34,9 @@
         .btn:hover { background: #444; }
         .btn-delete { background: #5a1a1a; border-color: #7a2a2a; color: #ff9999; }
         .btn-delete:hover { background: #7a2a2a; color: #fff; }
+        .btn-tab { background: transparent; border-color: #444; color: #d4d4d4; }
+        .btn-tab:hover { background: #2a2d2e; }
+        .btn-tab.active { background: #2a2d2e; border-color: #007acc; color: #fff; }
         
         /* Table Styles */
         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
@@ -133,14 +136,16 @@
         <template v-else>
             <div class="toolbar">
                 <span style="color: #4ec9b0; font-size: 16px;">Database Viewer</span>
-                <button class="btn" @click="showAddModal = true">+ Add Game</button>
-                <button v-if="selectedIds.length > 0" class="btn btn-delete" @click="bulkRemove">
+                <button class="btn btn-tab" :class="{ active: activeTab === 'games' }" @click="activeTab = 'games'">Games</button>
+                <button class="btn btn-tab" :class="{ active: activeTab === 'donations' }" @click="openDonations">Donations</button>
+                <button v-if="activeTab === 'games'" class="btn" @click="showAddModal = true">+ Add Game</button>
+                <button v-if="activeTab === 'games' && selectedIds.length > 0" class="btn btn-delete" @click="bulkRemove">
                     Remove Selected ({{ selectedIds.length }})
                 </button>
                 <span style="color: #808080; font-size: 12px; margin-left: auto;">Total Titles: {{ games.length }}</span>
             </div>
 
-            <div class="uploader">
+            <div v-if="activeTab === 'games'" class="uploader">
                 <div class="dropzone" :class="{ active: isDragOver }" @dragenter.prevent="isDragOver = true" @dragover.prevent="isDragOver = true" @dragleave.prevent="isDragOver = false" @drop.prevent="handleDrop">
                     <div>
                         <div style="color:#fff; font-size: 13px; font-weight: 600;">Upload Game File (.zip)</div>
@@ -176,8 +181,7 @@
                 </div>
             </div>
 
-            <!-- Clean Table View (Replaces raw .txt) -->
-            <table>
+            <table v-if="activeTab === 'games'">
                 <thead>
                     <tr>
                         <th style="width: 40px;">
@@ -199,6 +203,31 @@
                         <td style="color: #ce9178;">"{{ game.title }}"</td>
                         <td style="color: #b5cea8;">{{ game.version }}</td>
                         <td style="color: #6a9955; font-size: 12px;">Active ({{ game.title }}.zip)</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <table v-else>
+                <thead>
+                    <tr>
+                        <th>File</th>
+                        <th>Timestamp</th>
+                        <th style="text-align: right;">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr v-if="donationsLoading">
+                        <td colspan="3" style="text-align: center; color: #888; padding: 30px;">Loading donations...</td>
+                    </tr>
+                    <tr v-else-if="donations.length === 0">
+                        <td colspan="3" style="text-align: center; color: #888; padding: 30px;">No donated games found.</td>
+                    </tr>
+                    <tr v-for="item in donations" :key="item.key">
+                        <td style="color:#ce9178;">{{ item.key }}</td>
+                        <td style="color:#b5cea8; font-size: 12px;">{{ item.lastModified || '-' }}</td>
+                        <td style="text-align:right;">
+                            <a class="btn" :href="'/api/donations/download?key=' + encodeURIComponent(item.key)" target="_blank">Download</a>
+                        </td>
                     </tr>
                 </tbody>
             </table>
@@ -246,6 +275,9 @@
                     isAuthenticated: false,
                     password: '',
                     games: [],
+                    activeTab: 'games',
+                    donations: [],
+                    donationsLoading: false,
                     selectedIds: [],
                     showAddModal: false,
                     newGame: {
@@ -300,6 +332,26 @@
                         }
                     } catch (e) {
                         alert('Error connecting');
+                    }
+                },
+                async openDonations() {
+                    this.activeTab = 'donations';
+                    await this.fetchDonations();
+                },
+                async fetchDonations() {
+                    this.donationsLoading = true;
+                    try {
+                        const res = await fetch('/api/donations/list', {
+                            headers: { 'password': this.password }
+                        });
+                        const json = await res.json();
+                        if (!res.ok) throw new Error(json.error || 'Failed to load donations');
+                        this.donations = Array.isArray(json.items) ? json.items : [];
+                    } catch (e) {
+                        alert(String(e.message || e));
+                        this.donations = [];
+                    } finally {
+                        this.donationsLoading = false;
                     }
                 },
                 openFilePicker() {
