@@ -4,7 +4,14 @@ import dotenv from 'dotenv';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
+import {
+    S3Client,
+    GetObjectCommand,
+    CreateMultipartUploadCommand,
+    UploadPartCommand,
+    CompleteMultipartUploadCommand,
+    AbortMultipartUploadCommand
+} from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 dotenv.config();
@@ -51,6 +58,15 @@ async function writeDB(data) {
     await fs.writeFile(DB_PATH, JSON.stringify(data, null, 2));
 }
 
+function requireAdmin(req, res) {
+    const { password } = req.headers;
+    if (password !== process.env.ADMIN_PASSWORD) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return false;
+    }
+    return true;
+}
+
 // Routes
 // Get all games
 app.get('/api/games', async (req, res) => {
@@ -60,20 +76,14 @@ app.get('/api/games', async (req, res) => {
 
 // Admin Route: Get all games
 app.get('/api/database', async (req, res) => {
-    const { password } = req.headers;
-    if (password !== process.env.ADMIN_PASSWORD) {
-        return res.status(401).json({ error: 'Unauthorized' });
-    }
+    if (!requireAdmin(req, res)) return;
     const games = await readDB();
     res.json(games);
 });
 
 // Admin Route: Add Game
 app.post('/api/database', async (req, res) => {
-    const { password } = req.headers;
-    if (password !== process.env.ADMIN_PASSWORD) {
-        return res.status(401).json({ error: 'Unauthorized' });
-    }
+    if (!requireAdmin(req, res)) return;
     
     const { title, version, description, thumbnailUrl } = req.body;
     if (!title) return res.status(400).json({ error: 'Title is required' });
@@ -96,10 +106,7 @@ app.post('/api/database', async (req, res) => {
 
 // Admin Route: Bulk Delete Games
 app.post('/api/database/bulk-delete', async (req, res) => {
-    const { password } = req.headers;
-    if (password !== process.env.ADMIN_PASSWORD) {
-        return res.status(401).json({ error: 'Unauthorized' });
-    }
+    if (!requireAdmin(req, res)) return;
 
     const { ids } = req.body;
     if (!Array.isArray(ids)) {
@@ -115,16 +122,118 @@ app.post('/api/database/bulk-delete', async (req, res) => {
 
 // Admin Route: Delete Single Game (Fallback/Legacy)
 app.delete('/api/admin/games/:id', async (req, res) => {
-    const { password } = req.headers;
-    if (password !== process.env.ADMIN_PASSWORD) {
-        return res.status(401).json({ error: 'Unauthorized' });
-    }
+    if (!requireAdmin(req, res)) return;
 
     let games = await readDB();
     games = games.filter(g => g.id !== req.params.id);
     await writeDB(games);
 
     res.json({ success: true });
+});
+
+app.post('/api/uploads/init', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+
+    const { filename, prefix } = req.body ?? {};
+    if (!filename || typeof filename !== 'string') {
+        return res.status(400).json({ error: 'filename is required' });
+    }
+    if (!filename.toLowerCase().endsWith('.zip')) {
+        return res.status(400).json({ error: 'Only .zip files are allowed' });
+    }
+
+    const cleanFilename = filename.replace(/[\\/]/g, '_').trim();
+    const cleanPrefix = (typeof prefix === 'string' ? prefix : '').trim().replace(/^\//, '').replace(/\\/g, '/');
+    if (cleanPrefix.includes('..')) {
+        return res.status(400).json({ error: 'Invalid prefix' });
+    }
+    const key = cleanPrefix ? `${cleanPrefix.replace(/\/+$/, '')}/${cleanFilename}` : cleanFilename;
+
+    try {
+        const command = new CreateMultipartUploadCommand({
+            Bucket: process.env.R2_BUCKET_NAME || 'quest-archive',
+            Key: key,
+            ContentType: 'application/zip'
+        });
+        const result = await s3Client.send(command);
+        res.json({ uploadId: result.UploadId, key });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Failed to initialize upload' });
+    }
+});
+
+app.post('/api/uploads/part-url', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+
+    const { key, uploadId, partNumber } = req.body ?? {};
+    if (!key || !uploadId || !partNumber) {
+        return res.status(400).json({ error: 'key, uploadId, partNumber are required' });
+    }
+
+    try {
+        const command = new UploadPartCommand({
+            Bucket: process.env.R2_BUCKET_NAME || 'quest-archive',
+            Key: key,
+            UploadId: uploadId,
+            PartNumber: Number(partNumber)
+        });
+        const url = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
+        res.json({ url });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Failed to sign part url' });
+    }
+});
+
+app.post('/api/uploads/complete', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+
+    const { key, uploadId, parts } = req.body ?? {};
+    if (!key || !uploadId || !Array.isArray(parts) || parts.length === 0) {
+        return res.status(400).json({ error: 'key, uploadId, parts are required' });
+    }
+
+    try {
+        const command = new CompleteMultipartUploadCommand({
+            Bucket: process.env.R2_BUCKET_NAME || 'quest-archive',
+            Key: key,
+            UploadId: uploadId,
+            MultipartUpload: {
+                Parts: parts
+                    .map(p => ({ ETag: p.ETag, PartNumber: Number(p.PartNumber) }))
+                    .filter(p => p.ETag && p.PartNumber)
+                    .sort((a, b) => a.PartNumber - b.PartNumber)
+            }
+        });
+        await s3Client.send(command);
+        res.json({ success: true });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Failed to complete upload' });
+    }
+});
+
+app.post('/api/uploads/abort', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+
+    const { key, uploadId } = req.body ?? {};
+    if (!key || !uploadId) {
+        return res.status(400).json({ error: 'key and uploadId are required' });
+    }
+
+    try {
+        const command = new AbortMultipartUploadCommand({
+            Bucket: process.env.R2_BUCKET_NAME || 'quest-archive',
+            Key: key,
+            UploadId: uploadId
+        });
+        await s3Client.send(command);
+        res.json({ success: true });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Failed to abort upload' });
+    }
 });
 
 // The Speed Engine: Redirect to Global CDN

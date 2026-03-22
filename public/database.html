@@ -69,6 +69,43 @@
         }
         input:focus, textarea:focus { outline: none; border-color: #007acc; }
         .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+
+        .uploader {
+            margin-bottom: 20px;
+            border: 1px dashed #555;
+            border-radius: 8px;
+            padding: 14px;
+            background: #1b1b1b;
+        }
+        .dropzone {
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 16px;
+            background: #141414;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+        .dropzone.active {
+            border-color: #007acc;
+            box-shadow: 0 0 0 1px rgba(0, 122, 204, 0.35);
+        }
+        .progress-wrap {
+            margin-top: 12px;
+            border: 1px solid #333;
+            border-radius: 6px;
+            overflow: hidden;
+            background: #101010;
+            height: 12px;
+        }
+        .progress-bar {
+            height: 100%;
+            width: 0%;
+            background: #007acc;
+            transition: width 0.15s linear;
+        }
+        .muted { color: #808080; font-size: 12px; }
     </style>
 </head>
 <body>
@@ -93,6 +130,42 @@
                     Remove Selected ({{ selectedIds.length }})
                 </button>
                 <span style="color: #808080; font-size: 12px; margin-left: auto;">Total Titles: {{ games.length }}</span>
+            </div>
+
+            <div class="uploader">
+                <div class="dropzone" :class="{ active: isDragOver }" @dragenter.prevent="isDragOver = true" @dragover.prevent="isDragOver = true" @dragleave.prevent="isDragOver = false" @drop.prevent="handleDrop">
+                    <div>
+                        <div style="color:#fff; font-size: 13px; font-weight: 600;">Upload Game File (.zip)</div>
+                        <div class="muted">Drag & drop a .zip here or choose a file. Upload is direct-to-R2 via multipart.</div>
+                    </div>
+                    <div style="display:flex; gap:10px; align-items:center;">
+                        <input type="text" v-model="uploadPrefix" placeholder="optional folder (e.g. uploads)" style="width: 220px;">
+                        <button class="btn" @click="openFilePicker" :disabled="uploadState.inProgress">Choose File</button>
+                        <button v-if="uploadState.inProgress" class="btn btn-delete" @click="cancelUpload">Cancel</button>
+                        <input ref="fileInput" type="file" accept=".zip" style="display:none" @change="handleFileInput">
+                    </div>
+                </div>
+
+                <div v-if="uploadState.lastFileName" style="margin-top: 10px;">
+                    <div class="muted">
+                        File: <span style="color:#ce9178;">{{ uploadState.lastFileName }}</span>
+                        <span v-if="uploadState.key"> → Key: <span style="color:#9cdcfe;">{{ uploadState.key }}</span></span>
+                    </div>
+                </div>
+
+                <div v-if="uploadState.inProgress || uploadState.percent === 100" style="margin-top: 10px;">
+                    <div class="progress-wrap">
+                        <div class="progress-bar" :style="{ width: uploadState.percent + '%' }"></div>
+                    </div>
+                    <div class="muted" style="margin-top: 8px; display:flex; justify-content: space-between; gap: 10px;">
+                        <div>{{ uploadState.percent.toFixed(2) }}% · {{ uploadState.mbps.toFixed(2) }} MB/s · ETA {{ uploadState.eta }}</div>
+                        <div v-if="uploadState.message" style="color:#b5cea8;">{{ uploadState.message }}</div>
+                    </div>
+                </div>
+
+                <div v-if="uploadState.error" style="margin-top: 10px; color:#ff9999; font-size: 12px;">
+                    {{ uploadState.error }}
+                </div>
             </div>
 
             <!-- Clean Table View (Replaces raw .txt) -->
@@ -172,6 +245,27 @@
                         version: '',
                         description: '',
                         thumbnailUrl: ''
+                    },
+                    isDragOver: false,
+                    uploadPrefix: '',
+                    uploadState: {
+                        inProgress: false,
+                        lastFileName: '',
+                        key: '',
+                        uploadId: '',
+                        percent: 0,
+                        mbps: 0,
+                        eta: '--:--',
+                        message: '',
+                        error: ''
+                    },
+                    uploadInternals: {
+                        startedAt: 0,
+                        totalBytes: 0,
+                        uploadedBytes: 0,
+                        perPartLoaded: {},
+                        parts: [],
+                        activeRequests: []
                     }
                 }
             },
@@ -198,6 +292,212 @@
                         }
                     } catch (e) {
                         alert('Error connecting');
+                    }
+                },
+                openFilePicker() {
+                    this.$refs.fileInput.click();
+                },
+                handleFileInput(e) {
+                    const file = e.target.files && e.target.files[0];
+                    e.target.value = '';
+                    if (file) this.startUpload(file);
+                },
+                handleDrop(e) {
+                    this.isDragOver = false;
+                    const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+                    if (file) this.startUpload(file);
+                },
+                resetUploadState() {
+                    this.uploadState.inProgress = false;
+                    this.uploadState.percent = 0;
+                    this.uploadState.mbps = 0;
+                    this.uploadState.eta = '--:--';
+                    this.uploadState.message = '';
+                    this.uploadState.error = '';
+                    this.uploadState.key = '';
+                    this.uploadState.uploadId = '';
+                    this.uploadInternals.startedAt = 0;
+                    this.uploadInternals.totalBytes = 0;
+                    this.uploadInternals.uploadedBytes = 0;
+                    this.uploadInternals.perPartLoaded = {};
+                    this.uploadInternals.parts = [];
+                    this.uploadInternals.activeRequests.forEach(r => {
+                        try { r.abort(); } catch (_) {}
+                    });
+                    this.uploadInternals.activeRequests = [];
+                },
+                fmtEta(seconds) {
+                    if (!Number.isFinite(seconds) || seconds <= 0) return '--:--';
+                    const m = Math.floor(seconds / 60);
+                    const s = Math.floor(seconds % 60);
+                    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+                },
+                updateProgress() {
+                    const total = this.uploadInternals.totalBytes || 0;
+                    const uploaded = this.uploadInternals.uploadedBytes || 0;
+                    const percent = total ? (uploaded / total) * 100 : 0;
+                    this.uploadState.percent = Math.min(100, Math.max(0, percent));
+
+                    const elapsed = (Date.now() - this.uploadInternals.startedAt) / 1000;
+                    const bps = elapsed > 0 ? uploaded / elapsed : 0;
+                    this.uploadState.mbps = bps / (1024 * 1024);
+                    const remaining = Math.max(total - uploaded, 0);
+                    const eta = bps > 0 ? remaining / bps : Infinity;
+                    this.uploadState.eta = this.fmtEta(eta);
+                },
+                cancelUpload() {
+                    const { key, uploadId } = this.uploadState;
+                    this.uploadState.message = 'Cancelling...';
+                    this.uploadState.inProgress = false;
+                    this.uploadInternals.activeRequests.forEach(r => {
+                        try { r.abort(); } catch (_) {}
+                    });
+                    this.uploadInternals.activeRequests = [];
+
+                    if (key && uploadId) {
+                        fetch('/api/uploads/abort', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'password': this.password },
+                            body: JSON.stringify({ key, uploadId })
+                        }).finally(() => {
+                            this.uploadState.message = 'Cancelled';
+                        });
+                    } else {
+                        this.uploadState.message = 'Cancelled';
+                    }
+                },
+                async startUpload(file) {
+                    if (this.uploadState.inProgress) return;
+                    if (!file.name.toLowerCase().endsWith('.zip')) {
+                        this.uploadState.error = 'Only .zip files are allowed';
+                        return;
+                    }
+
+                    this.resetUploadState();
+                    this.uploadState.lastFileName = file.name;
+                    this.uploadState.inProgress = true;
+                    this.uploadState.message = 'Initializing...';
+                    this.uploadInternals.startedAt = Date.now();
+                    this.uploadInternals.totalBytes = file.size;
+
+                    let init;
+                    try {
+                        const res = await fetch('/api/uploads/init', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'password': this.password },
+                            body: JSON.stringify({ filename: file.name, prefix: this.uploadPrefix })
+                        });
+                        init = await res.json();
+                        if (!res.ok) throw new Error(init.error || 'Init failed');
+                    } catch (e) {
+                        this.uploadState.inProgress = false;
+                        this.uploadState.error = String(e.message || e);
+                        return;
+                    }
+
+                    this.uploadState.key = init.key;
+                    this.uploadState.uploadId = init.uploadId;
+                    this.uploadState.message = 'Uploading...';
+
+                    const partSize = 64 * 1024 * 1024;
+                    const totalParts = Math.ceil(file.size / partSize);
+                    const concurrency = Math.min(4, Math.max(1, (navigator.hardwareConcurrency || 4) / 2));
+
+                    const queue = [];
+                    for (let i = 0; i < totalParts; i++) {
+                        const partNumber = i + 1;
+                        const start = i * partSize;
+                        const end = Math.min(start + partSize, file.size);
+                        queue.push({ partNumber, blob: file.slice(start, end) });
+                    }
+
+                    const workers = Array.from({ length: Math.floor(concurrency) }, () => (async () => {
+                        while (queue.length && this.uploadState.inProgress) {
+                            const job = queue.shift();
+                            if (!job) return;
+
+                            const urlRes = await fetch('/api/uploads/part-url', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', 'password': this.password },
+                                body: JSON.stringify({
+                                    key: this.uploadState.key,
+                                    uploadId: this.uploadState.uploadId,
+                                    partNumber: job.partNumber
+                                })
+                            });
+                            const urlJson = await urlRes.json();
+                            if (!urlRes.ok) throw new Error(urlJson.error || 'Failed to sign part');
+
+                            await new Promise((resolve, reject) => {
+                                const xhr = new XMLHttpRequest();
+                                this.uploadInternals.activeRequests.push(xhr);
+                                xhr.open('PUT', urlJson.url, true);
+                                xhr.upload.onprogress = (evt) => {
+                                    if (!evt.lengthComputable) return;
+                                    this.uploadInternals.perPartLoaded[job.partNumber] = evt.loaded;
+                                    let sum = 0;
+                                    for (const k in this.uploadInternals.perPartLoaded) sum += this.uploadInternals.perPartLoaded[k] || 0;
+                                    this.uploadInternals.uploadedBytes = sum;
+                                    this.updateProgress();
+                                };
+                                xhr.onload = () => {
+                                    const etag = xhr.getResponseHeader('ETag');
+                                    if (xhr.status >= 200 && xhr.status < 300) {
+                                        if (!etag) {
+                                            reject(new Error('Upload succeeded but ETag header is not readable. Add R2 CORS: ExposeHeaders = ETag'));
+                                            return;
+                                        }
+                                        this.uploadInternals.perPartLoaded[job.partNumber] = job.blob.size;
+                                        let sum = 0;
+                                        for (const k in this.uploadInternals.perPartLoaded) sum += this.uploadInternals.perPartLoaded[k] || 0;
+                                        this.uploadInternals.uploadedBytes = sum;
+                                        this.updateProgress();
+                                        this.uploadInternals.parts.push({ ETag: etag, PartNumber: job.partNumber });
+                                        resolve();
+                                    } else {
+                                        reject(new Error(`Part ${job.partNumber} failed (${xhr.status})`));
+                                    }
+                                };
+                                xhr.onerror = () => reject(new Error(`Part ${job.partNumber} network error`));
+                                xhr.onabort = () => reject(new Error('Upload aborted'));
+                                xhr.send(job.blob);
+                            });
+                        }
+                    })());
+
+                    try {
+                        await Promise.all(workers);
+                    } catch (e) {
+                        this.uploadState.inProgress = false;
+                        this.uploadState.error = String(e.message || e);
+                        this.uploadState.message = '';
+                        return;
+                    }
+
+                    if (!this.uploadState.inProgress) return;
+
+                    this.uploadState.message = 'Finalizing...';
+                    try {
+                        const res = await fetch('/api/uploads/complete', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'password': this.password },
+                            body: JSON.stringify({
+                                key: this.uploadState.key,
+                                uploadId: this.uploadState.uploadId,
+                                parts: this.uploadInternals.parts
+                            })
+                        });
+                        const json = await res.json();
+                        if (!res.ok) throw new Error(json.error || 'Complete failed');
+
+                        this.uploadInternals.uploadedBytes = this.uploadInternals.totalBytes;
+                        this.updateProgress();
+                        this.uploadState.inProgress = false;
+                        this.uploadState.message = 'Done';
+                    } catch (e) {
+                        this.uploadState.inProgress = false;
+                        this.uploadState.error = String(e.message || e);
+                        this.uploadState.message = '';
                     }
                 },
                 toggleAll(e) {
