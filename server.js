@@ -4,7 +4,6 @@ import dotenv from 'dotenv';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import crypto from 'crypto';
 import {
     S3Client,
     GetObjectCommand,
@@ -78,9 +77,11 @@ function sanitizeFilename(name) {
 }
 
 function makeDonationKey(filename) {
-    const ts = new Date().toISOString().replace(/[:.]/g, '-');
-    const rand = crypto.randomBytes(8).toString('hex');
-    return `donations/${ts}_${rand}_${sanitizeFilename(filename)}`;
+    const clean = sanitizeFilename(filename)
+        .replace(/\s+/g, '_')
+        .replace(/_+/g, '_')
+        .toLowerCase();
+    return `donation/${clean}`;
 }
 
 // Configure S3 Client for Cloudflare R2
