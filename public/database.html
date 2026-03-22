@@ -190,7 +190,7 @@
                         </td>
                         <td style="color: #ce9178;">"{{ game.title }}"</td>
                         <td style="color: #b5cea8;">{{ game.version }}</td>
-                        <td style="color: #6a9955; font-size: 12px;">Active ({{ game.title }}.apk)</td>
+                        <td style="color: #6a9955; font-size: 12px;">Active ({{ game.title }}.zip)</td>
                     </tr>
                 </tbody>
             </table>
@@ -201,7 +201,7 @@
                     <h3 style="margin-top:0; color:#fff;">Append to Database</h3>
                     
                     <div class="form-group">
-                        <label>Title (MUST match EXACT .apk filename in R2)</label>
+                        <label>Title (MUST match EXACT .zip filename in R2)</label>
                         <input v-model="newGame.title" type="text" placeholder="e.g. Beat Saber">
                     </div>
                     
