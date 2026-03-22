@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Database</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <style>
+        body {
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+            font-family: 'Consolas', 'Courier New', monospace;
+            margin: 0;
+            padding: 20px;
+        }
+        .toolbar {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px dashed #555;
+            margin-bottom: 20px;
+        }
+        .btn {
+            background: #333;
+            color: #fff;
+            border: 1px solid #555;
+            padding: 6px 12px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 14px;
+            border-radius: 4px;
+        }
+        .btn:hover { background: #444; }
+        .btn-delete { background: #5a1a1a; border-color: #7a2a2a; color: #ff9999; }
+        .btn-delete:hover { background: #7a2a2a; color: #fff; }
+        
+        /* Table Styles */
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th { text-align: left; padding: 12px 10px; border-bottom: 1px solid #555; color: #9cdcfe; font-weight: normal; }
+        td { padding: 12px 10px; border-bottom: 1px solid #333; }
+        tr:hover { background-color: #2a2d2e; }
+        
+        /* Checkbox */
+        input[type="checkbox"] { cursor: pointer; width: 16px; height: 16px; accent-color: #007acc; }
+
+        /* Modal */
+        .overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.7);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 100;
+        }
+        .modal {
+            background: #252526;
+            border: 1px solid #454545;
+            padding: 20px;
+            width: 400px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            border-radius: 6px;
+        }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; color: #9cdcfe; font-size: 13px; }
+        input[type="text"], input[type="password"], textarea {
+            width: 100%; box-sizing: border-box;
+            background: #3c3c3c; color: #d4d4d4;
+            border: 1px solid #555; padding: 8px;
+            font-family: inherit; border-radius: 4px;
+        }
+        input:focus, textarea:focus { outline: none; border-color: #007acc; }
+        .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div v-if="!isAuthenticated" class="overlay">
+            <div class="modal">
+                <div class="form-group">
+                    <label>Enter Admin Password to view database</label>
+                    <input type="password" v-model="password" @keyup.enter="login" autofocus>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn" @click="login">Unlock</button>
+                </div>
+            </div>
+        </div>
+
+        <template v-else>
+            <div class="toolbar">
+                <span style="color: #4ec9b0; font-size: 16px;">Database Viewer</span>
+                <button class="btn" @click="showAddModal = true">+ Add Game</button>
+                <button v-if="selectedIds.length > 0" class="btn btn-delete" @click="bulkRemove">
+                    Remove Selected ({{ selectedIds.length }})
+                </button>
+                <span style="color: #808080; font-size: 12px; margin-left: auto;">Total Titles: {{ games.length }}</span>
+            </div>
+
+            <!-- Clean Table View (Replaces raw .txt) -->
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 40px;">
+                            <input type="checkbox" @change="toggleAll" :checked="selectedIds.length === games.length && games.length > 0">
+                        </th>
+                        <th>Title</th>
+                        <th>Version</th>
+                        <th>Proxy Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr v-if="games.length === 0">
+                        <td colspan="4" style="text-align: center; color: #888; padding: 30px;">Database is empty.</td>
+                    </tr>
+                    <tr v-for="game in games" :key="game.id">
+                        <td>
+                            <input type="checkbox" :value="game.id" v-model="selectedIds">
+                        </td>
+                        <td style="color: #ce9178;">"{{ game.title }}"</td>
+                        <td style="color: #b5cea8;">{{ game.version }}</td>
+                        <td style="color: #6a9955; font-size: 12px;">Active ({{ game.title }}.apk)</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <!-- Add Modal -->
+            <div v-if="showAddModal" class="overlay">
+                <div class="modal">
+                    <h3 style="margin-top:0; color:#fff;">Append to Database</h3>
+                    
+                    <div class="form-group">
+                        <label>Title (MUST match EXACT .apk filename in R2)</label>
+                        <input v-model="newGame.title" type="text" placeholder="e.g. Beat Saber">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Version</label>
+                        <input v-model="newGame.version" type="text" placeholder="1.0">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Description</label>
+                        <textarea v-model="newGame.description" rows="3"></textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Thumbnail URL</label>
+                        <input v-model="newGame.thumbnailUrl" type="text" placeholder="https://...">
+                    </div>
+
+                    <div class="modal-actions">
+                        <button class="btn" style="background:transparent; border-color:transparent;" @click="showAddModal = false">Cancel</button>
+                        <button class="btn" @click="addGame">Save</button>
+                    </div>
+                </div>
+            </div>
+        </template>
+    </div>
+
+    <script>
+        const { createApp } = Vue
+
+        createApp({
+            data() {
+                return {
+                    isAuthenticated: false,
+                    password: '',
+                    games: [],
+                    selectedIds: [],
+                    showAddModal: false,
+                    newGame: {
+                        title: '',
+                        version: '',
+                        description: '',
+                        thumbnailUrl: ''
+                    }
+                }
+            },
+            mounted() {
+                const savedPwd = sessionStorage.getItem('adminPwd');
+                if (savedPwd) {
+                    this.password = savedPwd;
+                    this.login();
+                }
+            },
+            methods: {
+                async login() {
+                    try {
+                        const res = await fetch('/api/database', {
+                            headers: { 'password': this.password }
+                        });
+                        if (res.ok) {
+                            this.isAuthenticated = true;
+                            sessionStorage.setItem('adminPwd', this.password);
+                            this.games = await res.json();
+                        } else {
+                            alert('Access Denied');
+                            this.password = '';
+                        }
+                    } catch (e) {
+                        alert('Error connecting');
+                    }
+                },
+                toggleAll(e) {
+                    if (e.target.checked) {
+                        this.selectedIds = this.games.map(g => g.id);
+                    } else {
+                        this.selectedIds = [];
+                    }
+                },
+                async addGame() {
+                    if (!this.newGame.title) return alert('Title is required');
+                    
+                    try {
+                        const res = await fetch('/api/database', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'password': this.password
+                            },
+                            body: JSON.stringify(this.newGame)
+                        });
+                        if (res.ok) {
+                            const added = await res.json();
+                            this.games.push(added);
+                            this.newGame = { title: '', version: '', description: '', thumbnailUrl: '' };
+                            this.showAddModal = false;
+                        } else {
+                            const err = await res.json();
+                            alert(err.error || 'Failed to append');
+                        }
+                    } catch (e) {
+                        console.error(e);
+                    }
+                },
+                async bulkRemove() {
+                    if (!confirm(`Are you sure you want to permanently delete ${this.selectedIds.length} game(s) from the database?`)) return;
+
+                    try {
+                        const res = await fetch('/api/database/bulk-delete', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'password': this.password
+                            },
+                            body: JSON.stringify({ ids: this.selectedIds })
+                        });
+                        
+                        if (res.ok) {
+                            // Remove them from local state
+                            this.games = this.games.filter(g => !this.selectedIds.includes(g.id));
+                            this.selectedIds = []; // reset selection
+                        } else {
+                            alert('Failed to delete games');
+                        }
+                    } catch (e) {
+                        console.error('Error deleting:', e);
+                    }
+                }
+            }
+        }).mount('#app')
+    </script>
+</body>
+</html>
