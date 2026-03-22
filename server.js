@@ -26,10 +26,36 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+function getR2EndpointBase(rawEndpoint) {
+    if (!rawEndpoint) return undefined;
+    try {
+        const u = new URL(rawEndpoint);
+        return `${u.protocol}//${u.host}`;
+    } catch {
+        return rawEndpoint;
+    }
+}
+
+function ensureUploadEnv(req, res) {
+    const missing = [];
+    if (!process.env.R2_ENDPOINT) missing.push('R2_ENDPOINT');
+    if (!process.env.R2_ACCESS_KEY_ID) missing.push('R2_ACCESS_KEY_ID');
+    if (!process.env.R2_SECRET_ACCESS_KEY) missing.push('R2_SECRET_ACCESS_KEY');
+    if (!process.env.R2_BUCKET_NAME) missing.push('R2_BUCKET_NAME');
+
+    if (missing.length) {
+        res.status(500).json({
+            error: `Server missing required env vars for upload: ${missing.join(', ')}`
+        });
+        return false;
+    }
+    return true;
+}
+
 // Configure S3 Client for Cloudflare R2
 const s3Client = new S3Client({
     region: 'auto',
-    endpoint: process.env.R2_ENDPOINT, 
+    endpoint: getR2EndpointBase(process.env.R2_ENDPOINT),
     credentials: {
         accessKeyId: process.env.R2_ACCESS_KEY_ID || '',
         secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || ''
@@ -133,6 +159,7 @@ app.delete('/api/admin/games/:id', async (req, res) => {
 
 app.post('/api/uploads/init', async (req, res) => {
     if (!requireAdmin(req, res)) return;
+    if (!ensureUploadEnv(req, res)) return;
 
     const { filename, prefix } = req.body ?? {};
     if (!filename || typeof filename !== 'string') {
@@ -151,7 +178,7 @@ app.post('/api/uploads/init', async (req, res) => {
 
     try {
         const command = new CreateMultipartUploadCommand({
-            Bucket: process.env.R2_BUCKET_NAME || 'quest-archive',
+            Bucket: process.env.R2_BUCKET_NAME,
             Key: key,
             ContentType: 'application/zip'
         });
@@ -159,12 +186,15 @@ app.post('/api/uploads/init', async (req, res) => {
         res.json({ uploadId: result.UploadId, key });
     } catch (err) {
         console.error(err);
-        res.status(500).json({ error: 'Failed to initialize upload' });
+        res.status(500).json({
+            error: err?.message ? `Failed to initialize upload: ${err.message}` : 'Failed to initialize upload'
+        });
     }
 });
 
 app.post('/api/uploads/part-url', async (req, res) => {
     if (!requireAdmin(req, res)) return;
+    if (!ensureUploadEnv(req, res)) return;
 
     const { key, uploadId, partNumber } = req.body ?? {};
     if (!key || !uploadId || !partNumber) {
@@ -173,7 +203,7 @@ app.post('/api/uploads/part-url', async (req, res) => {
 
     try {
         const command = new UploadPartCommand({
-            Bucket: process.env.R2_BUCKET_NAME || 'quest-archive',
+            Bucket: process.env.R2_BUCKET_NAME,
             Key: key,
             UploadId: uploadId,
             PartNumber: Number(partNumber)
@@ -182,12 +212,15 @@ app.post('/api/uploads/part-url', async (req, res) => {
         res.json({ url });
     } catch (err) {
         console.error(err);
-        res.status(500).json({ error: 'Failed to sign part url' });
+        res.status(500).json({
+            error: err?.message ? `Failed to sign part url: ${err.message}` : 'Failed to sign part url'
+        });
     }
 });
 
 app.post('/api/uploads/complete', async (req, res) => {
     if (!requireAdmin(req, res)) return;
+    if (!ensureUploadEnv(req, res)) return;
 
     const { key, uploadId, parts } = req.body ?? {};
     if (!key || !uploadId || !Array.isArray(parts) || parts.length === 0) {
@@ -196,7 +229,7 @@ app.post('/api/uploads/complete', async (req, res) => {
 
     try {
         const command = new CompleteMultipartUploadCommand({
-            Bucket: process.env.R2_BUCKET_NAME || 'quest-archive',
+            Bucket: process.env.R2_BUCKET_NAME,
             Key: key,
             UploadId: uploadId,
             MultipartUpload: {
@@ -210,12 +243,15 @@ app.post('/api/uploads/complete', async (req, res) => {
         res.json({ success: true });
     } catch (err) {
         console.error(err);
-        res.status(500).json({ error: 'Failed to complete upload' });
+        res.status(500).json({
+            error: err?.message ? `Failed to complete upload: ${err.message}` : 'Failed to complete upload'
+        });
     }
 });
 
 app.post('/api/uploads/abort', async (req, res) => {
     if (!requireAdmin(req, res)) return;
+    if (!ensureUploadEnv(req, res)) return;
 
     const { key, uploadId } = req.body ?? {};
     if (!key || !uploadId) {
@@ -224,7 +260,7 @@ app.post('/api/uploads/abort', async (req, res) => {
 
     try {
         const command = new AbortMultipartUploadCommand({
-            Bucket: process.env.R2_BUCKET_NAME || 'quest-archive',
+            Bucket: process.env.R2_BUCKET_NAME,
             Key: key,
             UploadId: uploadId
         });
@@ -232,7 +268,9 @@ app.post('/api/uploads/abort', async (req, res) => {
         res.json({ success: true });
     } catch (err) {
         console.error(err);
-        res.status(500).json({ error: 'Failed to abort upload' });
+        res.status(500).json({
+            error: err?.message ? `Failed to abort upload: ${err.message}` : 'Failed to abort upload'
+        });
     }
 });
 
