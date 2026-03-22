@@ -58,6 +58,52 @@
             pointer-events: none;
             z-index: -1;
         }
+
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.72);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            z-index: 50;
+        }
+        .modal-card {
+            width: 100%;
+            max-width: 640px;
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: rgba(20, 20, 20, 0.75);
+            backdrop-filter: blur(22px);
+            -webkit-backdrop-filter: blur(22px);
+            overflow: hidden;
+        }
+        .dropzone {
+            border: 1px dashed rgba(255, 255, 255, 0.18);
+            border-radius: 14px;
+            padding: 16px;
+            background: rgba(0, 0, 0, 0.25);
+            transition: all 0.2s ease;
+        }
+        .dropzone.active {
+            border-color: rgba(255, 255, 255, 0.35);
+            background: rgba(0, 0, 0, 0.35);
+        }
+        .progress-wrap {
+            margin-top: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 999px;
+            overflow: hidden;
+            background: rgba(0, 0, 0, 0.35);
+            height: 10px;
+        }
+        .progress-bar {
+            height: 100%;
+            width: 0%;
+            background: rgba(255, 255, 255, 0.9);
+            transition: width 0.15s linear;
+        }
     </style>
 </head>
 <body class="min-h-screen overflow-x-hidden flex flex-col antialiased">
@@ -68,7 +114,10 @@
         <header class="glass-panel border-b border-white/5 px-4 sm:px-8 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between z-10 shrink-0 gap-3">
             <div class="text-xl font-bold tracking-tight text-white flex items-center gap-2 w-full sm:w-auto justify-between">
                 Archive<span class="text-gray-500 font-light">VR</span>
-                <a href="/database" target="_blank" class="sm:hidden text-xs font-medium text-gray-500 hover:text-white transition-colors">Database</a>
+                <div class="sm:hidden flex items-center gap-3">
+                    <button @click="openDonateModal" class="text-xs font-medium text-gray-500 hover:text-white transition-colors">Donate</button>
+                    <a href="/database" target="_blank" class="text-xs font-medium text-gray-500 hover:text-white transition-colors">Database</a>
+                </div>
             </div>
             
             <div class="w-full sm:flex-1 sm:max-w-md sm:mx-8 relative">
@@ -78,10 +127,70 @@
                 <input v-model="searchQuery" type="text" placeholder="Search archive..." class="w-full search-input rounded-full pl-10 pr-4 py-3 sm:py-2 text-sm text-white placeholder-gray-500">
             </div>
 
-            <div class="hidden sm:block">
+            <div class="hidden sm:flex items-center gap-4">
+                <button @click="openDonateModal" class="text-xs font-medium text-gray-500 hover:text-white transition-colors">Donate Games</button>
                 <a href="/database" target="_blank" class="text-xs font-medium text-gray-500 hover:text-white transition-colors">Database</a>
             </div>
         </header>
+
+        <div v-if="donateModalOpen" class="modal-overlay" @keydown.escape.window="closeDonateModal" @click.self="closeDonateModal">
+            <div class="modal-card" @click.stop>
+                <div class="px-5 sm:px-6 py-4 border-b border-white/10 flex items-center justify-between">
+                    <div class="text-white font-semibold tracking-tight">Donate a VR Game</div>
+                    <button class="text-gray-500 hover:text-white transition-colors text-sm" @click="closeDonateModal">✕</button>
+                </div>
+                <div class="p-5 sm:p-6">
+                    <div class="text-sm text-gray-400 leading-relaxed">
+                        We rely on donations from you guys to keep the site up to date and running.
+                    </div>
+
+                    <div class="mt-5">
+                        <div class="dropzone" :class="{ active: donateDragOver }"
+                             @dragenter.prevent="donateDragOver = true"
+                             @dragover.prevent="donateDragOver = true"
+                             @dragleave.prevent="donateDragOver = false"
+                             @drop.prevent="handleDonateDrop">
+                            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                <div>
+                                    <div class="text-white text-sm font-medium">Upload .zip only</div>
+                                    <div class="text-xs text-gray-500 mt-1">Click the box or drag & drop. You’ll see live MB/s + ETA.</div>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <button class="get-btn px-4 py-2 rounded-xl text-sm font-semibold"
+                                            @click="openDonatePicker"
+                                            :disabled="donateState.inProgress">
+                                        Choose .zip
+                                    </button>
+                                    <button v-if="donateState.inProgress" class="px-3 py-2 rounded-xl text-sm font-semibold border border-white/10 text-white/80 hover:text-white hover:bg-white/10 transition"
+                                            @click="cancelDonateUpload">
+                                        Cancel
+                                    </button>
+                                    <input ref="donateFileInput" type="file" accept=".zip" style="display:none" @change="handleDonatePick">
+                                </div>
+                            </div>
+
+                            <div v-if="donateState.lastFileName" class="mt-4 text-xs text-gray-500">
+                                File: <span class="text-white/90">{{ donateState.lastFileName }}</span>
+                            </div>
+
+                            <div v-if="donateState.inProgress || donateState.percent === 100" class="mt-4">
+                                <div class="progress-wrap">
+                                    <div class="progress-bar" :style="{ width: donateState.percent + '%' }"></div>
+                                </div>
+                                <div class="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs text-gray-500">
+                                    <div>{{ donateState.percent.toFixed(2) }}% · {{ donateState.mbps.toFixed(2) }} MB/s · ETA {{ donateState.eta }}</div>
+                                    <div v-if="donateState.message" class="text-white/80">{{ donateState.message }}</div>
+                                </div>
+                            </div>
+
+                            <div v-if="donateState.error" class="mt-4 text-xs text-red-300">
+                                {{ donateState.error }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <!-- Main Split View -->
         <div class="flex-1 overflow-y-auto">
@@ -203,7 +312,28 @@
                     games: [],
                     searchQuery: '',
                     loading: true,
-                    selectedGame: null
+                    selectedGame: null,
+                    donateModalOpen: false,
+                    donateDragOver: false,
+                    donateState: {
+                        inProgress: false,
+                        lastFileName: '',
+                        key: '',
+                        uploadId: '',
+                        percent: 0,
+                        mbps: 0,
+                        eta: '--:--',
+                        message: '',
+                        error: ''
+                    },
+                    donateInternals: {
+                        startedAt: 0,
+                        totalBytes: 0,
+                        uploadedBytes: 0,
+                        perPartLoaded: {},
+                        parts: [],
+                        activeRequests: []
+                    }
                 }
             },
             computed: {
@@ -235,6 +365,235 @@
                 },
                 handleImageError(e) {
                     e.target.src = 'https://via.placeholder.com/600x400?text=No+Image+Available';
+                },
+                openDonateModal() {
+                    this.donateModalOpen = true;
+                    this.resetDonateState();
+                },
+                closeDonateModal() {
+                    if (this.donateState.inProgress) {
+                        this.cancelDonateUpload();
+                    }
+                    this.donateModalOpen = false;
+                },
+                openDonatePicker() {
+                    this.$refs.donateFileInput.click();
+                },
+                handleDonatePick(e) {
+                    const file = e.target.files && e.target.files[0];
+                    e.target.value = '';
+                    if (file) this.startDonateUpload(file);
+                },
+                handleDonateDrop(e) {
+                    this.donateDragOver = false;
+                    const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+                    if (file) this.startDonateUpload(file);
+                },
+                resetDonateState() {
+                    this.donateState.inProgress = false;
+                    this.donateState.percent = 0;
+                    this.donateState.mbps = 0;
+                    this.donateState.eta = '--:--';
+                    this.donateState.message = '';
+                    this.donateState.error = '';
+                    this.donateState.key = '';
+                    this.donateState.uploadId = '';
+                    this.donateState.lastFileName = '';
+                    this.donateInternals.startedAt = 0;
+                    this.donateInternals.totalBytes = 0;
+                    this.donateInternals.uploadedBytes = 0;
+                    this.donateInternals.perPartLoaded = {};
+                    this.donateInternals.parts = [];
+                    this.donateInternals.activeRequests.forEach(r => {
+                        try { r.abort(); } catch (_) {}
+                    });
+                    this.donateInternals.activeRequests = [];
+                },
+                fmtEta(seconds) {
+                    if (!Number.isFinite(seconds) || seconds <= 0) return '--:--';
+                    const m = Math.floor(seconds / 60);
+                    const s = Math.floor(seconds % 60);
+                    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+                },
+                updateDonateProgress() {
+                    const total = this.donateInternals.totalBytes || 0;
+                    const uploaded = this.donateInternals.uploadedBytes || 0;
+                    const percent = total ? (uploaded / total) * 100 : 0;
+                    this.donateState.percent = Math.min(100, Math.max(0, percent));
+
+                    const elapsed = (Date.now() - this.donateInternals.startedAt) / 1000;
+                    const bps = elapsed > 0 ? uploaded / elapsed : 0;
+                    this.donateState.mbps = bps / (1024 * 1024);
+                    const remaining = Math.max(total - uploaded, 0);
+                    const eta = bps > 0 ? remaining / bps : Infinity;
+                    this.donateState.eta = this.fmtEta(eta);
+                },
+                cancelDonateUpload() {
+                    const { key, uploadId } = this.donateState;
+                    this.donateState.message = 'Cancelling...';
+                    this.donateState.inProgress = false;
+                    this.donateInternals.activeRequests.forEach(r => {
+                        try { r.abort(); } catch (_) {}
+                    });
+                    this.donateInternals.activeRequests = [];
+
+                    if (key && uploadId) {
+                        fetch('/api/donations/abort', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ key, uploadId })
+                        }).finally(() => {
+                            this.donateState.message = 'Cancelled';
+                        });
+                    } else {
+                        this.donateState.message = 'Cancelled';
+                    }
+                },
+                async startDonateUpload(file) {
+                    if (this.donateState.inProgress) return;
+                    if (!file.name.toLowerCase().endsWith('.zip')) {
+                        this.donateState.error = 'Only .zip files are allowed';
+                        return;
+                    }
+
+                    this.resetDonateState();
+                    this.donateState.lastFileName = file.name;
+                    this.donateState.inProgress = true;
+                    this.donateState.message = 'Initializing...';
+                    this.donateInternals.startedAt = Date.now();
+                    this.donateInternals.totalBytes = file.size;
+
+                    let init;
+                    try {
+                        const res = await fetch('/api/donations/init', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ filename: file.name })
+                        });
+                        init = await res.json();
+                        if (!res.ok) throw new Error(init.error || 'Init failed');
+                    } catch (e) {
+                        this.donateState.inProgress = false;
+                        this.donateState.error = String(e.message || e);
+                        this.donateState.message = '';
+                        return;
+                    }
+
+                    this.donateState.key = init.key;
+                    this.donateState.uploadId = init.uploadId;
+                    this.donateState.message = 'Uploading...';
+
+                    const partSize = 64 * 1024 * 1024;
+                    const totalParts = Math.ceil(file.size / partSize);
+                    const concurrency = Math.min(4, Math.max(1, (navigator.hardwareConcurrency || 4) / 2));
+
+                    const queue = [];
+                    for (let i = 0; i < totalParts; i++) {
+                        const partNumber = i + 1;
+                        const start = i * partSize;
+                        const end = Math.min(start + partSize, file.size);
+                        queue.push({ partNumber, blob: file.slice(start, end) });
+                    }
+
+                    const workers = Array.from({ length: Math.floor(concurrency) }, () => (async () => {
+                        while (queue.length && this.donateState.inProgress) {
+                            const job = queue.shift();
+                            if (!job) return;
+
+                            const urlRes = await fetch('/api/donations/part-url', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    key: this.donateState.key,
+                                    uploadId: this.donateState.uploadId,
+                                    partNumber: job.partNumber
+                                })
+                            });
+                            const urlJson = await urlRes.json();
+                            if (!urlRes.ok) throw new Error(urlJson.error || 'Failed to sign part');
+
+                            await new Promise((resolve, reject) => {
+                                const xhr = new XMLHttpRequest();
+                                this.donateInternals.activeRequests.push(xhr);
+                                xhr.open('PUT', urlJson.url, true);
+                                xhr.upload.onprogress = (evt) => {
+                                    if (!evt.lengthComputable) return;
+                                    this.donateInternals.perPartLoaded[job.partNumber] = evt.loaded;
+                                    let sum = 0;
+                                    for (const k in this.donateInternals.perPartLoaded) sum += this.donateInternals.perPartLoaded[k] || 0;
+                                    this.donateInternals.uploadedBytes = sum;
+                                    this.updateDonateProgress();
+                                };
+                                xhr.onload = () => {
+                                    const etag = xhr.getResponseHeader('ETag');
+                                    if (xhr.status >= 200 && xhr.status < 300) {
+                                        if (!etag) {
+                                            reject(new Error('Upload succeeded but ETag header is not readable. Add R2 CORS: ExposeHeaders = ETag'));
+                                            return;
+                                        }
+                                        this.donateInternals.perPartLoaded[job.partNumber] = job.blob.size;
+                                        let sum = 0;
+                                        for (const k in this.donateInternals.perPartLoaded) sum += this.donateInternals.perPartLoaded[k] || 0;
+                                        this.donateInternals.uploadedBytes = sum;
+                                        this.updateDonateProgress();
+                                        this.donateInternals.parts.push({ ETag: etag, PartNumber: job.partNumber });
+                                        resolve();
+                                    } else {
+                                        reject(new Error(`Part ${job.partNumber} failed (${xhr.status})`));
+                                    }
+                                };
+                                xhr.onerror = () => reject(new Error(`Part ${job.partNumber} network error`));
+                                xhr.onabort = () => reject(new Error('Upload aborted'));
+                                xhr.send(job.blob);
+                            });
+                        }
+                    })());
+
+                    try {
+                        await Promise.all(workers);
+                    } catch (e) {
+                        this.donateState.inProgress = false;
+                        this.donateState.error = String(e.message || e);
+                        this.donateState.message = '';
+                        if (this.donateState.key && this.donateState.uploadId) {
+                            fetch('/api/donations/abort', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ key: this.donateState.key, uploadId: this.donateState.uploadId })
+                            }).catch(() => {});
+                        }
+                        return;
+                    }
+
+                    if (!this.donateState.inProgress) return;
+
+                    this.donateState.message = 'Finalizing...';
+                    try {
+                        const res = await fetch('/api/donations/complete', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                key: this.donateState.key,
+                                uploadId: this.donateState.uploadId,
+                                parts: this.donateInternals.parts
+                            })
+                        });
+                        const json = await res.json();
+                        if (!res.ok) throw new Error(json.error || 'Complete failed');
+
+                        this.donateInternals.uploadedBytes = this.donateInternals.totalBytes;
+                        this.updateDonateProgress();
+                        this.donateState.inProgress = false;
+                        this.donateState.message = 'Thank you — upload complete';
+                        setTimeout(() => {
+                            this.donateModalOpen = false;
+                            this.resetDonateState();
+                        }, 1200);
+                    } catch (e) {
+                        this.donateState.inProgress = false;
+                        this.donateState.error = String(e.message || e);
+                        this.donateState.message = '';
+                    }
                 }
             }
         }).mount('#app')

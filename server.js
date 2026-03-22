@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import crypto from 'crypto';
 import {
     S3Client,
     GetObjectCommand,
@@ -51,6 +52,35 @@ function ensureUploadEnv(req, res) {
         return false;
     }
     return true;
+}
+
+const DONATIONS_BUCKET_NAME = process.env.DONATIONS_R2_BUCKET_NAME || 'quest-archive-donations';
+
+function ensureDonationsEnv(req, res) {
+    const missing = [];
+    if (!process.env.R2_ENDPOINT) missing.push('R2_ENDPOINT');
+    if (!process.env.R2_ACCESS_KEY_ID) missing.push('R2_ACCESS_KEY_ID');
+    if (!process.env.R2_SECRET_ACCESS_KEY) missing.push('R2_SECRET_ACCESS_KEY');
+    if (!DONATIONS_BUCKET_NAME) missing.push('DONATIONS_R2_BUCKET_NAME');
+
+    if (missing.length) {
+        res.status(500).json({
+            error: `Server missing required env vars for donations upload: ${missing.join(', ')}`
+        });
+        return false;
+    }
+    return true;
+}
+
+function sanitizeFilename(name) {
+    const base = String(name || '').replace(/[\\/]/g, '_').trim();
+    return base.replace(/[^\w.\- ]+/g, '_').slice(0, 180) || 'upload.zip';
+}
+
+function makeDonationKey(filename) {
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    const rand = crypto.randomBytes(8).toString('hex');
+    return `donations/${ts}_${rand}_${sanitizeFilename(filename)}`;
 }
 
 // Configure S3 Client for Cloudflare R2
@@ -312,6 +342,123 @@ app.post('/api/uploads/abort', async (req, res) => {
     try {
         const command = new AbortMultipartUploadCommand({
             Bucket: process.env.R2_BUCKET_NAME,
+            Key: key,
+            UploadId: uploadId
+        });
+        await s3Client.send(command);
+        res.json({ success: true });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({
+            error: err?.message ? `Failed to abort upload: ${err.message}` : 'Failed to abort upload'
+        });
+    }
+});
+
+app.post('/api/donations/init', async (req, res) => {
+    if (!ensureDonationsEnv(req, res)) return;
+
+    const { filename } = req.body ?? {};
+    if (!filename || typeof filename !== 'string') {
+        return res.status(400).json({ error: 'filename is required' });
+    }
+    if (!filename.toLowerCase().endsWith('.zip')) {
+        return res.status(400).json({ error: 'Only .zip files are allowed' });
+    }
+
+    const key = makeDonationKey(filename);
+
+    try {
+        const command = new CreateMultipartUploadCommand({
+            Bucket: DONATIONS_BUCKET_NAME,
+            Key: key,
+            ContentType: 'application/zip'
+        });
+        const result = await s3Client.send(command);
+        res.json({ uploadId: result.UploadId, key });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({
+            error: err?.message ? `Failed to initialize upload: ${err.message}` : 'Failed to initialize upload'
+        });
+    }
+});
+
+app.post('/api/donations/part-url', async (req, res) => {
+    if (!ensureDonationsEnv(req, res)) return;
+
+    const { key, uploadId, partNumber } = req.body ?? {};
+    if (!key || !uploadId || !partNumber) {
+        return res.status(400).json({ error: 'key, uploadId, partNumber are required' });
+    }
+    if (!String(key).endsWith('.zip')) {
+        return res.status(400).json({ error: 'Invalid key' });
+    }
+
+    try {
+        const command = new UploadPartCommand({
+            Bucket: DONATIONS_BUCKET_NAME,
+            Key: key,
+            UploadId: uploadId,
+            PartNumber: Number(partNumber)
+        });
+        const url = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
+        res.json({ url });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({
+            error: err?.message ? `Failed to sign part url: ${err.message}` : 'Failed to sign part url'
+        });
+    }
+});
+
+app.post('/api/donations/complete', async (req, res) => {
+    if (!ensureDonationsEnv(req, res)) return;
+
+    const { key, uploadId, parts } = req.body ?? {};
+    if (!key || !uploadId || !Array.isArray(parts) || parts.length === 0) {
+        return res.status(400).json({ error: 'key, uploadId, parts are required' });
+    }
+    if (!String(key).endsWith('.zip')) {
+        try {
+            await s3Client.send(new AbortMultipartUploadCommand({ Bucket: DONATIONS_BUCKET_NAME, Key: key, UploadId: uploadId }));
+        } catch (_) {}
+        return res.status(400).json({ error: 'Invalid key' });
+    }
+
+    try {
+        const command = new CompleteMultipartUploadCommand({
+            Bucket: DONATIONS_BUCKET_NAME,
+            Key: key,
+            UploadId: uploadId,
+            MultipartUpload: {
+                Parts: parts
+                    .map(p => ({ ETag: p.ETag, PartNumber: Number(p.PartNumber) }))
+                    .filter(p => p.ETag && p.PartNumber)
+                    .sort((a, b) => a.PartNumber - b.PartNumber)
+            }
+        });
+        await s3Client.send(command);
+        res.json({ success: true });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({
+            error: err?.message ? `Failed to complete upload: ${err.message}` : 'Failed to complete upload'
+        });
+    }
+});
+
+app.post('/api/donations/abort', async (req, res) => {
+    if (!ensureDonationsEnv(req, res)) return;
+
+    const { key, uploadId } = req.body ?? {};
+    if (!key || !uploadId) {
+        return res.status(400).json({ error: 'key and uploadId are required' });
+    }
+
+    try {
+        const command = new AbortMultipartUploadCommand({
+            Bucket: DONATIONS_BUCKET_NAME,
             Key: key,
             UploadId: uploadId
         });
