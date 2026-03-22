@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import {
     S3Client,
     GetObjectCommand,
+    PutObjectCommand,
     CreateMultipartUploadCommand,
     UploadPartCommand,
     CompleteMultipartUploadCommand,
@@ -63,9 +64,11 @@ const s3Client = new S3Client({
 });
 
 const DB_PATH = path.join(__dirname, 'data', 'database.txt');
+const R2_DB_KEY = process.env.R2_DB_KEY || '';
 
 // Helper to read DB
 async function readDB() {
+    if (R2_DB_KEY) return readDBFromR2();
     try {
         const data = await fs.readFile(DB_PATH, 'utf-8');
         return data ? JSON.parse(data) : [];
@@ -81,6 +84,7 @@ async function readDB() {
 
 // Helper to write DB
 async function writeDB(data) {
+    if (R2_DB_KEY) return writeDBToR2(data);
     await fs.writeFile(DB_PATH, JSON.stringify(data, null, 2));
 }
 
@@ -91,6 +95,53 @@ function requireAdmin(req, res) {
         return false;
     }
     return true;
+}
+
+async function streamToString(stream) {
+    const chunks = [];
+    for await (const chunk of stream) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    return Buffer.concat(chunks).toString('utf-8');
+}
+
+async function readDBFromR2() {
+    const bucket = process.env.R2_BUCKET_NAME || '';
+    if (!bucket) return [];
+
+    try {
+        const command = new GetObjectCommand({
+            Bucket: bucket,
+            Key: R2_DB_KEY
+        });
+        const result = await s3Client.send(command);
+        const bodyString = result.Body ? await streamToString(result.Body) : '[]';
+        const parsed = JSON.parse(bodyString || '[]');
+        return Array.isArray(parsed) ? parsed : [];
+    } catch (err) {
+        const status = err?.$metadata?.httpStatusCode;
+        if (status === 404) {
+            await writeDBToR2([]);
+            return [];
+        }
+        console.error('Error reading DB from R2:', err);
+        return [];
+    }
+}
+
+async function writeDBToR2(data) {
+    const bucket = process.env.R2_BUCKET_NAME || '';
+    if (!bucket) return;
+
+    const body = JSON.stringify(data ?? [], null, 2);
+    const command = new PutObjectCommand({
+        Bucket: bucket,
+        Key: R2_DB_KEY,
+        Body: body,
+        ContentType: 'application/json',
+        CacheControl: 'no-store'
+    });
+    await s3Client.send(command);
 }
 
 // Routes
