@@ -165,6 +165,11 @@ app.get('/api/download/:id', async (req, res) => {
     }
 });
 
+// Simple health check route for UptimeRobot
+app.get('/ping', (req, res) => {
+    res.status(200).send('pong');
+});
+
 // Serve frontend
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
@@ -174,6 +179,6 @@ app.get('/database', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'database.html'));
 });
 
-app.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });
