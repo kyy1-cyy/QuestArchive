@@ -127,7 +127,7 @@ app.delete('/api/admin/games/:id', async (req, res) => {
     res.json({ success: true });
 });
 
-// The Speed Engine: Proxy directly from Cloudflare R2
+// The Speed Engine: Redirect to Global CDN
 app.get('/api/download/:id', async (req, res) => {
     const games = await readDB();
     const game = games.find(g => g.id === req.params.id);
@@ -139,29 +139,27 @@ app.get('/api/download/:id', async (req, res) => {
     try {
         // Look up the exact title in the bucket
         const fileKey = `${game.title}.apk`; 
+        
+        // If you set up a custom domain on your Cloudflare R2 bucket (highly recommended for speed),
+        // we redirect straight to that domain. This ensures the user hits the nearest Cloudflare Edge node.
+        if (process.env.R2_PUBLIC_DOMAIN) {
+            // Encode the title so spaces become %20, e.g., "Beat Saber.apk" -> "Beat%20Saber.apk"
+            const publicUrl = `${process.env.R2_PUBLIC_DOMAIN}/${encodeURIComponent(fileKey)}`;
+            return res.redirect(302, publicUrl);
+        }
 
-        // DIRECT PROXY: Instead of redirecting to a separate server, 
-        // we stream the file directly from R2 through this main server.
+        // FALLBACK: If no public domain is set, generate a presigned URL using the AWS SDK.
         const command = new GetObjectCommand({
             Bucket: process.env.R2_BUCKET_NAME || 'quest-archive',
             Key: fileKey
         });
 
-        // Fetch the object stream from R2
-        const response = await s3Client.send(command);
-
-        // Forward the correct content headers to the user so it downloads properly
-        res.setHeader('Content-Length', response.ContentLength);
-        res.setHeader('Content-Type', response.ContentType || 'application/vnd.android.package-archive');
-        res.setHeader('Content-Disposition', `attachment; filename="${fileKey}"`);
+        // Generate URL valid for 1 hour (3600 seconds)
+        const presignedUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
         
-        // Proxy the stream directly to the client
-        response.Body.pipe(res);
-
+        // 302 Redirect to the Cloudflare R2 file
+        res.redirect(302, presignedUrl);
     } catch (err) {
-        if (err.name === 'NoSuchKey') {
-            return res.status(404).send('File not found in archive.');
-        }
         console.error('Error generating download link:', err);
         res.status(500).send('Error generating download link');
     }
