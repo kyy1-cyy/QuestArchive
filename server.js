@@ -335,13 +335,13 @@ app.get('/api/download/:id', async (req, res) => {
     }
 
     try {
-        // Look up the exact title in the bucket
-        const fileKey = `${game.title}.apk`; 
+        const title = String(game.title || '').trim();
+        const fileKey = title.toLowerCase().endsWith('.zip') ? title : `${title}.zip`;
         
         // If you set up a custom domain on your Cloudflare R2 bucket (highly recommended for speed),
         // we redirect straight to that domain. This ensures the user hits the nearest Cloudflare Edge node.
         if (process.env.R2_PUBLIC_DOMAIN) {
-            // Encode the title so spaces become %20, e.g., "Beat Saber.apk" -> "Beat%20Saber.apk"
+            // Encode the title so spaces become %20, e.g., "Marvels_Deadpool_VR.zip" stays valid
             const publicUrl = `${process.env.R2_PUBLIC_DOMAIN}/${encodeURIComponent(fileKey)}`;
             return res.redirect(302, publicUrl);
         }
