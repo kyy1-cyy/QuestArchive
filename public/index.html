@@ -124,6 +124,7 @@
                 </div>
                 <div class="sm:hidden flex items-center gap-3">
                     <button @click="openDonateModal" class="px-3 py-2 rounded-full border border-white/10 bg-white/10 text-white text-xs font-semibold hover:bg-white/20 transition">Donate</button>
+                    <button @click="openMoneyModal" class="px-3 py-2 rounded-full border border-white/10 bg-white text-black text-xs font-semibold hover:bg-gray-200 transition">Support</button>
                     <a href="/database" class="text-xs font-medium text-gray-500 hover:text-white transition-colors">Database</a>
                 </div>
             </div>
@@ -137,6 +138,7 @@
 
             <div class="hidden sm:flex items-center gap-3">
                 <button @click="openDonateModal" class="px-3 py-2 rounded-full border border-white/10 bg-white/10 text-white text-xs font-semibold hover:bg-white/20 transition">Donate Games</button>
+                <button @click="openMoneyModal" class="px-3 py-2 rounded-full border border-white/10 bg-white text-black text-xs font-semibold hover:bg-gray-200 transition">Donate $</button>
                 <a href="/database" class="text-xs font-medium text-gray-500 hover:text-white transition-colors">Database</a>
             </div>
         </header>
@@ -201,6 +203,35 @@
                                 {{ donateState.error }}
                             </div>
                         </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div v-if="moneyModalOpen" class="modal-overlay" @keydown.escape.window="closeMoneyModal" @click.self="closeMoneyModal">
+            <div class="modal-card" @click.stop>
+                <div class="px-5 sm:px-6 py-4 border-b border-white/10 flex items-center justify-between">
+                    <div class="text-white font-semibold tracking-tight">Support Quest Archive</div>
+                    <button class="text-gray-500 hover:text-white transition-colors text-sm" @click="closeMoneyModal">✕</button>
+                </div>
+                <div class="p-5 sm:p-6">
+                    <div class="mt-1 rounded-2xl border border-white/10 bg-white/5 px-4 py-4">
+                        <div class="text-xs font-semibold tracking-widest uppercase text-white/70">Keep Files Alive</div>
+                        <div class="mt-2 text-base sm:text-lg font-semibold text-white leading-snug">
+                            Help us keep downloads online and growing.
+                        </div>
+                        <div class="mt-2 text-sm text-gray-300 leading-relaxed">
+                            Donations go toward storage, bandwidth, and keeping the archive fast and available worldwide. If you want Quest Archive to become the most reliable place for VR releases, this is how you help.
+                        </div>
+                    </div>
+
+                    <div class="mt-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                        <div class="text-xs text-gray-500">
+                            Secure crypto donations via NOWPayments.
+                        </div>
+                        <a href="https://nowpayments.io/donation?api_key=cb313bdc-92ec-4dd1-9b6f-295b1ef119e4" target="_blank" rel="noreferrer noopener" class="inline-flex">
+                            <img src="https://nowpayments.io/images/embeds/donation-button-white.svg" alt="Cryptocurrency & Bitcoin donation button by NOWPayments" class="h-10">
+                        </a>
                     </div>
                 </div>
             </div>
@@ -328,6 +359,7 @@
                     loading: true,
                     selectedGame: null,
                     donateModalOpen: false,
+                    moneyModalOpen: false,
                     donateDragOver: false,
                     donateState: {
                         inProgress: false,
@@ -389,6 +421,12 @@
                         this.cancelDonateUpload();
                     }
                     this.donateModalOpen = false;
+                },
+                openMoneyModal() {
+                    this.moneyModalOpen = true;
+                },
+                closeMoneyModal() {
+                    this.moneyModalOpen = false;
                 },
                 openDonatePicker() {
                     this.$refs.donateFileInput.click();
