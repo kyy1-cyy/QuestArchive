@@ -617,6 +617,12 @@
                     }
                 },
                 async uploadImageToGithub(file) {
+                    const title = String(this.newGame.title || '').trim();
+                    if (!title) {
+                        this.imageState.error = 'A Title must be entered before uploading an image';
+                        return;
+                    }
+
                     const type = String(file.type || '').toLowerCase();
                     if (!(type === 'image/png' || type === 'image/jpeg' || type === 'image/jpg')) {
                         this.imageState.error = 'Only png/jpg/jpeg allowed';
@@ -629,7 +635,7 @@
 
                     try {
                         const base64 = await fileToBase64(file);
-                        const titleForName = this.newGame.title || file.name.replace(/\.(png|jpe?g)$/i, '');
+                        const titleForName = title;
                         const res = await fetch('/api/github/images', {
                             method: 'POST',
                             headers: {
