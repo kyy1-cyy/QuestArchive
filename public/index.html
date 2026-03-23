@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Archive VR</title>
+    <title>Quest Archive</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
@@ -113,7 +113,15 @@
         <!-- Minimal Top Nav -->
         <header class="glass-panel border-b border-white/5 px-4 sm:px-8 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between z-10 shrink-0 gap-3">
             <div class="text-xl font-bold tracking-tight text-white flex items-center gap-2 w-full sm:w-auto justify-between">
-                Archive<span class="text-gray-500 font-light">VR</span>
+                <div class="flex items-center gap-2">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" class="text-white/90">
+                        <path d="M12 2.75c4.832 0 8.75 3.918 8.75 8.75 0 4.832-3.918 8.75-8.75 8.75-4.832 0-8.75-3.918-8.75-8.75C3.25 6.668 7.168 2.75 12 2.75Z" stroke="currentColor" stroke-width="1.2" opacity="0.65"/>
+                        <path d="M8.5 12.25c1.05-2.55 2.717-3.75 3.5-3.75s2.45 1.2 3.5 3.75" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                        <path d="M7.25 13.25c1.8 3.35 4.2 4.75 4.75 4.75s2.95-1.4 4.75-4.75" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity="0.9"/>
+                        <path d="M12 6.5v11" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity="0.5"/>
+                    </svg>
+                    <span>Quest</span><span class="text-gray-500 font-light">Archive</span>
+                </div>
                 <div class="sm:hidden flex items-center gap-3">
                     <button @click="openDonateModal" class="px-3 py-2 rounded-full border border-white/10 bg-white/10 text-white text-xs font-semibold hover:bg-white/20 transition">Donate</button>
                     <a href="/database" class="text-xs font-medium text-gray-500 hover:text-white transition-colors">Database</a>
