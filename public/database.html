@@ -152,7 +152,6 @@
                         <div class="muted">Pick a .zip, we compute an MD5 Hash ID, then upload as &lt;hash&gt;.zip.</div>
                     </div>
                     <div style="display:flex; gap:10px; align-items:center;">
-                        <input type="text" v-model="uploadPrefix" placeholder="optional folder (e.g. uploads)" style="width: 220px;">
                         <button class="btn" @click="openFilePicker" :disabled="uploadState.inProgress || hashState.computing">Choose File</button>
                         <button class="btn" @click="startUploadPrepared" :disabled="!preparedFile || !hashState.hash || uploadState.inProgress || hashState.computing">Upload</button>
                         <button v-if="uploadState.inProgress || hashState.computing" class="btn btn-delete" @click="cancelUpload">Cancel</button>
@@ -451,7 +450,6 @@
                         error: ''
                     },
                     isDragOver: false,
-                    uploadPrefix: '',
                     preparedFile: null,
                     preparedFileName: '',
                     hashState: {
@@ -743,7 +741,7 @@
                         const res = await fetch('/api/uploads/init', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json', 'password': this.password },
-                            body: JSON.stringify({ filename: file.name, prefix: this.uploadPrefix, hashId })
+                            body: JSON.stringify({ filename: file.name, hashId })
                         });
                         init = await res.json();
                         if (!res.ok) throw new Error(init.error || 'Init failed');
