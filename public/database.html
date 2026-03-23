@@ -198,19 +198,23 @@
                             <input type="checkbox" @change="toggleAll" :checked="selectedIds.length === games.length && games.length > 0">
                         </th>
                         <th>Title</th>
+                        <th>Image</th>
                         <th>Version</th>
                         <th>Proxy Status</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr v-if="games.length === 0">
-                        <td colspan="4" style="text-align: center; color: #888; padding: 30px;">Database is empty.</td>
+                        <td colspan="5" style="text-align: center; color: #888; padding: 30px;">Database is empty.</td>
                     </tr>
                     <tr v-for="game in games" :key="game.id">
                         <td>
                             <input type="checkbox" :value="game.id" v-model="selectedIds">
                         </td>
                         <td style="color: #ce9178;">"{{ game.title }}"</td>
+                        <td style="color:#9cdcfe; font-size: 12px; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                            {{ game.thumbnailUrl || '-' }}
+                        </td>
                         <td style="color: #b5cea8;">{{ game.version }}</td>
                         <td style="color: #6a9955; font-size: 12px;">Active ({{ (game.hashId && game.hashId.length === 32) ? (game.hashId + '.zip') : (game.title + '.zip') }})</td>
                     </tr>
@@ -270,6 +274,28 @@
                     <div class="form-group">
                         <label>Thumbnail URL</label>
                         <input v-model="newGame.thumbnailUrl" type="text" placeholder="https://...">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Upload Image (png/jpg/jpeg → GitHub)</label>
+                        <div class="dropzone" :class="{ active: imageDragOver }"
+                             @dragenter.prevent="imageDragOver = true"
+                             @dragover.prevent="imageDragOver = true"
+                             @dragleave.prevent="imageDragOver = false"
+                             @drop.prevent="handleImageDrop"
+                             style="justify-content: space-between;">
+                            <div>
+                                <div style="color:#fff; font-size: 12px; font-weight: 600;">Drag & drop or choose</div>
+                                <div class="muted">Uploads to GitHub and auto-fills the URL.</div>
+                            </div>
+                            <div style="display:flex; gap:10px; align-items:center; flex-wrap: wrap; justify-content: flex-end;">
+                                <button class="btn" @click="openImagePicker" :disabled="imageState.inProgress">Choose</button>
+                                <button class="btn" v-if="newGame.thumbnailUrl" @click="copyImageUrl">Copy URL</button>
+                                <input ref="imageInput" type="file" accept=".png,.jpg,.jpeg,image/png,image/jpeg" style="display:none" @change="handleImagePick">
+                            </div>
+                        </div>
+                        <div class="muted" style="margin-top: 8px;" v-if="imageState.message">{{ imageState.message }}</div>
+                        <div style="margin-top: 8px; color:#ff9999; font-size: 12px;" v-if="imageState.error">{{ imageState.error }}</div>
                     </div>
 
                     <div class="modal-actions">
@@ -380,6 +406,26 @@
             return md5ArrayBuffer(buf);
         }
 
+        function md5String(value) {
+            const encoder = new TextEncoder();
+            const bytes = encoder.encode(String(value ?? ''));
+            return md5ArrayBuffer(bytes.buffer);
+        }
+
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onerror = () => reject(new Error('Failed to read file'));
+                reader.onload = () => {
+                    const result = String(reader.result || '');
+                    const idx = result.indexOf(',');
+                    if (idx === -1) return reject(new Error('Invalid data URL'));
+                    resolve(result.slice(idx + 1));
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
         createApp({
             data() {
                 return {
@@ -397,6 +443,12 @@
                         version: '',
                         description: '',
                         thumbnailUrl: ''
+                    },
+                    imageDragOver: false,
+                    imageState: {
+                        inProgress: false,
+                        message: '',
+                        error: ''
                     },
                     isDragOver: false,
                     uploadPrefix: '',
@@ -542,6 +594,69 @@
                         alert('Copy failed');
                     }
                 },
+                openImagePicker() {
+                    this.$refs.imageInput.click();
+                },
+                async handleImagePick(e) {
+                    const file = e.target.files && e.target.files[0];
+                    e.target.value = '';
+                    if (file) await this.uploadImageToGithub(file);
+                },
+                async handleImageDrop(e) {
+                    this.imageDragOver = false;
+                    const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+                    if (file) await this.uploadImageToGithub(file);
+                },
+                async copyImageUrl() {
+                    try {
+                        await navigator.clipboard.writeText(this.newGame.thumbnailUrl);
+                        this.imageState.message = 'Copied image URL';
+                        setTimeout(() => { this.imageState.message = ''; }, 1200);
+                    } catch {
+                        alert('Copy failed');
+                    }
+                },
+                async uploadImageToGithub(file) {
+                    const type = String(file.type || '').toLowerCase();
+                    if (!(type === 'image/png' || type === 'image/jpeg' || type === 'image/jpg')) {
+                        this.imageState.error = 'Only png/jpg/jpeg allowed';
+                        return;
+                    }
+
+                    this.imageState.inProgress = true;
+                    this.imageState.error = '';
+                    this.imageState.message = 'Uploading image...';
+
+                    try {
+                        const base64 = await fileToBase64(file);
+                        const titleForName = this.newGame.title || file.name.replace(/\.(png|jpe?g)$/i, '');
+                        const res = await fetch('/api/github/images', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'password': this.password
+                            },
+                            body: JSON.stringify({
+                                title: titleForName,
+                                contentType: type,
+                                base64
+                            })
+                        });
+                        const json = await res.json();
+                        if (!res.ok) throw new Error(json.error || 'Upload failed');
+                        if (!json.url) throw new Error('No URL returned');
+
+                        this.newGame.thumbnailUrl = json.url;
+                        await this.copyImageUrl();
+                        this.imageState.message = 'Image uploaded';
+                        setTimeout(() => { this.imageState.message = ''; }, 1200);
+                    } catch (e) {
+                        this.imageState.error = String(e.message || e);
+                        this.imageState.message = '';
+                    } finally {
+                        this.imageState.inProgress = false;
+                    }
+                },
                 fmtEta(seconds) {
                     if (!Number.isFinite(seconds) || seconds <= 0) return '--:--';
                     const m = Math.floor(seconds / 60);
@@ -599,7 +714,8 @@
                     this.uploadInternals.startedAt = Date.now();
 
                     try {
-                        const hash = await md5File(file);
+                        const baseName = file.name.replace(/\.zip$/i, '');
+                        const hash = md5String(baseName);
                         this.hashState.hash = hash;
                     } catch (e) {
                         this.uploadState.error = String(e.message || e);

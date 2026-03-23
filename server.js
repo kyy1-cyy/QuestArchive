@@ -85,6 +85,50 @@ function makeDonationKey(filename) {
     return `donation/${clean}`;
 }
 
+function ensureGithubEnv(req, res) {
+    const missing = [];
+    if (!GITHUB_TOKEN) missing.push('GITHUB_TOKEN');
+    if (!GITHUB_OWNER) missing.push('GITHUB_OWNER');
+    if (!GITHUB_REPO) missing.push('GITHUB_REPO');
+    if (!GITHUB_BRANCH) missing.push('GITHUB_BRANCH');
+    if (!GITHUB_IMAGES_PATH) missing.push('GITHUB_IMAGES_PATH');
+
+    if (missing.length) {
+        res.status(500).json({
+            error: `Server missing required env vars for GitHub image upload: ${missing.join(', ')}`
+        });
+        return false;
+    }
+    return true;
+}
+
+function sanitizeImageBasename(title) {
+    const base = String(title || '')
+        .trim()
+        .toLowerCase()
+        .replace(/['"]/g, '')
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .slice(0, 80);
+    return base || 'image';
+}
+
+async function githubRequest(url, options) {
+    const res = await fetch(url, {
+        ...options,
+        headers: {
+            'Accept': 'application/vnd.github+json',
+            'Authorization': `Bearer ${GITHUB_TOKEN}`,
+            'X-GitHub-Api-Version': '2022-11-28',
+            ...(options?.headers || {})
+        }
+    });
+    const text = await res.text();
+    let json;
+    try { json = text ? JSON.parse(text) : null; } catch { json = null; }
+    return { ok: res.ok, status: res.status, json, text };
+}
+
 // Configure S3 Client for Cloudflare R2
 const s3Client = new S3Client({
     region: 'auto',
@@ -98,6 +142,11 @@ const s3Client = new S3Client({
 const DB_PATH = path.join(__dirname, 'data', 'database.txt');
 const R2_DB_KEY = process.env.R2_DB_KEY || '';
 const DONATIONS_PUBLIC_DOMAIN = process.env.DONATIONS_PUBLIC_DOMAIN || '';
+const GITHUB_OWNER = process.env.GITHUB_OWNER || 'kyy1-cyy';
+const GITHUB_REPO = process.env.GITHUB_REPO || 'QuestArchive';
+const GITHUB_BRANCH = process.env.GITHUB_BRANCH || 'main';
+const GITHUB_IMAGES_PATH = process.env.GITHUB_IMAGES_PATH || 'data';
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN || '';
 
 // Helper to read DB
 async function readDB() {
@@ -540,6 +589,69 @@ app.get('/api/donations/download-url', async (req, res) => {
         console.error(err);
         res.status(500).json({ error: 'Failed to generate download link' });
     }
+});
+
+app.post('/api/github/images', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    if (!ensureGithubEnv(req, res)) return;
+
+    const { title, contentType, base64 } = req.body ?? {};
+    if (!title || typeof title !== 'string') {
+        return res.status(400).json({ error: 'title is required' });
+    }
+    if (!contentType || typeof contentType !== 'string') {
+        return res.status(400).json({ error: 'contentType is required' });
+    }
+    if (!base64 || typeof base64 !== 'string') {
+        return res.status(400).json({ error: 'base64 is required' });
+    }
+    if (!/^image\/(png|jpeg|jpg)$/i.test(contentType)) {
+        return res.status(400).json({ error: 'Only png/jpg/jpeg allowed' });
+    }
+
+    const ext = contentType.toLowerCase().includes('png') ? 'png' : 'jpeg';
+    const name = `${sanitizeImageBasename(title)}.${ext}`;
+    const filePath = `${GITHUB_IMAGES_PATH.replace(/\/+$/, '')}/${name}`;
+
+    let buffer;
+    try {
+        buffer = Buffer.from(base64, 'base64');
+    } catch {
+        return res.status(400).json({ error: 'Invalid base64' });
+    }
+    if (!buffer || buffer.length === 0) {
+        return res.status(400).json({ error: 'Empty file' });
+    }
+    if (buffer.length > 8 * 1024 * 1024) {
+        return res.status(400).json({ error: 'Image too large (max 8MB)' });
+    }
+
+    const getUrl = `https://api.github.com/repos/${encodeURIComponent(GITHUB_OWNER)}/${encodeURIComponent(GITHUB_REPO)}/contents/${encodeURIComponent(filePath)}?ref=${encodeURIComponent(GITHUB_BRANCH)}`;
+    const existing = await githubRequest(getUrl, { method: 'GET' });
+    const sha = existing.ok && existing.json && typeof existing.json.sha === 'string' ? existing.json.sha : undefined;
+
+    const putUrl = `https://api.github.com/repos/${encodeURIComponent(GITHUB_OWNER)}/${encodeURIComponent(GITHUB_REPO)}/contents/${encodeURIComponent(filePath)}`;
+    const payload = {
+        message: `Upload image: ${name}`,
+        content: buffer.toString('base64'),
+        branch: GITHUB_BRANCH,
+        ...(sha ? { sha } : {})
+    };
+
+    const saved = await githubRequest(putUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+
+    if (!saved.ok) {
+        return res.status(500).json({
+            error: saved.json?.message || `GitHub upload failed (${saved.status})`
+        });
+    }
+
+    const url = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/blob/${GITHUB_BRANCH}/${filePath}?raw=true`;
+    res.json({ url, path: filePath });
 });
 
 app.get('/api/donations/download', async (req, res) => {
