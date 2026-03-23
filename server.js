@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import crypto from 'crypto';
 import {
     S3Client,
     GetObjectCommand,
@@ -148,20 +149,60 @@ const GITHUB_BRANCH = process.env.GITHUB_BRANCH || 'main';
 const GITHUB_IMAGES_PATH = process.env.GITHUB_IMAGES_PATH || 'data';
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN || '';
 
+function makePublicId() {
+    return typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : crypto.randomBytes(16).toString('hex');
+}
+
+function normalizeGames(games) {
+    if (!Array.isArray(games)) return { games: [], changed: false };
+
+    let changed = false;
+    const normalized = games.map(g => {
+        const obj = (g && typeof g === 'object') ? { ...g } : {};
+        if (!obj.publicId) {
+            obj.publicId = makePublicId();
+            changed = true;
+        }
+        if (obj.hashId && typeof obj.hashId === 'string') {
+            const lower = obj.hashId.toLowerCase();
+            if (lower !== obj.hashId) {
+                obj.hashId = lower;
+                changed = true;
+            }
+        }
+        return obj;
+    });
+
+    return { games: normalized, changed };
+}
+
 // Helper to read DB
 async function readDB() {
-    if (R2_DB_KEY) return readDBFromR2();
-    try {
-        const data = await fs.readFile(DB_PATH, 'utf-8');
-        return data ? JSON.parse(data) : [];
-    } catch (err) {
-        if (err.code === 'ENOENT') {
-            await fs.writeFile(DB_PATH, '[]');
-            return [];
+    let games;
+    if (R2_DB_KEY) {
+        games = await readDBFromR2();
+    } else {
+        try {
+            const data = await fs.readFile(DB_PATH, 'utf-8');
+            games = data ? JSON.parse(data) : [];
+        } catch (err) {
+            if (err.code === 'ENOENT') {
+                await fs.writeFile(DB_PATH, '[]');
+                games = [];
+            } else {
+                console.error('Error reading DB:', err);
+                games = [];
+            }
         }
-        console.error('Error reading DB:', err);
-        return [];
     }
+
+    const normalized = normalizeGames(games);
+    if (normalized.changed) {
+        await writeDB(normalized.games);
+    }
+    return normalized.games;
 }
 
 // Helper to write DB
@@ -230,7 +271,14 @@ async function writeDBToR2(data) {
 // Get all games
 app.get('/api/games', async (req, res) => {
     const games = await readDB();
-    res.json(games);
+    const publicGames = games.map(g => ({
+        id: g.publicId,
+        title: g.title,
+        version: g.version,
+        description: g.description,
+        thumbnailUrl: g.thumbnailUrl
+    }));
+    res.json(publicGames);
 });
 
 // Admin Route: Get all games
@@ -253,6 +301,7 @@ app.post('/api/database', async (req, res) => {
     // Under the hood we just assign a unique timestamp ID to keep the JSON valid
     const newGame = {
         id: Date.now().toString(),
+        publicId: makePublicId(),
         title,
         hashId: hashId ? String(hashId).toLowerCase() : '',
         version: version || '1.0',
@@ -684,7 +733,8 @@ app.get('/api/donations/download', async (req, res) => {
 // The Speed Engine: Redirect to Global CDN
 app.get('/api/download/:id', async (req, res) => {
     const games = await readDB();
-    const game = games.find(g => g.id === req.params.id);
+    const reqId = String(req.params.id || '');
+    const game = games.find(g => g.publicId === reqId) || games.find(g => g.id === reqId);
     
     if (!game) {
         return res.status(404).send('Game not found');

@@ -190,6 +190,67 @@
                 </div>
             </div>
 
+            <div v-if="activeTab === 'games'" class="uploader">
+                <div class="dropzone" :class="{ active: bulkDragOver }"
+                     @dragenter.prevent="bulkDragOver = true"
+                     @dragover.prevent="bulkDragOver = true"
+                     @dragleave.prevent="bulkDragOver = false"
+                     @drop.prevent="handleBulkDrop">
+                    <div>
+                        <div style="color:#fff; font-size: 13px; font-weight: 600;">Bulk Upload Games (up to 20 .zip)</div>
+                        <div class="muted">Drag & drop multiple .zip files. Uploads run one-by-one and shows per-file + total ETA.</div>
+                    </div>
+                    <div style="display:flex; gap:10px; align-items:center; flex-wrap: wrap; justify-content: flex-end;">
+                        <button class="btn btn-tab" :class="{ active: bulkQueueOpen }" @click="bulkQueueOpen = !bulkQueueOpen" :disabled="bulkQueue.length === 0">
+                            Queue ({{ bulkQueue.length }})
+                        </button>
+                        <button class="btn" @click="openBulkPicker" :disabled="bulkState.inProgress">Choose Files</button>
+                        <button class="btn" @click="startBulkUpload" :disabled="bulkQueue.length === 0 || bulkState.inProgress">Start</button>
+                        <button v-if="bulkState.inProgress" class="btn btn-delete" @click="cancelBulkUpload">Cancel</button>
+                        <input ref="bulkInput" type="file" accept=".zip" multiple style="display:none" @change="handleBulkPick">
+                    </div>
+                </div>
+
+                <div v-if="bulkQueueOpen" style="margin-top: 12px; border: 1px solid #333; border-radius: 8px; background:#101010; max-height: 240px; overflow:auto;">
+                    <table style="margin-top:0;">
+                        <thead>
+                            <tr>
+                                <th>File</th>
+                                <th>MD5</th>
+                                <th style="text-align:right;">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="item in bulkQueue" :key="item.name">
+                                <td style="color:#ce9178;">{{ item.name }}</td>
+                                <td style="color:#9cdcfe; font-size: 12px;">{{ item.hash }}</td>
+                                <td style="text-align:right; font-size: 12px;" :style="{ color: item.status === 'done' ? '#6a9955' : (item.status === 'error' ? '#ff9999' : '#808080') }">
+                                    {{ item.status }}
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div v-if="bulkState.inProgress || bulkState.totalPercent === 100" style="margin-top: 12px;">
+                    <div class="muted">
+                        Current: <span style="color:#ce9178;">{{ bulkState.currentName || '-' }}</span>
+                        <span v-if="bulkState.currentHash"> → <span style="color:#9cdcfe;">{{ bulkState.currentHash }}</span></span>
+                    </div>
+                    <div class="progress-wrap">
+                        <div class="progress-bar" :style="{ width: bulkState.currentPercent + '%' }"></div>
+                    </div>
+                    <div class="muted" style="margin-top: 8px; display:flex; justify-content: space-between; gap: 10px; flex-wrap: wrap;">
+                        <div>File: {{ bulkState.currentPercent.toFixed(2) }}% · {{ bulkState.currentMbps.toFixed(2) }} MB/s · ETA {{ bulkState.currentEta }}</div>
+                        <div>Total: {{ bulkState.totalPercent.toFixed(2) }}% · ETA {{ bulkState.totalEta }}</div>
+                    </div>
+                </div>
+
+                <div v-if="bulkState.error" style="margin-top: 10px; color:#ff9999; font-size: 12px;">
+                    {{ bulkState.error }}
+                </div>
+            </div>
+
             <table v-if="activeTab === 'games'">
                 <thead>
                     <tr>
@@ -475,6 +536,29 @@
                         perPartLoaded: {},
                         parts: [],
                         activeRequests: []
+                    },
+                    bulkDragOver: false,
+                    bulkQueueOpen: false,
+                    bulkQueue: [],
+                    bulkState: {
+                        inProgress: false,
+                        currentName: '',
+                        currentHash: '',
+                        currentPercent: 0,
+                        currentMbps: 0,
+                        currentEta: '--:--',
+                        totalPercent: 0,
+                        totalEta: '--:--',
+                        error: ''
+                    },
+                    bulkInternals: {
+                        batchStartedAt: 0,
+                        totalBytes: 0,
+                        doneBytes: 0,
+                        currentLoaded: 0,
+                        activeXhrs: [],
+                        currentKey: '',
+                        currentUploadId: ''
                     }
                 }
             },
@@ -559,6 +643,41 @@
                     const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
                     if (file) this.prepareUpload(file);
                 },
+                openBulkPicker() {
+                    this.$refs.bulkInput.click();
+                },
+                handleBulkPick(e) {
+                    const list = e.target.files ? Array.from(e.target.files) : [];
+                    e.target.value = '';
+                    this.prepareBulkQueue(list);
+                },
+                handleBulkDrop(e) {
+                    this.bulkDragOver = false;
+                    const list = e.dataTransfer && e.dataTransfer.files ? Array.from(e.dataTransfer.files) : [];
+                    this.prepareBulkQueue(list);
+                },
+                prepareBulkQueue(files) {
+                    const zips = (files || []).filter(f => f && f.name && f.name.toLowerCase().endsWith('.zip')).slice(0, 20);
+                    if (zips.length === 0) {
+                        this.bulkState.error = 'Select up to 20 .zip files';
+                        return;
+                    }
+                    this.bulkState.error = '';
+                    this.bulkQueueOpen = true;
+                    const existing = new Set(this.bulkQueue.map(i => i.name));
+                    for (const f of zips) {
+                        if (existing.has(f.name)) continue;
+                        const baseName = f.name.replace(/\.zip$/i, '');
+                        const hash = md5String(baseName);
+                        this.bulkQueue.push({
+                            name: f.name,
+                            size: f.size,
+                            file: f,
+                            hash,
+                            status: 'pending'
+                        });
+                    }
+                },
                 resetUploadState() {
                     this.uploadState.inProgress = false;
                     this.uploadState.percent = 0;
@@ -582,6 +701,25 @@
                         try { r.abort(); } catch (_) {}
                     });
                     this.uploadInternals.activeRequests = [];
+                },
+                resetBulkState() {
+                    this.bulkState.inProgress = false;
+                    this.bulkState.currentName = '';
+                    this.bulkState.currentHash = '';
+                    this.bulkState.currentPercent = 0;
+                    this.bulkState.currentMbps = 0;
+                    this.bulkState.currentEta = '--:--';
+                    this.bulkState.totalPercent = 0;
+                    this.bulkState.totalEta = '--:--';
+                    this.bulkState.error = '';
+                    this.bulkInternals.batchStartedAt = 0;
+                    this.bulkInternals.totalBytes = 0;
+                    this.bulkInternals.doneBytes = 0;
+                    this.bulkInternals.currentLoaded = 0;
+                    this.bulkInternals.currentKey = '';
+                    this.bulkInternals.currentUploadId = '';
+                    this.bulkInternals.activeXhrs.forEach(x => { try { x.abort(); } catch (_) {} });
+                    this.bulkInternals.activeXhrs = [];
                 },
                 async copyHash() {
                     try {
@@ -854,6 +992,165 @@
                         this.uploadState.inProgress = false;
                         this.uploadState.error = String(e.message || e);
                         this.uploadState.message = '';
+                    }
+                },
+                updateBulkProgress() {
+                    const elapsed = (Date.now() - this.bulkInternals.batchStartedAt) / 1000;
+                    const uploaded = this.bulkInternals.doneBytes + this.bulkInternals.currentLoaded;
+                    const total = this.bulkInternals.totalBytes || 0;
+                    const bps = elapsed > 0 ? uploaded / elapsed : 0;
+                    const remaining = Math.max(total - uploaded, 0);
+                    const totalEta = bps > 0 ? remaining / bps : Infinity;
+                    this.bulkState.totalPercent = total ? (uploaded / total) * 100 : 0;
+                    this.bulkState.totalEta = this.fmtEta(totalEta);
+                },
+                async startBulkUpload() {
+                    if (this.bulkState.inProgress) return;
+                    if (this.bulkQueue.length === 0) return;
+
+                    this.resetBulkState();
+                    this.bulkState.inProgress = true;
+                    this.bulkInternals.batchStartedAt = Date.now();
+                    this.bulkInternals.totalBytes = this.bulkQueue.reduce((sum, i) => sum + (i.size || 0), 0);
+
+                    for (const item of this.bulkQueue) {
+                        if (!this.bulkState.inProgress) break;
+                        if (item.status === 'done') continue;
+
+                        item.status = 'uploading';
+                        this.bulkState.currentName = item.name;
+                        this.bulkState.currentHash = item.hash;
+                        this.bulkState.currentPercent = 0;
+                        this.bulkState.currentMbps = 0;
+                        this.bulkState.currentEta = '--:--';
+                        this.bulkInternals.currentLoaded = 0;
+                        this.updateBulkProgress();
+
+                        try {
+                            await this.uploadOneBulkItem(item);
+                            item.status = 'done';
+                            this.bulkInternals.doneBytes += item.size || 0;
+                            this.bulkInternals.currentLoaded = 0;
+                            this.updateBulkProgress();
+                        } catch (e) {
+                            item.status = 'error';
+                            this.bulkState.error = String(e.message || e);
+                            this.bulkState.inProgress = false;
+                            break;
+                        }
+                    }
+
+                    if (this.bulkState.inProgress) {
+                        this.bulkInternals.currentLoaded = 0;
+                        this.bulkState.currentPercent = 100;
+                        this.bulkState.totalPercent = 100;
+                        this.bulkState.currentEta = '--:--';
+                        this.bulkState.totalEta = '--:--';
+                        this.bulkState.inProgress = false;
+                    }
+                },
+                async uploadOneBulkItem(item) {
+                    const file = item.file;
+                    const hashId = item.hash;
+                    if (!file) throw new Error('Missing file');
+
+                    const initRes = await fetch('/api/uploads/init', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'password': this.password },
+                        body: JSON.stringify({ filename: file.name, hashId })
+                    });
+                    const init = await initRes.json();
+                    if (!initRes.ok) throw new Error(init.error || 'Init failed');
+
+                    this.bulkInternals.currentKey = init.key;
+                    this.bulkInternals.currentUploadId = init.uploadId;
+
+                    const partSize = 64 * 1024 * 1024;
+                    const totalParts = Math.ceil(file.size / partSize);
+                    const parts = [];
+
+                    for (let i = 0; i < totalParts; i++) {
+                        if (!this.bulkState.inProgress) throw new Error('Cancelled');
+                        const partNumber = i + 1;
+                        const start = i * partSize;
+                        const end = Math.min(start + partSize, file.size);
+                        const blob = file.slice(start, end);
+
+                        const urlRes = await fetch('/api/uploads/part-url', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'password': this.password },
+                            body: JSON.stringify({ key: init.key, uploadId: init.uploadId, partNumber })
+                        });
+                        const urlJson = await urlRes.json();
+                        if (!urlRes.ok) throw new Error(urlJson.error || 'Failed to sign part');
+
+                        const etag = await new Promise((resolve, reject) => {
+                            const xhr = new XMLHttpRequest();
+                            this.bulkInternals.activeXhrs.push(xhr);
+                            xhr.open('PUT', urlJson.url, true);
+                            xhr.upload.onprogress = (evt) => {
+                                if (!evt.lengthComputable) return;
+                                const loaded = (partNumber - 1) * partSize + evt.loaded;
+                                this.bulkInternals.currentLoaded = Math.min(file.size, loaded);
+
+                                const elapsed = (Date.now() - this.bulkInternals.batchStartedAt) / 1000;
+                                const uploadedTotal = this.bulkInternals.doneBytes + this.bulkInternals.currentLoaded;
+                                const bps = elapsed > 0 ? uploadedTotal / elapsed : 0;
+                                const remainingFile = Math.max(file.size - this.bulkInternals.currentLoaded, 0);
+                                const etaFile = bps > 0 ? remainingFile / bps : Infinity;
+                                this.bulkState.currentPercent = file.size ? (this.bulkInternals.currentLoaded / file.size) * 100 : 0;
+                                this.bulkState.currentMbps = bps / (1024 * 1024);
+                                this.bulkState.currentEta = this.fmtEta(etaFile);
+                                this.updateBulkProgress();
+                            };
+                            xhr.onload = () => {
+                                const header = xhr.getResponseHeader('ETag');
+                                if (xhr.status >= 200 && xhr.status < 300) {
+                                    if (!header) {
+                                        reject(new Error('ETag header not readable. Add R2 CORS: ExposeHeaders = ETag'));
+                                        return;
+                                    }
+                                    resolve(header);
+                                } else {
+                                    reject(new Error(`Part ${partNumber} failed (${xhr.status})`));
+                                }
+                            };
+                            xhr.onerror = () => reject(new Error(`Part ${partNumber} network error`));
+                            xhr.onabort = () => reject(new Error('Upload aborted'));
+                            xhr.send(blob);
+                        });
+
+                        parts.push({ ETag: etag, PartNumber: partNumber });
+                        this.bulkInternals.currentLoaded = Math.min(file.size, (partNumber) * partSize);
+                        this.bulkState.currentPercent = file.size ? (this.bulkInternals.currentLoaded / file.size) * 100 : 0;
+                        this.updateBulkProgress();
+                    }
+
+                    const completeRes = await fetch('/api/uploads/complete', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'password': this.password },
+                        body: JSON.stringify({ key: init.key, uploadId: init.uploadId, parts })
+                    });
+                    const completeJson = await completeRes.json();
+                    if (!completeRes.ok) throw new Error(completeJson.error || 'Complete failed');
+                },
+                async cancelBulkUpload() {
+                    this.bulkState.inProgress = false;
+                    this.bulkInternals.activeXhrs.forEach(x => { try { x.abort(); } catch (_) {} });
+                    this.bulkInternals.activeXhrs = [];
+                    const key = this.bulkInternals.currentKey;
+                    const uploadId = this.bulkInternals.currentUploadId;
+                    if (key && uploadId) {
+                        await fetch('/api/uploads/abort', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'password': this.password },
+                            body: JSON.stringify({ key, uploadId })
+                        }).catch(() => {});
+                    }
+                    for (const item of this.bulkQueue) {
+                        if (item.status === 'uploading' || item.status === 'pending') {
+                            item.status = 'cancelled';
+                        }
                     }
                 },
                 toggleAll(e) {
