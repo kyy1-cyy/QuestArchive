@@ -195,13 +195,17 @@ app.get('/api/database', async (req, res) => {
 app.post('/api/database', async (req, res) => {
     if (!requireAdmin(req, res)) return;
     
-    const { title, version, description, thumbnailUrl } = req.body;
+    const { title, version, description, thumbnailUrl, hashId } = req.body;
     if (!title) return res.status(400).json({ error: 'Title is required' });
+    if (hashId && !/^[a-f0-9]{32}$/i.test(String(hashId))) {
+        return res.status(400).json({ error: 'hashId must be a 32-character hex MD5' });
+    }
 
     // Under the hood we just assign a unique timestamp ID to keep the JSON valid
     const newGame = {
         id: Date.now().toString(),
         title,
+        hashId: hashId ? String(hashId).toLowerCase() : '',
         version: version || '1.0',
         description: description || '',
         thumbnailUrl: thumbnailUrl || 'https://via.placeholder.com/300x400?text=No+Image'
@@ -245,12 +249,15 @@ app.post('/api/uploads/init', async (req, res) => {
     if (!requireAdmin(req, res)) return;
     if (!ensureUploadEnv(req, res)) return;
 
-    const { filename, prefix } = req.body ?? {};
+    const { filename, prefix, hashId } = req.body ?? {};
     if (!filename || typeof filename !== 'string') {
         return res.status(400).json({ error: 'filename is required' });
     }
     if (!filename.toLowerCase().endsWith('.zip')) {
         return res.status(400).json({ error: 'Only .zip files are allowed' });
+    }
+    if (hashId && !/^[a-f0-9]{32}$/i.test(String(hashId))) {
+        return res.status(400).json({ error: 'hashId must be a 32-character hex MD5' });
     }
 
     const cleanFilename = filename.replace(/[\\/]/g, '_').trim();
@@ -258,7 +265,8 @@ app.post('/api/uploads/init', async (req, res) => {
     if (cleanPrefix.includes('..')) {
         return res.status(400).json({ error: 'Invalid prefix' });
     }
-    const key = cleanPrefix ? `${cleanPrefix.replace(/\/+$/, '')}/${cleanFilename}` : cleanFilename;
+    const finalName = hashId ? `${String(hashId).toLowerCase()}.zip` : cleanFilename;
+    const key = cleanPrefix ? `${cleanPrefix.replace(/\/+$/, '')}/${finalName}` : finalName;
 
     try {
         const command = new CreateMultipartUploadCommand({
@@ -571,8 +579,11 @@ app.get('/api/download/:id', async (req, res) => {
     }
 
     try {
+        const hashId = String(game.hashId || '').trim().toLowerCase();
         const title = String(game.title || '').trim();
-        const fileKey = title.toLowerCase().endsWith('.zip') ? title : `${title}.zip`;
+        const fileKey = /^[a-f0-9]{32}$/.test(hashId)
+            ? `${hashId}.zip`
+            : (title.toLowerCase().endsWith('.zip') ? title : `${title}.zip`);
         
         // If you set up a custom domain on your Cloudflare R2 bucket (highly recommended for speed),
         // we redirect straight to that domain. This ensures the user hits the nearest Cloudflare Edge node.

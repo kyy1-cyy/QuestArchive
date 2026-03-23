@@ -149,20 +149,30 @@
                 <div class="dropzone" :class="{ active: isDragOver }" @dragenter.prevent="isDragOver = true" @dragover.prevent="isDragOver = true" @dragleave.prevent="isDragOver = false" @drop.prevent="handleDrop">
                     <div>
                         <div style="color:#fff; font-size: 13px; font-weight: 600;">Upload Game File (.zip)</div>
-                        <div class="muted">Drag & drop a .zip here or choose a file. Upload is direct-to-R2 via multipart.</div>
+                        <div class="muted">Pick a .zip, we compute an MD5 Hash ID, then upload as &lt;hash&gt;.zip.</div>
                     </div>
                     <div style="display:flex; gap:10px; align-items:center;">
                         <input type="text" v-model="uploadPrefix" placeholder="optional folder (e.g. uploads)" style="width: 220px;">
-                        <button class="btn" @click="openFilePicker" :disabled="uploadState.inProgress">Choose File</button>
-                        <button v-if="uploadState.inProgress" class="btn btn-delete" @click="cancelUpload">Cancel</button>
+                        <button class="btn" @click="openFilePicker" :disabled="uploadState.inProgress || hashState.computing">Choose File</button>
+                        <button class="btn" @click="startUploadPrepared" :disabled="!preparedFile || !hashState.hash || uploadState.inProgress || hashState.computing">Upload</button>
+                        <button v-if="uploadState.inProgress || hashState.computing" class="btn btn-delete" @click="cancelUpload">Cancel</button>
                         <input ref="fileInput" type="file" accept=".zip" style="display:none" @change="handleFileInput">
                     </div>
                 </div>
 
-                <div v-if="uploadState.lastFileName" style="margin-top: 10px;">
+                <div v-if="preparedFileName" style="margin-top: 10px;">
                     <div class="muted">
-                        File: <span style="color:#ce9178;">{{ uploadState.lastFileName }}</span>
+                        File: <span style="color:#ce9178;">{{ preparedFileName }}</span>
+                        <span v-if="hashState.hash"> → Hash ID: <span style="color:#9cdcfe;">{{ hashState.hash }}</span></span>
                         <span v-if="uploadState.key"> → Key: <span style="color:#9cdcfe;">{{ uploadState.key }}</span></span>
+                    </div>
+                    <div v-if="hashState.hash" style="margin-top: 8px; display:flex; gap:10px; align-items:center; flex-wrap: wrap;">
+                        <select class="btn btn-tab active" style="padding: 6px 10px;">
+                            <option :value="hashState.hash">{{ hashState.hash }}</option>
+                        </select>
+                        <button class="btn" @click="copyHash" :disabled="!hashState.hash">Copy Hash</button>
+                        <span class="muted" v-if="hashState.computing">Computing MD5…</span>
+                        <span class="muted" v-else-if="hashState.copied">Copied</span>
                     </div>
                 </div>
 
@@ -202,7 +212,7 @@
                         </td>
                         <td style="color: #ce9178;">"{{ game.title }}"</td>
                         <td style="color: #b5cea8;">{{ game.version }}</td>
-                        <td style="color: #6a9955; font-size: 12px;">Active ({{ game.title }}.zip)</td>
+                        <td style="color: #6a9955; font-size: 12px;">Active ({{ (game.hashId && game.hashId.length === 32) ? (game.hashId + '.zip') : (game.title + '.zip') }})</td>
                     </tr>
                 </tbody>
             </table>
@@ -238,8 +248,13 @@
                     <h3 style="margin-top:0; color:#fff;">Append to Database</h3>
                     
                     <div class="form-group">
-                        <label>Title (MUST match EXACT .zip filename in R2)</label>
+                        <label>Title (Display Name)</label>
                         <input v-model="newGame.title" type="text" placeholder="e.g. Beat Saber">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Hash ID (MD5)</label>
+                        <input v-model="newGame.hashId" type="text" placeholder="32-char md5 hash">
                     </div>
                     
                     <div class="form-group">
@@ -269,6 +284,102 @@
     <script>
         const { createApp } = Vue
 
+        function _md5RotateLeft(x, c) { return (x << c) | (x >>> (32 - c)); }
+        function _md5Add(x, y) { return (x + y) >>> 0; }
+        function _md5F(x, y, z) { return (x & y) | (~x & z); }
+        function _md5G(x, y, z) { return (x & z) | (y & ~z); }
+        function _md5H(x, y, z) { return x ^ y ^ z; }
+        function _md5I(x, y, z) { return y ^ (x | ~z); }
+
+        function _md5Round(fn, a, b, c, d, x, s, t) {
+            return _md5Add(_md5RotateLeft(_md5Add(_md5Add(a, fn(b, c, d)), _md5Add(x, t)), s), b);
+        }
+
+        function _md5BytesToWords(bytes) {
+            const words = new Uint32Array(((bytes.length + 3) / 4) | 0);
+            for (let i = 0; i < bytes.length; i++) {
+                words[i >> 2] |= bytes[i] << ((i % 4) * 8);
+            }
+            return words;
+        }
+
+        function _md5WordsToHex(words) {
+            const hex = [];
+            for (let i = 0; i < words.length; i++) {
+                let w = words[i];
+                for (let j = 0; j < 4; j++) {
+                    const b = (w >>> (j * 8)) & 0xff;
+                    hex.push((b >>> 4).toString(16));
+                    hex.push((b & 0x0f).toString(16));
+                }
+            }
+            return hex.join('');
+        }
+
+        function md5ArrayBuffer(buffer) {
+            const bytes = new Uint8Array(buffer);
+            const origLen = bytes.length;
+            const withOne = origLen + 1;
+            const padLen = (withOne % 64 <= 56) ? (56 - (withOne % 64)) : (56 + (64 - (withOne % 64)));
+            const totalLen = withOne + padLen + 8;
+            const padded = new Uint8Array(totalLen);
+            padded.set(bytes);
+            padded[origLen] = 0x80;
+            const bitLen = origLen * 8;
+            for (let i = 0; i < 8; i++) padded[totalLen - 8 + i] = (bitLen >>> (i * 8)) & 0xff;
+
+            const x = _md5BytesToWords(padded);
+
+            let a0 = 0x67452301;
+            let b0 = 0xefcdab89;
+            let c0 = 0x98badcfe;
+            let d0 = 0x10325476;
+
+            const k = [
+                0xd76aa478, 0xe8c7b756, 0x242070db, 0xc1bdceee, 0xf57c0faf, 0x4787c62a, 0xa8304613, 0xfd469501,
+                0x698098d8, 0x8b44f7af, 0xffff5bb1, 0x895cd7be, 0x6b901122, 0xfd987193, 0xa679438e, 0x49b40821,
+                0xf61e2562, 0xc040b340, 0x265e5a51, 0xe9b6c7aa, 0xd62f105d, 0x02441453, 0xd8a1e681, 0xe7d3fbc8,
+                0x21e1cde6, 0xc33707d6, 0xf4d50d87, 0x455a14ed, 0xa9e3e905, 0xfcefa3f8, 0x676f02d9, 0x8d2a4c8a,
+                0xfffa3942, 0x8771f681, 0x6d9d6122, 0xfde5380c, 0xa4beea44, 0x4bdecfa9, 0xf6bb4b60, 0xbebfbc70,
+                0x289b7ec6, 0xeaa127fa, 0xd4ef3085, 0x04881d05, 0xd9d4d039, 0xe6db99e5, 0x1fa27cf8, 0xc4ac5665,
+                0xf4292244, 0x432aff97, 0xab9423a7, 0xfc93a039, 0x655b59c3, 0x8f0ccc92, 0xffeff47d, 0x85845dd1,
+                0x6fa87e4f, 0xfe2ce6e0, 0xa3014314, 0x4e0811a1, 0xf7537e82, 0xbd3af235, 0x2ad7d2bb, 0xeb86d391
+            ];
+            const s = [
+                7,12,17,22, 7,12,17,22, 7,12,17,22, 7,12,17,22,
+                5,9,14,20, 5,9,14,20, 5,9,14,20, 5,9,14,20,
+                4,11,16,23, 4,11,16,23, 4,11,16,23, 4,11,16,23,
+                6,10,15,21, 6,10,15,21, 6,10,15,21, 6,10,15,21
+            ];
+
+            for (let i = 0; i < x.length; i += 16) {
+                let a = a0, b = b0, c = c0, d = d0;
+                for (let j = 0; j < 64; j++) {
+                    let f, g;
+                    if (j < 16) { f = _md5F(b, c, d); g = j; }
+                    else if (j < 32) { f = _md5G(b, c, d); g = (5 * j + 1) % 16; }
+                    else if (j < 48) { f = _md5H(b, c, d); g = (3 * j + 5) % 16; }
+                    else { f = _md5I(b, c, d); g = (7 * j) % 16; }
+                    const tmp = d;
+                    d = c;
+                    c = b;
+                    b = _md5Round(() => f, a, b, c, tmp, x[i + g], s[j], k[j]);
+                    a = tmp;
+                }
+                a0 = _md5Add(a0, a);
+                b0 = _md5Add(b0, b);
+                c0 = _md5Add(c0, c);
+                d0 = _md5Add(d0, d);
+            }
+
+            return _md5WordsToHex([a0, b0, c0, d0]);
+        }
+
+        async function md5File(file) {
+            const buf = await file.arrayBuffer();
+            return md5ArrayBuffer(buf);
+        }
+
         createApp({
             data() {
                 return {
@@ -282,12 +393,20 @@
                     showAddModal: false,
                     newGame: {
                         title: '',
+                        hashId: '',
                         version: '',
                         description: '',
                         thumbnailUrl: ''
                     },
                     isDragOver: false,
                     uploadPrefix: '',
+                    preparedFile: null,
+                    preparedFileName: '',
+                    hashState: {
+                        computing: false,
+                        hash: '',
+                        copied: false
+                    },
                     uploadState: {
                         inProgress: false,
                         lastFileName: '',
@@ -383,12 +502,12 @@
                 handleFileInput(e) {
                     const file = e.target.files && e.target.files[0];
                     e.target.value = '';
-                    if (file) this.startUpload(file);
+                    if (file) this.prepareUpload(file);
                 },
                 handleDrop(e) {
                     this.isDragOver = false;
                     const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-                    if (file) this.startUpload(file);
+                    if (file) this.prepareUpload(file);
                 },
                 resetUploadState() {
                     this.uploadState.inProgress = false;
@@ -399,6 +518,11 @@
                     this.uploadState.error = '';
                     this.uploadState.key = '';
                     this.uploadState.uploadId = '';
+                    this.preparedFile = null;
+                    this.preparedFileName = '';
+                    this.hashState.computing = false;
+                    this.hashState.hash = '';
+                    this.hashState.copied = false;
                     this.uploadInternals.startedAt = 0;
                     this.uploadInternals.totalBytes = 0;
                     this.uploadInternals.uploadedBytes = 0;
@@ -408,6 +532,15 @@
                         try { r.abort(); } catch (_) {}
                     });
                     this.uploadInternals.activeRequests = [];
+                },
+                async copyHash() {
+                    try {
+                        await navigator.clipboard.writeText(this.hashState.hash);
+                        this.hashState.copied = true;
+                        setTimeout(() => { this.hashState.copied = false; }, 1200);
+                    } catch (e) {
+                        alert('Copy failed');
+                    }
                 },
                 fmtEta(seconds) {
                     if (!Number.isFinite(seconds) || seconds <= 0) return '--:--';
@@ -449,7 +582,7 @@
                         this.uploadState.message = 'Cancelled';
                     }
                 },
-                async startUpload(file) {
+                async prepareUpload(file) {
                     if (this.uploadState.inProgress) return;
                     if (!file.name.toLowerCase().endsWith('.zip')) {
                         this.uploadState.error = 'Only .zip files are allowed';
@@ -457,7 +590,27 @@
                     }
 
                     this.resetUploadState();
-                    this.uploadState.lastFileName = file.name;
+                    this.preparedFile = file;
+                    this.preparedFileName = file.name;
+                    this.hashState.computing = true;
+                    this.hashState.hash = '';
+                    this.hashState.copied = false;
+                    this.uploadInternals.totalBytes = file.size;
+                    this.uploadInternals.startedAt = Date.now();
+
+                    try {
+                        const hash = await md5File(file);
+                        this.hashState.hash = hash;
+                    } catch (e) {
+                        this.uploadState.error = String(e.message || e);
+                    } finally {
+                        this.hashState.computing = false;
+                    }
+                },
+                async startUploadPrepared() {
+                    if (!this.preparedFile || !this.hashState.hash) return;
+                    const file = this.preparedFile;
+                    const hashId = this.hashState.hash;
                     this.uploadState.inProgress = true;
                     this.uploadState.message = 'Initializing...';
                     this.uploadInternals.startedAt = Date.now();
@@ -468,7 +621,7 @@
                         const res = await fetch('/api/uploads/init', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json', 'password': this.password },
-                            body: JSON.stringify({ filename: file.name, prefix: this.uploadPrefix })
+                            body: JSON.stringify({ filename: file.name, prefix: this.uploadPrefix, hashId })
                         });
                         init = await res.json();
                         if (!res.ok) throw new Error(init.error || 'Init failed');
@@ -592,6 +745,9 @@
                 },
                 async addGame() {
                     if (!this.newGame.title) return alert('Title is required');
+                    if (!this.newGame.hashId || !/^[a-f0-9]{32}$/i.test(String(this.newGame.hashId))) {
+                        return alert('Hash ID is required (32-char MD5)');
+                    }
                     
                     try {
                         const res = await fetch('/api/database', {
@@ -605,7 +761,7 @@
                         if (res.ok) {
                             const added = await res.json();
                             this.games.push(added);
-                            this.newGame = { title: '', version: '', description: '', thumbnailUrl: '' };
+                            this.newGame = { title: '', hashId: '', version: '', description: '', thumbnailUrl: '' };
                             this.showAddModal = false;
                         } else {
                             const err = await res.json();
