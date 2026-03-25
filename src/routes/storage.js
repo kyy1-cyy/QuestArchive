@@ -1,0 +1,102 @@
+import express from 'express';
+import { ListObjectsV2Command, GetObjectCommand, DeleteObjectCommand, DeleteObjectsCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { config } from '../utils/config.js';
+import { s3Client } from '../utils/s3.js';
+import { requireAdmin, ensureEnv } from '../utils/auth.js';
+import { logger } from '../utils/logger.js';
+
+const router = express.Router();
+
+function encodeKeyForPublicUrl(key) {
+    return encodeURIComponent(key).replace(/%2F/g, '/');
+}
+
+router.get('/list', async (req, res, next) => {
+    if (!requireAdmin(req, res)) return;
+    if (!ensureEnv(req, res, ['R2.BUCKET_NAME'])) return;
+
+    const prefix = String(req.query.prefix || '');
+    try {
+        const command = new ListObjectsV2Command({
+            Bucket: config.R2.BUCKET_NAME,
+            Prefix: prefix || undefined,
+            Delimiter: '/'
+        });
+        const result = await s3Client.send(command);
+
+        res.json({
+            prefix,
+            folders: (result.CommonPrefixes || []).map(p => p.Prefix).filter(Boolean),
+            objects: (result.Contents || [])
+                .filter(o => o.Key && o.Key !== prefix && !o.Key.endsWith('/'))
+                .map(o => ({
+                    key: o.Key,
+                    lastModified: o.LastModified,
+                    size: o.Size
+                })),
+            isTruncated: result.IsTruncated
+        });
+    } catch (err) {
+        next(err);
+    }
+});
+
+router.get('/download-url', async (req, res, next) => {
+    if (!requireAdmin(req, res)) return;
+    const key = String(req.query.key || '');
+    if (!key) return res.status(400).json({ error: 'Key required' });
+
+    try {
+        if (config.R2.PUBLIC_DOMAIN) {
+            return res.json({ url: `${config.R2.PUBLIC_DOMAIN}/${encodeKeyForPublicUrl(key)}` });
+        }
+        const command = new GetObjectCommand({
+            Bucket: config.R2.BUCKET_NAME,
+            Key: key
+        });
+        const url = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
+        res.json({ url });
+    } catch (err) {
+        next(err);
+    }
+});
+
+router.post('/delete', async (req, res, next) => {
+    if (!requireAdmin(req, res)) return;
+    const { key, prefix } = req.body ?? {};
+
+    try {
+        if (key) {
+            await s3Client.send(new DeleteObjectCommand({ Bucket: config.R2.BUCKET_NAME, Key: key }));
+            return res.json({ success: true });
+        }
+        if (prefix) {
+            let deleted = 0;
+            let token = undefined;
+            while (true) {
+                const list = await s3Client.send(new ListObjectsV2Command({
+                    Bucket: config.R2.BUCKET_NAME,
+                    Prefix: prefix,
+                    ContinuationToken: token
+                }));
+                const keys = (list.Contents || []).map(o => ({ Key: o.Key }));
+                if (keys.length > 0) {
+                    await s3Client.send(new DeleteObjectsCommand({
+                        Bucket: config.R2.BUCKET_NAME,
+                        Delete: { Objects: keys }
+                    }));
+                    deleted += keys.length;
+                }
+                if (!list.IsTruncated) break;
+                token = list.NextContinuationToken;
+            }
+            return res.json({ success: true, deleted });
+        }
+        res.status(400).json({ error: 'Key or prefix required' });
+    } catch (err) {
+        next(err);
+    }
+});
+
+export default router;

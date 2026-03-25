@@ -139,12 +139,17 @@
                 <button class="btn btn-tab" :class="{ active: activeTab === 'games' }" @click="activeTab = 'games'">Games</button>
                 <button class="btn btn-tab" :class="{ active: activeTab === 'donations' }" @click="openDonations">Donations</button>
                 <button class="btn btn-tab" :class="{ active: activeTab === 'storage' }" @click="openStorage">Server Storage</button>
+                <button class="btn btn-tab" :class="{ active: activeTab === 'migration' }" @click="openMigration">Migration</button>
                 <button class="btn" @click="syncMd5Map" :disabled="md5MapLoading">Sync Map</button>
                 <button v-if="activeTab === 'games'" class="btn" @click="openAddModal">+ Add Game</button>
-                <button v-if="activeTab === 'games' && selectedIds.length > 0" class="btn btn-delete" @click="bulkRemove">
+                <button if="activeTab === 'games' && selectedIds.length > 0" class="btn btn-delete" @click="bulkRemove">
                     Remove Selected ({{ selectedIds.length }})
                 </button>
-                <span style="color: #808080; font-size: 12px; margin-left: auto;">Total Titles: {{ games.length }}</span>
+                <select v-if="activeTab === 'games'" v-model="categoryFilter" class="btn btn-tab" style="padding: 6px 10px;">
+                    <option value="">All Categories</option>
+                    <option v-for="cat in categories" :key="cat" :value="cat">{{ cat }}</option>
+                </select>
+                <span style="color: #808080; font-size: 12px; margin-left: auto;">Total Titles: {{ filteredGames.length }} / {{ games.length }}</span>
             </div>
 
             <div v-if="activeTab === 'games'" class="uploader">
@@ -273,10 +278,10 @@
                     </tr>
                 </thead>
                 <tbody>
-                    <tr v-if="games.length === 0">
-                        <td colspan="5" style="text-align: center; color: #888; padding: 30px;">Database is empty.</td>
+                    <tr v-if="filteredGames.length === 0">
+                        <td colspan="5" style="text-align: center; color: #888; padding: 30px;">No games match your criteria.</td>
                     </tr>
-                    <tr v-for="game in games" :key="game.id">
+                    <tr v-for="game in filteredGames" :key="game.id">
                         <td>
                             <input type="checkbox" :value="game.id" v-model="selectedIds">
                         </td>
@@ -369,6 +374,38 @@
                     </tr>
                 </tbody>
             </table>
+
+            <div v-if="activeTab === 'migration'" class="uploader">
+                <div class="dropzone">
+                    <div>
+                        <div style="color:#fff; font-size: 13px; font-weight: 600;">R2 Migration (Folder -> Hash ZIP)</div>
+                        <div class="muted">Converts all raw folders in R2 to MD5-hashed ZIPs and adds them to DB.</div>
+                    </div>
+                    <div style="display:flex; gap:10px; align-items:center; flex-wrap: wrap; justify-content: flex-end;">
+                        <button class="btn" @click="startMigration" :disabled="migration.inProgress">Start Migration</button>
+                        <button class="btn" @click="fetchMigrationStatus">Refresh Status</button>
+                    </div>
+                </div>
+                
+                <div v-if="migration.inProgress" style="margin-top: 15px;">
+                    <div class="muted">
+                        Processing: <span style="color:#ce9178;">{{ migration.currentFolder || '...' }}</span>
+                        <div style="margin-top:5px;">Progress: {{ migration.processed }} / {{ migration.total }}</div>
+                    </div>
+                    <div class="progress-wrap">
+                        <div class="progress-bar" :style="{ width: (migration.total ? (migration.processed / migration.total) * 100 : 0) + '%' }"></div>
+                    </div>
+                </div>
+
+                <div v-if="migration.logs.length > 0" style="margin-top: 15px; background: #101010; border: 1px solid #333; padding: 10px; border-radius: 6px; font-size: 12px; max-height: 300px; overflow-y: auto;">
+                    <div v-for="log in migration.logs" :key="log" style="margin-bottom: 2px;">{{ log }}</div>
+                </div>
+
+                <div v-if="migration.errors.length > 0" style="margin-top: 10px; color:#ff9999; font-size: 12px;">
+                    <strong>Errors ({{ migration.errors.length }}):</strong>
+                    <div v-for="err in migration.errors" :key="err" style="margin-top: 2px;">- {{ err }}</div>
+                </div>
+            </div>
 
             <!-- Add Modal -->
             <div v-if="showAddModal" class="overlay">
@@ -645,26 +682,53 @@
                         currentKey: '',
                         currentUploadId: '',
                         cancelCurrent: false
-                    }
+                    },
+                    migration: {
+                        inProgress: false,
+                        currentFolder: '',
+                        processed: 0,
+                        total: 0,
+                        errors: [],
+                        logs: []
+                    },
+                    migrationTimer: null,
+                    categoryFilter: '',
+                    categories: ['Action', 'Adventure', 'Shooter', 'Puzzle', 'Uncategorized']
+                }
+            },
+            computed: {
+                filteredGames() {
+                    if (!this.categoryFilter) return this.games;
+                    return this.games.filter(g => g.category === this.categoryFilter);
                 }
             },
             mounted() {
                 const savedPwd = sessionStorage.getItem('adminPwd');
                 if (savedPwd) {
                     this.password = savedPwd;
-                    this.login();
+                    // Try to restore session via automated check first
+                    fetch('/api/admin/check').then(r => r.json()).then(j => {
+                        if (j.authenticated) {
+                            this.isAuthenticated = true;
+                            this.fetchGames();
+                        } else if (this.password) {
+                            this.login();
+                        }
+                    });
                 }
             },
             methods: {
                 async login() {
                     try {
-                        const res = await fetch('/api/database', {
-                            headers: { 'password': this.password }
+                        const res = await fetch('/api/admin/login', {
+                           method: 'POST',
+                           headers: { 'Content-Type': 'application/json' },
+                           body: JSON.stringify({ password: this.password })
                         });
                         if (res.ok) {
                             this.isAuthenticated = true;
                             sessionStorage.setItem('adminPwd', this.password);
-                            this.games = await res.json();
+                            this.fetchGames();
                         } else {
                             alert('Access Denied');
                             this.password = '';
@@ -682,14 +746,7 @@
                     this.md5MapLoading = true;
                     this.md5MapError = '';
                     try {
-                        const res = await fetch(`/api/md5-map${force ? '?force=1' : ''}`, {
-                            headers: { 'password': this.password }
-                        });
-                        const contentType = (res.headers.get('content-type') || '').toLowerCase();
-                        if (!contentType.includes('application/json')) {
-                            const text = await res.text();
-                            throw new Error(`Unexpected response (${res.status}): ${text.slice(0, 120)}`);
-                        }
+                        const res = await fetch(`/api/md5-map${force ? '?force=1' : ''}`);
                         const json = await res.json();
                         if (!res.ok) throw new Error(json.error || 'Failed to load MD5 map');
                         this.md5MapItems = Array.isArray(json.items) ? json.items : [];
@@ -706,11 +763,7 @@
                 },
                 async syncMd5Map() {
                     await this.fetchMd5Map(true);
-                    if (!this.md5MapError && this.md5MapLastSyncAt) {
-                        alert(`MD5 map synced: ${new Date(this.md5MapLastSyncAt).toLocaleString()}`);
-                    } else if (!this.md5MapError) {
-                        alert('MD5 map synced');
-                    }
+                    alert('MD5 map synced');
                 },
                 async openDonations() {
                     this.activeTab = 'donations';
@@ -719,16 +772,9 @@
                 async fetchDonations() {
                     this.donationsLoading = true;
                     try {
-                        const res = await fetch('/api/donations/list', {
-                            headers: { 'password': this.password }
-                        });
-                        const contentType = (res.headers.get('content-type') || '').toLowerCase();
-                        if (!contentType.includes('application/json')) {
-                            const text = await res.text();
-                            throw new Error(`Unexpected response (${res.status}): ${text.slice(0, 120)}`);
-                        }
+                        const res = await fetch('/api/donations/list');
                         const json = await res.json();
-                        if (!res.ok) throw new Error(json.error || `Failed to load donations (${res.status})`);
+                        if (!res.ok) throw new Error(json.error || 'Failed to load donations');
                         this.donations = Array.isArray(json.items) ? json.items : [];
                     } catch (e) {
                         alert(String(e.message || e));
@@ -739,20 +785,15 @@
                 },
                 async downloadDonation(key) {
                     try {
-                        const res = await fetch(`/api/donations/download-url?key=${encodeURIComponent(key)}`, {
-                            headers: { 'password': this.password }
-                        });
-                        const contentType = (res.headers.get('content-type') || '').toLowerCase();
-                        if (!contentType.includes('application/json')) {
-                            const text = await res.text();
-                            throw new Error(`Unexpected response (${res.status}): ${text.slice(0, 120)}`);
-                        }
+                        const res = await fetch(`/api/donations/download-url?key=${encodeURIComponent(key)}`);
                         const json = await res.json();
-                        if (!res.ok) throw new Error(json.error || `Failed to create link (${res.status})`);
-                        if (!json.url) throw new Error('No URL returned');
-                        window.open(json.url, '_blank', 'noopener,noreferrer');
+                        if (res.ok && json.url) {
+                            window.open(json.url, '_blank');
+                        } else {
+                            alert(json.error || 'Failed map');
+                        }
                     } catch (e) {
-                        alert(String(e.message || e));
+                        alert(e.message);
                     }
                 },
                 async openStorage() {
@@ -778,99 +819,57 @@
                     const n = Number(bytes || 0);
                     if (!n) return '-';
                     const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-                    let u = 0;
-                    let v = n;
+                    let u = 0, v = n;
                     while (v >= 1024 && u < units.length - 1) { v /= 1024; u++; }
-                    return `${v.toFixed(v >= 10 || u === 0 ? 0 : 1)} ${units[u]}`;
+                    return `${v.toFixed(1)} ${units[u]}`;
                 },
                 async fetchStorage(prefix) {
                     this.storageLoading = true;
                     this.storageError = '';
-                    this.storageTruncated = false;
                     try {
-                        const res = await fetch(`/api/storage/list?prefix=${encodeURIComponent(prefix || '')}`, {
-                            headers: { 'password': this.password }
-                        });
-                        const contentType = (res.headers.get('content-type') || '').toLowerCase();
-                        if (!contentType.includes('application/json')) {
-                            const text = await res.text();
-                            throw new Error(`Unexpected response (${res.status}): ${text.slice(0, 120)}`);
-                        }
+                        const res = await fetch(`/api/storage/list?prefix=${encodeURIComponent(prefix || '')}`);
                         const json = await res.json();
-                        if (!res.ok) throw new Error(json.error || 'Failed to load storage');
-                        this.storagePrefix = json.prefix || '';
-                        this.storageFolders = Array.isArray(json.folders) ? json.folders : [];
-                        this.storageObjects = Array.isArray(json.objects) ? json.objects : [];
-                        this.storageTruncated = Boolean(json.isTruncated);
+                        if (res.ok) {
+                            this.storagePrefix = json.prefix || '';
+                            this.storageFolders = json.folders || [];
+                            this.storageObjects = json.objects || [];
+                            this.storageTruncated = !!json.isTruncated;
+                        }
                     } catch (e) {
-                        this.storageError = String(e.message || e);
-                        this.storageFolders = [];
-                        this.storageObjects = [];
+                        this.storageError = e.message;
                     } finally {
                         this.storageLoading = false;
                     }
                 },
                 async openStorageFolder(prefix) {
-                    this.storagePrefix = prefix;
-                    await this.fetchStorage(prefix);
+                    this.fetchStorage(prefix);
                 },
                 async downloadStorage(key) {
                     try {
-                        const res = await fetch(`/api/storage/download-url?key=${encodeURIComponent(key)}`, {
-                            headers: { 'password': this.password }
-                        });
-                        const contentType = (res.headers.get('content-type') || '').toLowerCase();
-                        if (!contentType.includes('application/json')) {
-                            const text = await res.text();
-                            throw new Error(`Unexpected response (${res.status}): ${text.slice(0, 120)}`);
-                        }
+                        const res = await fetch(`/api/storage/download-url?key=${encodeURIComponent(key)}`);
                         const json = await res.json();
-                        if (!res.ok) throw new Error(json.error || 'Failed to create link');
-                        if (!json.url) throw new Error('No URL returned');
-                        window.open(json.url, '_blank', 'noopener,noreferrer');
+                        if (res.ok) window.open(json.url, '_blank');
                     } catch (e) {
-                        alert(String(e.message || e));
+                        alert(e.message);
                     }
                 },
                 async deleteStorageKey(key) {
-                    if (!confirm(`Delete file?\n\n${key}`)) return;
-                    try {
-                        const res = await fetch('/api/storage/delete', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'password': this.password },
-                            body: JSON.stringify({ key })
-                        });
-                        const contentType = (res.headers.get('content-type') || '').toLowerCase();
-                        if (!contentType.includes('application/json')) {
-                            const text = await res.text();
-                            throw new Error(`Unexpected response (${res.status}): ${text.slice(0, 120)}`);
-                        }
-                        const json = await res.json();
-                        if (!res.ok) throw new Error(json.error || 'Delete failed');
-                        await this.fetchStorage(this.storagePrefix);
-                    } catch (e) {
-                        alert(String(e.message || e));
-                    }
+                    if (!confirm(`Delete ${key}?`)) return;
+                    await fetch('/api/storage/delete', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ key })
+                    });
+                    this.fetchStorage(this.storagePrefix);
                 },
                 async deleteStoragePrefix(prefix) {
-                    if (!confirm(`Delete folder and everything inside?\n\n${prefix}`)) return;
-                    try {
-                        const res = await fetch('/api/storage/delete', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'password': this.password },
-                            body: JSON.stringify({ prefix })
-                        });
-                        const contentType = (res.headers.get('content-type') || '').toLowerCase();
-                        if (!contentType.includes('application/json')) {
-                            const text = await res.text();
-                            throw new Error(`Unexpected response (${res.status}): ${text.slice(0, 120)}`);
-                        }
-                        const json = await res.json();
-                        if (!res.ok) throw new Error(json.error || 'Delete failed');
-                        await this.fetchStorage(this.storagePrefix);
-                    } catch (e) {
-                        alert(String(e.message || e));
-                    }
+                    if (!confirm(`Delete folder ${prefix}?`)) return;
+                    await fetch('/api/storage/delete', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ prefix })
+                    });
+                    this.fetchStorage(this.storagePrefix);
                 },
                 openFilePicker() {
                     this.$refs.fileInput.click();
@@ -900,22 +899,15 @@
                 },
                 prepareBulkQueue(files) {
                     const zips = (files || []).filter(f => f && f.name && f.name.toLowerCase().endsWith('.zip')).slice(0, 20);
-                    if (zips.length === 0) {
-                        this.bulkState.error = 'Select up to 20 .zip files';
-                        return;
-                    }
-                    this.bulkState.error = '';
+                    if (zips.length === 0) return;
                     this.bulkQueueOpen = true;
-                    const existing = new Set(this.bulkQueue.map(i => i.name));
                     for (const f of zips) {
-                        if (existing.has(f.name)) continue;
                         const baseName = f.name.replace(/\.zip$/i, '');
-                        const hash = md5String(baseName);
                         this.bulkQueue.push({
                             name: f.name,
                             size: f.size,
                             file: f,
-                            hash,
+                            hash: md5String(baseName),
                             status: 'pending'
                         });
                     }
@@ -927,43 +919,11 @@
                     this.uploadState.eta = '--:--';
                     this.uploadState.message = '';
                     this.uploadState.error = '';
-                    this.uploadState.key = '';
-                    this.uploadState.uploadId = '';
-                    this.uploadState.removing = false;
                     this.preparedFile = null;
                     this.preparedFileName = '';
-                    this.hashState.computing = false;
                     this.hashState.hash = '';
-                    this.hashState.copied = false;
-                    this.uploadInternals.startedAt = 0;
-                    this.uploadInternals.totalBytes = 0;
-                    this.uploadInternals.uploadedBytes = 0;
-                    this.uploadInternals.perPartLoaded = {};
-                    this.uploadInternals.parts = [];
-                    this.uploadInternals.activeRequests.forEach(r => {
-                        try { r.abort(); } catch (_) {}
-                    });
+                    this.uploadInternals.activeRequests.forEach(r => r.abort());
                     this.uploadInternals.activeRequests = [];
-                },
-                resetBulkState() {
-                    this.bulkState.inProgress = false;
-                    this.bulkState.currentName = '';
-                    this.bulkState.currentHash = '';
-                    this.bulkState.currentPercent = 0;
-                    this.bulkState.currentMbps = 0;
-                    this.bulkState.currentEta = '--:--';
-                    this.bulkState.totalPercent = 0;
-                    this.bulkState.totalEta = '--:--';
-                    this.bulkState.error = '';
-                    this.bulkInternals.batchStartedAt = 0;
-                    this.bulkInternals.totalBytes = 0;
-                    this.bulkInternals.doneBytes = 0;
-                    this.bulkInternals.currentLoaded = 0;
-                    this.bulkInternals.currentKey = '';
-                    this.bulkInternals.currentUploadId = '';
-                    this.bulkInternals.cancelCurrent = false;
-                    this.bulkInternals.activeXhrs.forEach(x => { try { x.abort(); } catch (_) {} });
-                    this.bulkInternals.activeXhrs = [];
                 },
                 async copyHash() {
                     try {
@@ -999,46 +959,27 @@
                 async uploadImageToGithub(file) {
                     const title = String(this.newGame.title || '').trim();
                     if (!title) {
-                        this.imageState.error = 'A Title must be entered before uploading an image';
+                        this.imageState.error = 'Title required';
                         return;
                     }
-
-                    const type = String(file.type || '').toLowerCase();
-                    if (!(type === 'image/png' || type === 'image/jpeg' || type === 'image/jpg')) {
-                        this.imageState.error = 'Only png/jpg/jpeg allowed';
-                        return;
-                    }
-
                     this.imageState.inProgress = true;
-                    this.imageState.error = '';
                     this.imageState.message = 'Uploading image...';
-
                     try {
                         const base64 = await fileToBase64(file);
-                        const titleForName = title;
                         const res = await fetch('/api/github/images', {
                             method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'password': this.password
-                            },
-                            body: JSON.stringify({
-                                title: titleForName,
-                                contentType: type,
-                                base64
-                            })
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ title, contentType: file.type, base64 })
                         });
                         const json = await res.json();
-                        if (!res.ok) throw new Error(json.error || 'Upload failed');
-                        if (!json.url) throw new Error('No URL returned');
-
-                        this.newGame.thumbnailUrl = json.url;
-                        await this.copyImageUrl();
-                        this.imageState.message = 'Image uploaded';
-                        setTimeout(() => { this.imageState.message = ''; }, 1200);
+                        if (res.ok) {
+                            this.newGame.thumbnailUrl = json.url;
+                            this.imageState.message = 'Image uploaded';
+                        } else {
+                            throw new Error(json.error);
+                        }
                     } catch (e) {
-                        this.imageState.error = String(e.message || e);
-                        this.imageState.message = '';
+                        this.imageState.error = e.message;
                     } finally {
                         this.imageState.inProgress = false;
                     }
@@ -1052,458 +993,219 @@
                 updateProgress() {
                     const total = this.uploadInternals.totalBytes || 0;
                     const uploaded = this.uploadInternals.uploadedBytes || 0;
-                    const percent = total ? (uploaded / total) * 100 : 0;
-                    this.uploadState.percent = Math.min(100, Math.max(0, percent));
-
+                    this.uploadState.percent = total ? (uploaded / total) * 100 : 0;
                     const elapsed = (Date.now() - this.uploadInternals.startedAt) / 1000;
                     const bps = elapsed > 0 ? uploaded / elapsed : 0;
                     this.uploadState.mbps = bps / (1024 * 1024);
-                    const remaining = Math.max(total - uploaded, 0);
-                    const eta = bps > 0 ? remaining / bps : Infinity;
-                    this.uploadState.eta = this.fmtEta(eta);
+                    this.uploadState.eta = this.fmtEta(bps > 0 ? (total - uploaded) / bps : Infinity);
                 },
                 cancelUpload() {
-                    const { key, uploadId } = this.uploadState;
-                    this.uploadState.message = 'Cancelling...';
                     this.uploadState.inProgress = false;
-                    this.uploadInternals.activeRequests.forEach(r => {
-                        try { r.abort(); } catch (_) {}
-                    });
-                    this.uploadInternals.activeRequests = [];
-
-                    if (key && uploadId) {
-                        fetch('/api/uploads/abort', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'password': this.password },
-                            body: JSON.stringify({ key, uploadId })
-                        }).finally(() => {
-                            this.uploadState.message = 'Cancelled';
-                            this.uploadState.removing = true;
-                            setTimeout(() => {
-                                this.resetUploadState();
-                            }, 600);
-                        });
-                    } else {
-                        this.uploadState.message = 'Cancelled';
-                        this.uploadState.removing = true;
-                        setTimeout(() => {
-                            this.resetUploadState();
-                        }, 600);
-                    }
+                    this.uploadInternals.activeRequests.forEach(r => r.abort());
+                    this.resetUploadState();
                 },
                 async prepareUpload(file) {
                     if (this.uploadState.inProgress) return;
-                    if (!file.name.toLowerCase().endsWith('.zip')) {
-                        this.uploadState.error = 'Only .zip files are allowed';
-                        return;
-                    }
-
                     this.resetUploadState();
                     this.preparedFile = file;
                     this.preparedFileName = file.name;
-                    this.hashState.computing = true;
-                    this.hashState.hash = '';
-                    this.hashState.copied = false;
-                    this.uploadInternals.totalBytes = file.size;
-                    this.uploadInternals.startedAt = Date.now();
-
-                    try {
-                        const baseName = file.name.replace(/\.zip$/i, '');
-                        const hash = md5String(baseName);
-                        this.hashState.hash = hash;
-                    } catch (e) {
-                        this.uploadState.error = String(e.message || e);
-                    } finally {
-                        this.hashState.computing = false;
-                    }
+                    this.hashState.hash = md5String(file.name.replace(/\.zip$/i, ''));
                 },
                 async startUploadPrepared() {
-                    if (!this.preparedFile || !this.hashState.hash) return;
-                    const file = this.preparedFile;
-                    const hashId = this.hashState.hash;
+                    if (!this.preparedFile) return;
+                    const file = this.preparedFile, hashId = this.hashState.hash;
                     this.uploadState.inProgress = true;
-                    this.uploadState.message = 'Initializing...';
                     this.uploadInternals.startedAt = Date.now();
                     this.uploadInternals.totalBytes = file.size;
-
-                    let init;
                     try {
-                        const res = await fetch('/api/uploads/init', {
+                        const init = await fetch('/api/uploads/init', {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'password': this.password },
+                            headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ filename: file.name, hashId })
-                        });
-                        init = await res.json();
-                        if (!res.ok) throw new Error(init.error || 'Init failed');
-                    } catch (e) {
-                        this.uploadState.inProgress = false;
-                        this.uploadState.error = String(e.message || e);
-                        return;
-                    }
-
-                    this.uploadState.key = init.key;
-                    this.uploadState.uploadId = init.uploadId;
-                    this.uploadState.message = 'Uploading...';
-
-                    const partSize = 64 * 1024 * 1024;
-                    const totalParts = Math.ceil(file.size / partSize);
-                    const concurrency = Math.min(4, Math.max(1, (navigator.hardwareConcurrency || 4) / 2));
-
-                    const queue = [];
-                    for (let i = 0; i < totalParts; i++) {
-                        const partNumber = i + 1;
-                        const start = i * partSize;
-                        const end = Math.min(start + partSize, file.size);
-                        queue.push({ partNumber, blob: file.slice(start, end) });
-                    }
-
-                    const workers = Array.from({ length: Math.floor(concurrency) }, () => (async () => {
-                        while (queue.length && this.uploadState.inProgress) {
-                            const job = queue.shift();
-                            if (!job) return;
-
-                            const urlRes = await fetch('/api/uploads/part-url', {
+                        }).then(r => r.json());
+                        const partSize = 64 * 1024 * 1024, totalParts = Math.ceil(file.size / partSize);
+                        const parts = [];
+                        for (let i = 0; i < totalParts; i++) {
+                            const num = i + 1, start = i * partSize, end = Math.min(start + partSize, file.size);
+                            const blob = file.slice(start, end);
+                            const { url } = await fetch('/api/uploads/part-url', {
                                 method: 'POST',
-                                headers: { 'Content-Type': 'application/json', 'password': this.password },
-                                body: JSON.stringify({
-                                    key: this.uploadState.key,
-                                    uploadId: this.uploadState.uploadId,
-                                    partNumber: job.partNumber
-                                })
-                            });
-                            const urlJson = await urlRes.json();
-                            if (!urlRes.ok) throw new Error(urlJson.error || 'Failed to sign part');
-
-                            await new Promise((resolve, reject) => {
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ key: init.key, uploadId: init.uploadId, partNumber: num })
+                            }).then(r => r.json());
+                            const etag = await new Promise((resolve, reject) => {
                                 const xhr = new XMLHttpRequest();
                                 this.uploadInternals.activeRequests.push(xhr);
-                                xhr.open('PUT', urlJson.url, true);
-                                xhr.upload.onprogress = (evt) => {
-                                    if (!evt.lengthComputable) return;
-                                    this.uploadInternals.perPartLoaded[job.partNumber] = evt.loaded;
-                                    let sum = 0;
-                                    for (const k in this.uploadInternals.perPartLoaded) sum += this.uploadInternals.perPartLoaded[k] || 0;
+                                xhr.open('PUT', url, true);
+                                xhr.upload.onprogress = (e) => {
+                                    this.uploadInternals.perPartLoaded[num] = e.loaded;
+                                    let sum = 0; for (const k in this.uploadInternals.perPartLoaded) sum += this.uploadInternals.perPartLoaded[k];
                                     this.uploadInternals.uploadedBytes = sum;
                                     this.updateProgress();
                                 };
-                                xhr.onload = () => {
-                                    const etag = xhr.getResponseHeader('ETag');
-                                    if (xhr.status >= 200 && xhr.status < 300) {
-                                        if (!etag) {
-                                            reject(new Error('Upload succeeded but ETag header is not readable. Add R2 CORS: ExposeHeaders = ETag'));
-                                            return;
-                                        }
-                                        this.uploadInternals.perPartLoaded[job.partNumber] = job.blob.size;
-                                        let sum = 0;
-                                        for (const k in this.uploadInternals.perPartLoaded) sum += this.uploadInternals.perPartLoaded[k] || 0;
-                                        this.uploadInternals.uploadedBytes = sum;
-                                        this.updateProgress();
-                                        this.uploadInternals.parts.push({ ETag: etag, PartNumber: job.partNumber });
-                                        resolve();
-                                    } else {
-                                        reject(new Error(`Part ${job.partNumber} failed (${xhr.status})`));
-                                    }
-                                };
-                                xhr.onerror = () => reject(new Error(`Part ${job.partNumber} network error`));
-                                xhr.onabort = () => reject(new Error('Upload aborted'));
-                                xhr.send(job.blob);
+                                xhr.onload = () => resolve(xhr.getResponseHeader('ETag'));
+                                xhr.onerror = reject; xhr.send(blob);
                             });
+                            parts.push({ ETag: etag, PartNumber: num });
                         }
-                    })());
-
-                    try {
-                        await Promise.all(workers);
-                    } catch (e) {
-                        this.uploadState.inProgress = false;
-                        this.uploadState.error = String(e.message || e);
-                        this.uploadState.message = '';
-                        return;
-                    }
-
-                    if (!this.uploadState.inProgress) return;
-
-                    this.uploadState.message = 'Finalizing...';
-                    try {
-                        const res = await fetch('/api/uploads/complete', {
+                        await fetch('/api/uploads/complete', {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'password': this.password },
-                            body: JSON.stringify({
-                                key: this.uploadState.key,
-                                uploadId: this.uploadState.uploadId,
-                                parts: this.uploadInternals.parts
-                            })
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ key: init.key, uploadId: init.uploadId, parts })
                         });
-                        const json = await res.json();
-                        if (!res.ok) throw new Error(json.error || 'Complete failed');
-
-                        this.uploadInternals.uploadedBytes = this.uploadInternals.totalBytes;
-                        this.updateProgress();
-                        this.uploadState.inProgress = false;
                         this.uploadState.message = 'Done';
-                        this.uploadState.removing = true;
-                        setTimeout(() => {
-                            this.resetUploadState();
-                        }, 800);
+                        setTimeout(() => this.fetchGames(), 1000);
                     } catch (e) {
-                        this.uploadState.inProgress = false;
-                        this.uploadState.error = String(e.message || e);
-                        this.uploadState.message = '';
+                        this.uploadState.error = e.message;
                     }
-                },
-                updateBulkProgress() {
-                    const elapsed = (Date.now() - this.bulkInternals.batchStartedAt) / 1000;
-                    const uploaded = this.bulkInternals.doneBytes + this.bulkInternals.currentLoaded;
-                    const total = this.bulkInternals.totalBytes || 0;
-                    const bps = elapsed > 0 ? uploaded / elapsed : 0;
-                    const remaining = Math.max(total - uploaded, 0);
-                    const totalEta = bps > 0 ? remaining / bps : Infinity;
-                    this.bulkState.totalPercent = total ? (uploaded / total) * 100 : 0;
-                    this.bulkState.totalEta = this.fmtEta(totalEta);
                 },
                 async startBulkUpload() {
-                    if (this.bulkState.inProgress) return;
-                    if (this.bulkQueue.length === 0) return;
-
-                    this.resetBulkState();
                     this.bulkState.inProgress = true;
                     this.bulkInternals.batchStartedAt = Date.now();
-                    this.bulkInternals.totalBytes = this.bulkQueue.reduce((sum, i) => sum + (i.size || 0), 0);
-                    this.bulkInternals.doneBytes = 0;
-
+                    this.bulkInternals.totalBytes = this.bulkQueue.reduce((s, i) => s + i.size, 0);
                     for (const item of this.bulkQueue) {
                         if (!this.bulkState.inProgress) break;
                         if (item.status === 'done') continue;
-                        if (item.status === 'cancelled') continue;
-
                         item.status = 'uploading';
                         this.bulkState.currentName = item.name;
                         this.bulkState.currentHash = item.hash;
-                        this.bulkState.currentPercent = 0;
-                        this.bulkState.currentMbps = 0;
-                        this.bulkState.currentEta = '--:--';
-                        this.bulkInternals.currentLoaded = 0;
-                        this.bulkInternals.cancelCurrent = false;
-                        this.bulkInternals.activeXhrs = [];
-                        this.updateBulkProgress();
-
                         try {
                             await this.uploadOneBulkItem(item);
                             item.status = 'done';
-                            this.bulkInternals.doneBytes += item.size || 0;
-                            this.bulkInternals.currentLoaded = 0;
-                            this.updateBulkProgress();
-                            setTimeout(() => {
-                                item.removing = true;
-                                setTimeout(() => {
-                                    const idx = this.bulkQueue.findIndex(i => i.name === item.name);
-                                    if (idx !== -1) this.bulkQueue.splice(idx, 1);
-                                }, 500);
-                            }, 250);
+                            this.bulkInternals.doneBytes += item.size;
                         } catch (e) {
-                            await this.finalizeBulkItemAsCancelled(item);
-                            continue;
+                            item.status = 'error';
                         }
                     }
-
-                    if (this.bulkState.inProgress) {
-                        this.bulkInternals.currentLoaded = 0;
-                        this.bulkState.currentPercent = 100;
-                        this.bulkState.totalPercent = 100;
-                        this.bulkState.currentEta = '--:--';
-                        this.bulkState.totalEta = '--:--';
-                        this.bulkState.inProgress = false;
-                    }
+                    this.bulkState.inProgress = false;
                 },
                 async uploadOneBulkItem(item) {
-                    const file = item.file;
-                    const hashId = item.hash;
-                    if (!file) throw new Error('Missing file');
-
-                    const initRes = await fetch('/api/uploads/init', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'password': this.password },
-                        body: JSON.stringify({ filename: file.name, hashId })
-                    });
-                    const init = await initRes.json();
-                    if (!initRes.ok) throw new Error(init.error || 'Init failed');
-
-                    this.bulkInternals.currentKey = init.key;
-                    this.bulkInternals.currentUploadId = init.uploadId;
-
-                    const partSize = 64 * 1024 * 1024;
-                    const totalParts = Math.ceil(file.size / partSize);
-                    const parts = [];
-
-                    for (let i = 0; i < totalParts; i++) {
-                        if (!this.bulkState.inProgress) throw new Error('Cancelled');
-                        if (this.bulkInternals.cancelCurrent) throw new Error('Cancelled');
-                        const partNumber = i + 1;
-                        const start = i * partSize;
-                        const end = Math.min(start + partSize, file.size);
-                        const blob = file.slice(start, end);
-
-                        const urlRes = await fetch('/api/uploads/part-url', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'password': this.password },
-                            body: JSON.stringify({ key: init.key, uploadId: init.uploadId, partNumber })
-                        });
-                        const urlJson = await urlRes.json();
-                        if (!urlRes.ok) throw new Error(urlJson.error || 'Failed to sign part');
-
-                        const etag = await new Promise((resolve, reject) => {
-                            const xhr = new XMLHttpRequest();
-                            this.bulkInternals.activeXhrs.push(xhr);
-                            xhr.open('PUT', urlJson.url, true);
-                            xhr.upload.onprogress = (evt) => {
-                                if (!evt.lengthComputable) return;
-                                const loaded = (partNumber - 1) * partSize + evt.loaded;
-                                this.bulkInternals.currentLoaded = Math.min(file.size, loaded);
-
-                                const elapsed = (Date.now() - this.bulkInternals.batchStartedAt) / 1000;
-                                const uploadedTotal = this.bulkInternals.doneBytes + this.bulkInternals.currentLoaded;
-                                const bps = elapsed > 0 ? uploadedTotal / elapsed : 0;
-                                const remainingFile = Math.max(file.size - this.bulkInternals.currentLoaded, 0);
-                                const etaFile = bps > 0 ? remainingFile / bps : Infinity;
-                                this.bulkState.currentPercent = file.size ? (this.bulkInternals.currentLoaded / file.size) * 100 : 0;
-                                this.bulkState.currentMbps = bps / (1024 * 1024);
-                                this.bulkState.currentEta = this.fmtEta(etaFile);
-                                this.updateBulkProgress();
-                            };
-                            xhr.onload = () => {
-                                const header = xhr.getResponseHeader('ETag');
-                                if (xhr.status >= 200 && xhr.status < 300) {
-                                    if (!header) {
-                                        reject(new Error('ETag header not readable. Add R2 CORS: ExposeHeaders = ETag'));
-                                        return;
-                                    }
-                                    resolve(header);
-                                } else {
-                                    reject(new Error(`Part ${partNumber} failed (${xhr.status})`));
-                                }
-                            };
-                            xhr.onerror = () => reject(new Error(`Part ${partNumber} network error`));
-                            xhr.onabort = () => reject(new Error('Upload aborted'));
-                            xhr.send(blob);
-                        });
-
-                        parts.push({ ETag: etag, PartNumber: partNumber });
-                        this.bulkInternals.currentLoaded = Math.min(file.size, (partNumber) * partSize);
-                        this.bulkState.currentPercent = file.size ? (this.bulkInternals.currentLoaded / file.size) * 100 : 0;
-                        this.updateBulkProgress();
-                    }
-
-                    const completeRes = await fetch('/api/uploads/complete', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'password': this.password },
-                        body: JSON.stringify({ key: init.key, uploadId: init.uploadId, parts })
-                    });
-                    const completeJson = await completeRes.json();
-                    if (!completeRes.ok) throw new Error(completeJson.error || 'Complete failed');
+                   const file = item.file;
+                   const init = await fetch('/api/uploads/init', {
+                       method: 'POST',
+                       headers: { 'Content-Type': 'application/json' },
+                       body: JSON.stringify({ filename: file.name, hashId: item.hash })
+                   }).then(r => r.json());
+                   
+                   const partSize = 64 * 1024 * 1024;
+                   const totalParts = Math.ceil(file.size / partSize);
+                   const parts = [];
+                   
+                   for (let i = 0; i < totalParts; i++) {
+                       if (!this.bulkState.inProgress) throw new Error('Cancelled');
+                       const num = i + 1;
+                       const start = i * partSize;
+                       const end = Math.min(start + partSize, file.size);
+                       const blob = file.slice(start, end);
+                       
+                       const { url } = await fetch('/api/uploads/part-url', {
+                           method: 'POST',
+                           headers: { 'Content-Type': 'application/json' },
+                           body: JSON.stringify({ key: init.key, uploadId: init.uploadId, partNumber: num })
+                       }).then(r => r.json());
+                       
+                       const etag = await new Promise((resolve, reject) => {
+                           const xhr = new XMLHttpRequest();
+                           this.bulkInternals.activeXhrs.push(xhr);
+                           xhr.open('PUT', url, true);
+                           xhr.upload.onprogress = (e) => {
+                               const loaded = e.loaded;
+                               const currentUploaded = (i * partSize) + loaded;
+                               this.bulkState.currentPercent = (currentUploaded / file.size) * 100;
+                               
+                               const totalUploaded = this.bulkInternals.doneBytes + currentUploaded;
+                               this.bulkState.totalPercent = (totalUploaded / this.bulkInternals.totalBytes) * 100;
+                               
+                               const elapsed = (Date.now() - this.bulkInternals.batchStartedAt) / 1000;
+                               const bps = elapsed > 0 ? totalUploaded / elapsed : 0;
+                               this.bulkState.currentMbps = bps / (1024 * 1024);
+                               this.bulkState.totalEta = this.fmtEta(bps > 0 ? (this.bulkInternals.totalBytes - totalUploaded) / bps : Infinity);
+                           };
+                           xhr.onload = () => resolve(xhr.getResponseHeader('ETag'));
+                           xhr.onerror = reject;
+                           xhr.send(blob);
+                       });
+                       parts.push({ ETag: etag, PartNumber: num });
+                   }
+                   
+                   await fetch('/api/uploads/complete', {
+                       method: 'POST',
+                       headers: { 'Content-Type': 'application/json' },
+                       body: JSON.stringify({ key: init.key, uploadId: init.uploadId, parts })
+                   });
                 },
-                async cancelCurrentBulkItem() {
-                    this.bulkInternals.cancelCurrent = true;
-                    this.bulkInternals.activeXhrs.forEach(x => { try { x.abort(); } catch (_) {} });
-                    const key = this.bulkInternals.currentKey;
-                    const uploadId = this.bulkInternals.currentUploadId;
-                    if (key && uploadId) {
-                        await fetch('/api/uploads/abort', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'password': this.password },
-                            body: JSON.stringify({ key, uploadId })
-                        }).catch(() => {});
-                    }
-                },
-                async finalizeBulkItemAsCancelled(item) {
-                    item.status = 'cancelled';
-                    const remaining = Math.max((item.size || 0), 0);
-                    this.bulkInternals.totalBytes = Math.max(0, (this.bulkInternals.totalBytes || 0) - remaining);
-                    this.bulkInternals.currentLoaded = 0;
-                    this.bulkInternals.currentKey = '';
-                    this.bulkInternals.currentUploadId = '';
+                cancelCurrentBulkItem() {
+                    this.bulkInternals.activeXhrs.forEach(xhr => xhr.abort());
                     this.bulkInternals.activeXhrs = [];
-                    this.updateBulkProgress();
-
-                    setTimeout(() => {
-                        item.removing = true;
-                        setTimeout(() => {
-                            const idx = this.bulkQueue.findIndex(i => i.name === item.name);
-                            if (idx !== -1) this.bulkQueue.splice(idx, 1);
-                        }, 500);
-                    }, 250);
                 },
-                async cancelBulkUpload() {
-                    if (!this.bulkState.inProgress && this.bulkQueue.length === 0) return;
-                    await this.cancelCurrentBulkItem();
+                cancelBulkUpload() {
                     this.bulkState.inProgress = false;
-                    for (const item of this.bulkQueue) {
-                        if (item.status === 'done') continue;
-                        item.status = 'cancelled';
-                        item.removing = true;
-                    }
-                    setTimeout(() => {
-                        this.bulkQueue.splice(0, this.bulkQueue.length);
-                        this.bulkQueueOpen = false;
-                        this.resetBulkState();
-                    }, 550);
+                    this.cancelCurrentBulkItem();
                 },
-                toggleAll(e) {
-                    if (e.target.checked) {
-                        this.selectedIds = this.games.map(g => g.id);
-                    } else {
-                        this.selectedIds = [];
-                    }
+                async fetchGames() {
+                    const res = await fetch('/api/database');
+                    if (res.ok) this.games = await res.json();
                 },
                 async addGame() {
-                    if (!this.newGame.title) return alert('Title is required');
-                    if (!this.newGame.hashId || !/^[a-f0-9]{32}$/i.test(String(this.newGame.hashId))) {
-                        return alert('Hash ID is required (32-char MD5)');
-                    }
-                    
-                    try {
-                        const res = await fetch('/api/database', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'password': this.password
-                            },
-                            body: JSON.stringify(this.newGame)
-                        });
-                        if (res.ok) {
-                            const added = await res.json();
-                            this.games.push(added);
-                            this.newGame = { title: '', hashId: '', version: '', description: '', thumbnailUrl: '' };
-                            this.showAddModal = false;
-                        } else {
-                            const err = await res.json();
-                            alert(err.error || 'Failed to append');
-                        }
-                    } catch (e) {
-                        console.error(e);
+                    const res = await fetch('/api/database', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(this.newGame)
+                    });
+                    if (res.ok) {
+                        this.fetchGames();
+                        this.showAddModal = false;
                     }
                 },
                 async bulkRemove() {
-                    if (!confirm(`Are you sure you want to permanently delete ${this.selectedIds.length} game(s) from the database?`)) return;
-
-                    try {
-                        const res = await fetch('/api/database/bulk-delete', {
+                    if (confirm(`Delete ${this.selectedIds.length} games?`)) {
+                        await fetch('/api/database/bulk-delete', {
                             method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'password': this.password
-                            },
+                            headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ ids: this.selectedIds })
                         });
-                        
-                        if (res.ok) {
-                            // Remove them from local state
-                            this.games = this.games.filter(g => !this.selectedIds.includes(g.id));
-                            this.selectedIds = []; // reset selection
-                        } else {
-                            alert('Failed to delete games');
-                        }
-                    } catch (e) {
-                        console.error('Error deleting:', e);
+                        this.fetchGames();
+                        this.selectedIds = [];
                     }
+                },
+                async openMigration() {
+                    this.activeTab = 'migration';
+                    await this.fetchMigrationStatus();
+                },
+                async startMigration() {
+                    if (!confirm('Start R2 to ZIP migration? This may take a long time.')) return;
+                    const res = await fetch('/api/migrate/start', { method: 'POST' });
+                    if (res.ok) {
+                        this.startMigrationPolling();
+                    } else {
+                        alert('Failed to start');
+                    }
+                },
+                async fetchMigrationStatus() {
+                    const res = await fetch('/api/migrate/status');
+                    if (res.ok) {
+                        const status = await res.json();
+                        this.migration = status;
+                        if (status.inProgress) {
+                            this.startMigrationPolling();
+                        } else {
+                            this.stopMigrationPolling();
+                            if (this.activeTab === 'migration') this.fetchGames();
+                        }
+                    }
+                },
+                startMigrationPolling() {
+                    if (this.migrationTimer) return;
+                    this.migrationTimer = setInterval(() => this.fetchMigrationStatus(), 3000);
+                },
+                stopMigrationPolling() {
+                    if (this.migrationTimer) {
+                        clearInterval(this.migrationTimer);
+                        this.migrationTimer = null;
+                    }
+                },
+                toggleAll(e) {
+                    this.selectedIds = e.target.checked ? this.games.map(g => g.id) : [];
                 }
             }
         }).mount('#app')
