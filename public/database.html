@@ -138,6 +138,7 @@
                 <span style="color: #4ec9b0; font-size: 16px;">Database Viewer</span>
                 <button class="btn btn-tab" :class="{ active: activeTab === 'games' }" @click="activeTab = 'games'">Games</button>
                 <button class="btn btn-tab" :class="{ active: activeTab === 'donations' }" @click="openDonations">Donations</button>
+                <button class="btn btn-tab" :class="{ active: activeTab === 'storage' }" @click="openStorage">Server Storage</button>
                 <button v-if="activeTab === 'games'" class="btn" @click="showAddModal = true">+ Add Game</button>
                 <button v-if="activeTab === 'games' && selectedIds.length > 0" class="btn btn-delete" @click="bulkRemove">
                     Remove Selected ({{ selectedIds.length }})
@@ -288,7 +289,7 @@
                 </tbody>
             </table>
 
-            <table v-else>
+            <table v-if="activeTab === 'donations'">
                 <thead>
                     <tr>
                         <th>File</th>
@@ -308,6 +309,61 @@
                         <td style="color:#b5cea8; font-size: 12px;">{{ item.lastModified ? new Date(item.lastModified).toLocaleString() : '-' }}</td>
                         <td style="text-align:right;">
                             <button class="btn" @click="downloadDonation(item.key)">Download</button>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div v-if="activeTab === 'storage'" class="uploader">
+                <div class="dropzone">
+                    <div>
+                        <div style="color:#fff; font-size: 13px; font-weight: 600;">Server Storage (quest-archive)</div>
+                        <div class="muted">Browse folders and files inside your bucket. Click a folder to open it.</div>
+                    </div>
+                    <div style="display:flex; gap:10px; align-items:center; flex-wrap: wrap; justify-content: flex-end;">
+                        <div class="muted">Path: <span style="color:#9cdcfe;">/{{ storagePrefix }}</span></div>
+                        <button class="btn" @click="storageUp" :disabled="!storagePrefix || storageLoading">Up</button>
+                        <button class="btn" @click="fetchStorage(storagePrefix)" :disabled="storageLoading">Refresh</button>
+                    </div>
+                </div>
+                <div v-if="storageError" style="margin-top: 10px; color:#ff9999; font-size: 12px;">{{ storageError }}</div>
+                <div v-if="storageTruncated" style="margin-top: 10px; color:#b5cea8; font-size: 12px;">More than 1000 items exist in this folder. Showing the first page.</div>
+            </div>
+
+            <table v-if="activeTab === 'storage'">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th>Timestamp</th>
+                        <th style="text-align:right;">Size</th>
+                        <th style="text-align:right;">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr v-if="storageLoading">
+                        <td colspan="5" style="text-align: center; color: #888; padding: 30px;">Loading storage...</td>
+                    </tr>
+                    <tr v-else-if="storageFolders.length === 0 && storageObjects.length === 0">
+                        <td colspan="5" style="text-align: center; color: #888; padding: 30px;">This folder is empty.</td>
+                    </tr>
+                    <tr v-for="p in storageFolders" :key="p">
+                        <td style="color:#9cdcfe; cursor:pointer;" @click="openStorageFolder(p)">{{ storageDisplayName(p) }}</td>
+                        <td style="color:#808080; font-size: 12px;">folder</td>
+                        <td style="color:#b5cea8; font-size: 12px;">-</td>
+                        <td style="text-align:right; color:#808080; font-size: 12px;">-</td>
+                        <td style="text-align:right;">
+                            <button class="btn btn-delete" @click="deleteStoragePrefix(p)">Delete</button>
+                        </td>
+                    </tr>
+                    <tr v-for="o in storageObjects" :key="o.key">
+                        <td style="color:#ce9178;">{{ storageDisplayName(o.key) }}</td>
+                        <td style="color:#808080; font-size: 12px;">file</td>
+                        <td style="color:#b5cea8; font-size: 12px;">{{ o.lastModified ? new Date(o.lastModified).toLocaleString() : '-' }}</td>
+                        <td style="text-align:right; color:#808080; font-size: 12px;">{{ formatBytes(o.size) }}</td>
+                        <td style="text-align:right; display:flex; gap:10px; justify-content:flex-end;">
+                            <button class="btn" @click="downloadStorage(o.key)">Download</button>
+                            <button class="btn btn-delete" @click="deleteStorageKey(o.key)">Delete</button>
                         </td>
                     </tr>
                 </tbody>
@@ -502,6 +558,12 @@
                     activeTab: 'games',
                     donations: [],
                     donationsLoading: false,
+                    storagePrefix: '',
+                    storageFolders: [],
+                    storageObjects: [],
+                    storageLoading: false,
+                    storageError: '',
+                    storageTruncated: false,
                     selectedIds: [],
                     showAddModal: false,
                     newGame: {
@@ -635,6 +697,123 @@
                         if (!res.ok) throw new Error(json.error || `Failed to create link (${res.status})`);
                         if (!json.url) throw new Error('No URL returned');
                         window.open(json.url, '_blank', 'noopener,noreferrer');
+                    } catch (e) {
+                        alert(String(e.message || e));
+                    }
+                },
+                async openStorage() {
+                    this.activeTab = 'storage';
+                    await this.fetchStorage(this.storagePrefix);
+                },
+                storageDisplayName(full) {
+                    const p = String(full || '');
+                    const prefix = this.storagePrefix || '';
+                    if (prefix && p.startsWith(prefix)) {
+                        return p.slice(prefix.length).replace(/\/$/, '');
+                    }
+                    return p.replace(/\/$/, '');
+                },
+                storageUp() {
+                    if (!this.storagePrefix) return;
+                    const p = this.storagePrefix.replace(/\/$/, '');
+                    const idx = p.lastIndexOf('/');
+                    this.storagePrefix = idx === -1 ? '' : p.slice(0, idx + 1);
+                    this.fetchStorage(this.storagePrefix);
+                },
+                formatBytes(bytes) {
+                    const n = Number(bytes || 0);
+                    if (!n) return '-';
+                    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+                    let u = 0;
+                    let v = n;
+                    while (v >= 1024 && u < units.length - 1) { v /= 1024; u++; }
+                    return `${v.toFixed(v >= 10 || u === 0 ? 0 : 1)} ${units[u]}`;
+                },
+                async fetchStorage(prefix) {
+                    this.storageLoading = true;
+                    this.storageError = '';
+                    this.storageTruncated = false;
+                    try {
+                        const res = await fetch(`/api/storage/list?prefix=${encodeURIComponent(prefix || '')}`, {
+                            headers: { 'password': this.password }
+                        });
+                        const contentType = (res.headers.get('content-type') || '').toLowerCase();
+                        if (!contentType.includes('application/json')) {
+                            const text = await res.text();
+                            throw new Error(`Unexpected response (${res.status}): ${text.slice(0, 120)}`);
+                        }
+                        const json = await res.json();
+                        if (!res.ok) throw new Error(json.error || 'Failed to load storage');
+                        this.storagePrefix = json.prefix || '';
+                        this.storageFolders = Array.isArray(json.folders) ? json.folders : [];
+                        this.storageObjects = Array.isArray(json.objects) ? json.objects : [];
+                        this.storageTruncated = Boolean(json.isTruncated);
+                    } catch (e) {
+                        this.storageError = String(e.message || e);
+                        this.storageFolders = [];
+                        this.storageObjects = [];
+                    } finally {
+                        this.storageLoading = false;
+                    }
+                },
+                async openStorageFolder(prefix) {
+                    this.storagePrefix = prefix;
+                    await this.fetchStorage(prefix);
+                },
+                async downloadStorage(key) {
+                    try {
+                        const res = await fetch(`/api/storage/download-url?key=${encodeURIComponent(key)}`, {
+                            headers: { 'password': this.password }
+                        });
+                        const contentType = (res.headers.get('content-type') || '').toLowerCase();
+                        if (!contentType.includes('application/json')) {
+                            const text = await res.text();
+                            throw new Error(`Unexpected response (${res.status}): ${text.slice(0, 120)}`);
+                        }
+                        const json = await res.json();
+                        if (!res.ok) throw new Error(json.error || 'Failed to create link');
+                        if (!json.url) throw new Error('No URL returned');
+                        window.open(json.url, '_blank', 'noopener,noreferrer');
+                    } catch (e) {
+                        alert(String(e.message || e));
+                    }
+                },
+                async deleteStorageKey(key) {
+                    if (!confirm(`Delete file?\n\n${key}`)) return;
+                    try {
+                        const res = await fetch('/api/storage/delete', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'password': this.password },
+                            body: JSON.stringify({ key })
+                        });
+                        const contentType = (res.headers.get('content-type') || '').toLowerCase();
+                        if (!contentType.includes('application/json')) {
+                            const text = await res.text();
+                            throw new Error(`Unexpected response (${res.status}): ${text.slice(0, 120)}`);
+                        }
+                        const json = await res.json();
+                        if (!res.ok) throw new Error(json.error || 'Delete failed');
+                        await this.fetchStorage(this.storagePrefix);
+                    } catch (e) {
+                        alert(String(e.message || e));
+                    }
+                },
+                async deleteStoragePrefix(prefix) {
+                    if (!confirm(`Delete folder and everything inside?\n\n${prefix}`)) return;
+                    try {
+                        const res = await fetch('/api/storage/delete', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'password': this.password },
+                            body: JSON.stringify({ prefix })
+                        });
+                        const contentType = (res.headers.get('content-type') || '').toLowerCase();
+                        if (!contentType.includes('application/json')) {
+                            const text = await res.text();
+                            throw new Error(`Unexpected response (${res.status}): ${text.slice(0, 120)}`);
+                        }
+                        const json = await res.json();
+                        if (!res.ok) throw new Error(json.error || 'Delete failed');
+                        await this.fetchStorage(this.storagePrefix);
                     } catch (e) {
                         alert(String(e.message || e));
                     }

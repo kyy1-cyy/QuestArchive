@@ -10,6 +10,8 @@ import {
     GetObjectCommand,
     PutObjectCommand,
     ListObjectsV2Command,
+    DeleteObjectCommand,
+    DeleteObjectsCommand,
     CreateMultipartUploadCommand,
     UploadPartCommand,
     CompleteMultipartUploadCommand,
@@ -638,6 +640,148 @@ app.get('/api/donations/download-url', async (req, res) => {
         console.error(err);
         res.status(500).json({ error: 'Failed to generate download link' });
     }
+});
+
+function encodeKeyForPublicUrl(key) {
+    return encodeURIComponent(key).replace(/%2F/g, '/');
+}
+
+app.get('/api/storage/list', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    if (!ensureUploadEnv(req, res)) return;
+
+    const prefix = String(req.query.prefix || '');
+    if (prefix.includes('..')) {
+        return res.status(400).json({ error: 'Invalid prefix' });
+    }
+
+    try {
+        const command = new ListObjectsV2Command({
+            Bucket: process.env.R2_BUCKET_NAME,
+            Prefix: prefix || undefined,
+            Delimiter: '/'
+        });
+        const result = await s3Client.send(command);
+
+        const folders = (result.CommonPrefixes || [])
+            .map(p => p.Prefix)
+            .filter(Boolean);
+
+        const objects = (result.Contents || [])
+            .filter(o => o.Key && o.Key !== prefix && !o.Key.endsWith('/'))
+            .map(o => ({
+                key: o.Key,
+                lastModified: o.LastModified ? o.LastModified.toISOString() : null,
+                size: typeof o.Size === 'number' ? o.Size : null
+            }));
+
+        res.json({
+            prefix,
+            folders,
+            objects,
+            isTruncated: Boolean(result.IsTruncated)
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({
+            error: err?.message ? `Failed to list storage: ${err.message}` : 'Failed to list storage'
+        });
+    }
+});
+
+app.get('/api/storage/download-url', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    if (!ensureUploadEnv(req, res)) return;
+
+    const key = String(req.query.key || '');
+    if (!key || key.includes('..') || key.endsWith('/')) {
+        return res.status(400).json({ error: 'Invalid key' });
+    }
+
+    try {
+        if (process.env.R2_PUBLIC_DOMAIN) {
+            const url = `${process.env.R2_PUBLIC_DOMAIN}/${encodeKeyForPublicUrl(key)}`;
+            return res.json({ url });
+        }
+
+        const command = new GetObjectCommand({
+            Bucket: process.env.R2_BUCKET_NAME,
+            Key: key
+        });
+        const url = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
+        res.json({ url });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Failed to generate download link' });
+    }
+});
+
+app.post('/api/storage/delete', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    if (!ensureUploadEnv(req, res)) return;
+
+    const { key, prefix } = req.body ?? {};
+    const bucket = process.env.R2_BUCKET_NAME;
+
+    if (key) {
+        const k = String(key);
+        if (!k || k.includes('..') || k.endsWith('/')) {
+            return res.status(400).json({ error: 'Invalid key' });
+        }
+
+        try {
+            await s3Client.send(new DeleteObjectCommand({ Bucket: bucket, Key: k }));
+            return res.json({ success: true, deleted: 1 });
+        } catch (err) {
+            console.error(err);
+            return res.status(500).json({ error: 'Failed to delete file' });
+        }
+    }
+
+    if (prefix) {
+        const p = String(prefix);
+        if (!p || p.includes('..')) {
+            return res.status(400).json({ error: 'Invalid prefix' });
+        }
+
+        try {
+            let deleted = 0;
+            let continuationToken = undefined;
+
+            while (true) {
+                const list = await s3Client.send(new ListObjectsV2Command({
+                    Bucket: bucket,
+                    Prefix: p,
+                    ContinuationToken: continuationToken
+                }));
+
+                const keys = (list.Contents || [])
+                    .map(o => o.Key)
+                    .filter(Boolean)
+                    .filter(k => !k.endsWith('/'));
+
+                for (let i = 0; i < keys.length; i += 1000) {
+                    const batch = keys.slice(i, i + 1000).map(Key => ({ Key }));
+                    const out = await s3Client.send(new DeleteObjectsCommand({
+                        Bucket: bucket,
+                        Delete: { Objects: batch, Quiet: true }
+                    }));
+                    deleted += Array.isArray(out.Deleted) ? out.Deleted.length : batch.length;
+                }
+
+                if (!list.IsTruncated) break;
+                continuationToken = list.NextContinuationToken;
+                if (!continuationToken) break;
+            }
+
+            return res.json({ success: true, deleted });
+        } catch (err) {
+            console.error(err);
+            return res.status(500).json({ error: 'Failed to delete folder' });
+        }
+    }
+
+    res.status(400).json({ error: 'key or prefix is required' });
 });
 
 app.post('/api/github/images', async (req, res) => {
