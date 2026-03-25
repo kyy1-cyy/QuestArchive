@@ -159,6 +159,7 @@
                     </div>
                 </div>
 
+                <div :style="{ opacity: uploadState.removing ? 0 : 1, transition: 'opacity 0.45s ease' }">
                 <div v-if="preparedFileName" style="margin-top: 10px;">
                     <div class="muted">
                         File: <span style="color:#ce9178;">{{ preparedFileName }}</span>
@@ -188,6 +189,7 @@
                 <div v-if="uploadState.error" style="margin-top: 10px; color:#ff9999; font-size: 12px;">
                     {{ uploadState.error }}
                 </div>
+                </div>
             </div>
 
             <div v-if="activeTab === 'games'" class="uploader">
@@ -206,7 +208,7 @@
                         </button>
                         <button class="btn" @click="openBulkPicker" :disabled="bulkState.inProgress">Choose Files</button>
                         <button class="btn" @click="startBulkUpload" :disabled="bulkQueue.length === 0 || bulkState.inProgress">Start</button>
-                        <button v-if="bulkState.inProgress" class="btn btn-delete" @click="cancelBulkUpload">Cancel</button>
+                        <button v-if="bulkState.inProgress" class="btn btn-delete" @click="cancelBulkUpload">Cancel All</button>
                         <input ref="bulkInput" type="file" accept=".zip" multiple style="display:none" @change="handleBulkPick">
                     </div>
                 </div>
@@ -218,14 +220,18 @@
                                 <th>File</th>
                                 <th>MD5</th>
                                 <th style="text-align:right;">Status</th>
+                                <th style="text-align:right; width: 70px;">X</th>
                             </tr>
                         </thead>
                         <tbody>
-                            <tr v-for="item in bulkQueue" :key="item.name">
+                            <tr v-for="item in bulkQueue" :key="item.name" :style="{ opacity: item.removing ? 0 : 1, transition: 'opacity 0.45s ease' }">
                                 <td style="color:#ce9178;">{{ item.name }}</td>
                                 <td style="color:#9cdcfe; font-size: 12px;">{{ item.hash }}</td>
-                                <td style="text-align:right; font-size: 12px;" :style="{ color: item.status === 'done' ? '#6a9955' : (item.status === 'error' ? '#ff9999' : '#808080') }">
-                                    {{ item.status }}
+                                <td style="text-align:right; font-size: 12px;" :style="{ color: item.status === 'done' ? '#6a9955' : (item.status === 'uploading' ? '#9cdcfe' : '#808080') }">
+                                    {{ item.status === 'cancelled' ? 'cancelled' : item.status }}
+                                </td>
+                                <td style="text-align:right;">
+                                    <button v-if="item.status === 'uploading' && bulkState.inProgress" class="btn btn-delete" style="padding: 2px 8px;" @click="cancelCurrentBulkItem">✕</button>
                                 </td>
                             </tr>
                         </tbody>
@@ -236,6 +242,7 @@
                     <div class="muted">
                         Current: <span style="color:#ce9178;">{{ bulkState.currentName || '-' }}</span>
                         <span v-if="bulkState.currentHash"> → <span style="color:#9cdcfe;">{{ bulkState.currentHash }}</span></span>
+                        <button v-if="bulkState.inProgress && bulkState.currentName" class="btn btn-delete" style="padding: 2px 8px; margin-left: 10px;" @click="cancelCurrentBulkItem">✕</button>
                     </div>
                     <div class="progress-wrap">
                         <div class="progress-bar" :style="{ width: bulkState.currentPercent + '%' }"></div>
@@ -527,7 +534,8 @@
                         mbps: 0,
                         eta: '--:--',
                         message: '',
-                        error: ''
+                        error: '',
+                        removing: false
                     },
                     uploadInternals: {
                         startedAt: 0,
@@ -558,7 +566,8 @@
                         currentLoaded: 0,
                         activeXhrs: [],
                         currentKey: '',
-                        currentUploadId: ''
+                        currentUploadId: '',
+                        cancelCurrent: false
                     }
                 }
             },
@@ -687,6 +696,7 @@
                     this.uploadState.error = '';
                     this.uploadState.key = '';
                     this.uploadState.uploadId = '';
+                    this.uploadState.removing = false;
                     this.preparedFile = null;
                     this.preparedFileName = '';
                     this.hashState.computing = false;
@@ -718,6 +728,7 @@
                     this.bulkInternals.currentLoaded = 0;
                     this.bulkInternals.currentKey = '';
                     this.bulkInternals.currentUploadId = '';
+                    this.bulkInternals.cancelCurrent = false;
                     this.bulkInternals.activeXhrs.forEach(x => { try { x.abort(); } catch (_) {} });
                     this.bulkInternals.activeXhrs = [];
                 },
@@ -834,9 +845,17 @@
                             body: JSON.stringify({ key, uploadId })
                         }).finally(() => {
                             this.uploadState.message = 'Cancelled';
+                            this.uploadState.removing = true;
+                            setTimeout(() => {
+                                this.resetUploadState();
+                            }, 600);
                         });
                     } else {
                         this.uploadState.message = 'Cancelled';
+                        this.uploadState.removing = true;
+                        setTimeout(() => {
+                            this.resetUploadState();
+                        }, 600);
                     }
                 },
                 async prepareUpload(file) {
@@ -988,6 +1007,10 @@
                         this.updateProgress();
                         this.uploadState.inProgress = false;
                         this.uploadState.message = 'Done';
+                        this.uploadState.removing = true;
+                        setTimeout(() => {
+                            this.resetUploadState();
+                        }, 800);
                     } catch (e) {
                         this.uploadState.inProgress = false;
                         this.uploadState.error = String(e.message || e);
@@ -1012,10 +1035,12 @@
                     this.bulkState.inProgress = true;
                     this.bulkInternals.batchStartedAt = Date.now();
                     this.bulkInternals.totalBytes = this.bulkQueue.reduce((sum, i) => sum + (i.size || 0), 0);
+                    this.bulkInternals.doneBytes = 0;
 
                     for (const item of this.bulkQueue) {
                         if (!this.bulkState.inProgress) break;
                         if (item.status === 'done') continue;
+                        if (item.status === 'cancelled') continue;
 
                         item.status = 'uploading';
                         this.bulkState.currentName = item.name;
@@ -1024,6 +1049,8 @@
                         this.bulkState.currentMbps = 0;
                         this.bulkState.currentEta = '--:--';
                         this.bulkInternals.currentLoaded = 0;
+                        this.bulkInternals.cancelCurrent = false;
+                        this.bulkInternals.activeXhrs = [];
                         this.updateBulkProgress();
 
                         try {
@@ -1032,11 +1059,16 @@
                             this.bulkInternals.doneBytes += item.size || 0;
                             this.bulkInternals.currentLoaded = 0;
                             this.updateBulkProgress();
+                            setTimeout(() => {
+                                item.removing = true;
+                                setTimeout(() => {
+                                    const idx = this.bulkQueue.findIndex(i => i.name === item.name);
+                                    if (idx !== -1) this.bulkQueue.splice(idx, 1);
+                                }, 500);
+                            }, 250);
                         } catch (e) {
-                            item.status = 'error';
-                            this.bulkState.error = String(e.message || e);
-                            this.bulkState.inProgress = false;
-                            break;
+                            await this.finalizeBulkItemAsCancelled(item);
+                            continue;
                         }
                     }
 
@@ -1071,6 +1103,7 @@
 
                     for (let i = 0; i < totalParts; i++) {
                         if (!this.bulkState.inProgress) throw new Error('Cancelled');
+                        if (this.bulkInternals.cancelCurrent) throw new Error('Cancelled');
                         const partNumber = i + 1;
                         const start = i * partSize;
                         const end = Math.min(start + partSize, file.size);
@@ -1134,10 +1167,9 @@
                     const completeJson = await completeRes.json();
                     if (!completeRes.ok) throw new Error(completeJson.error || 'Complete failed');
                 },
-                async cancelBulkUpload() {
-                    this.bulkState.inProgress = false;
+                async cancelCurrentBulkItem() {
+                    this.bulkInternals.cancelCurrent = true;
                     this.bulkInternals.activeXhrs.forEach(x => { try { x.abort(); } catch (_) {} });
-                    this.bulkInternals.activeXhrs = [];
                     const key = this.bulkInternals.currentKey;
                     const uploadId = this.bulkInternals.currentUploadId;
                     if (key && uploadId) {
@@ -1147,11 +1179,39 @@
                             body: JSON.stringify({ key, uploadId })
                         }).catch(() => {});
                     }
+                },
+                async finalizeBulkItemAsCancelled(item) {
+                    item.status = 'cancelled';
+                    const remaining = Math.max((item.size || 0), 0);
+                    this.bulkInternals.totalBytes = Math.max(0, (this.bulkInternals.totalBytes || 0) - remaining);
+                    this.bulkInternals.currentLoaded = 0;
+                    this.bulkInternals.currentKey = '';
+                    this.bulkInternals.currentUploadId = '';
+                    this.bulkInternals.activeXhrs = [];
+                    this.updateBulkProgress();
+
+                    setTimeout(() => {
+                        item.removing = true;
+                        setTimeout(() => {
+                            const idx = this.bulkQueue.findIndex(i => i.name === item.name);
+                            if (idx !== -1) this.bulkQueue.splice(idx, 1);
+                        }, 500);
+                    }, 250);
+                },
+                async cancelBulkUpload() {
+                    if (!this.bulkState.inProgress && this.bulkQueue.length === 0) return;
+                    await this.cancelCurrentBulkItem();
+                    this.bulkState.inProgress = false;
                     for (const item of this.bulkQueue) {
-                        if (item.status === 'uploading' || item.status === 'pending') {
-                            item.status = 'cancelled';
-                        }
+                        if (item.status === 'done') continue;
+                        item.status = 'cancelled';
+                        item.removing = true;
                     }
+                    setTimeout(() => {
+                        this.bulkQueue.splice(0, this.bulkQueue.length);
+                        this.bulkQueueOpen = false;
+                        this.resetBulkState();
+                    }, 550);
                 },
                 toggleAll(e) {
                     if (e.target.checked) {
