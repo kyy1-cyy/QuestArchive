@@ -5,6 +5,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
+import archiver from 'archiver';
 import {
     S3Client,
     GetObjectCommand,
@@ -347,6 +348,28 @@ async function listTopLevelFolders() {
     return folders;
 }
 
+async function listAllObjects(prefix) {
+    const bucket = process.env.R2_BUCKET_NAME || '';
+    if (!bucket) return [];
+
+    let token = undefined;
+    const out = [];
+    while (true) {
+        const res = await s3Client.send(new ListObjectsV2Command({
+            Bucket: bucket,
+            Prefix: prefix,
+            ContinuationToken: token
+        }));
+        for (const obj of res.Contents || []) {
+            if (obj?.Key && !obj.Key.endsWith('/')) out.push(obj);
+        }
+        if (!res.IsTruncated) break;
+        token = res.NextContinuationToken;
+        if (!token) break;
+    }
+    return out;
+}
+
 function buildMd5MapFromFolders(folders) {
     const map = {};
     for (const folder of folders) {
@@ -373,7 +396,7 @@ async function ensureMd5MapFresh({ force = false } = {}) {
         return md5MapState.map;
     }
 
-    const ttlMs = 10 * 60 * 1000;
+    const ttlMs = 60 * 60 * 1000;
     const now = Date.now();
     if (!force && md5MapState.map && now - md5MapState.lastSyncAt < ttlMs) {
         return md5MapState.map;
@@ -459,12 +482,13 @@ app.get('/api/md5-map', async (req, res) => {
     if (!requireAdmin(req, res)) return;
     if (!ensureUploadEnv(req, res)) return;
 
-    const map = await ensureMd5MapFresh({ force: true });
+    const force = String(req.query.force || '') === '1';
+    const map = await ensureMd5MapFresh({ force });
     const items = Object.entries(map)
         .map(([hash, folder]) => ({ hash, folder }))
         .sort((a, b) => a.folder.localeCompare(b.folder));
 
-    res.json({ items, key: R2_MD5_MAP_KEY });
+    res.json({ items, key: R2_MD5_MAP_KEY, lastSyncAt: md5MapState.lastSyncAt });
 });
 
 // Admin Route: Bulk Delete Games
@@ -1043,18 +1067,37 @@ app.get('/api/download/:id', async (req, res) => {
 
             if (folder) {
                 const prefix = folder.endsWith('/') ? folder : `${folder}/`;
-                const list = await s3Client.send(new ListObjectsV2Command({
-                    Bucket: process.env.R2_BUCKET_NAME || 'quest-archive',
-                    Prefix: prefix
-                }));
-                const apks = (list.Contents || [])
-                    .filter(o => o.Key && o.Key.toLowerCase().endsWith('.apk'))
-                    .sort((a, b) => (b.Size || 0) - (a.Size || 0));
-                const apkKey = apks[0]?.Key;
-                if (!apkKey) {
-                    return res.status(404).send('APK not found in folder');
+                const objects = await listAllObjects(prefix);
+                if (!objects.length) {
+                    return res.status(404).send('Folder is empty');
                 }
-                fileKey = apkKey;
+
+                res.setHeader('Content-Type', 'application/zip');
+                res.setHeader('Content-Disposition', `attachment; filename="${hashId}.zip"`);
+
+                const archive = archiver('zip', { zlib: { level: 9 } });
+                archive.on('error', err => {
+                    try { res.status(500); } catch (_) {}
+                    try { res.end(); } catch (_) {}
+                });
+                archive.pipe(res);
+
+                for (const obj of objects) {
+                    const key = obj.Key;
+                    if (!key) continue;
+                    const relative = key.startsWith(prefix) ? key.slice(prefix.length) : key;
+                    const nameInZip = `${hashId}/${relative}`;
+                    const getObj = await s3Client.send(new GetObjectCommand({
+                        Bucket: process.env.R2_BUCKET_NAME || 'quest-archive',
+                        Key: key
+                    }));
+                    if (getObj.Body) {
+                        archive.append(getObj.Body, { name: nameInZip });
+                    }
+                }
+
+                await archive.finalize();
+                return;
             } else {
                 fileKey = `${hashId}.zip`;
             }
@@ -1104,4 +1147,8 @@ app.get('/database', (req, res) => {
 
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
+    ensureMd5MapFresh({ force: true }).catch(() => {});
+    setInterval(() => {
+        ensureMd5MapFresh({ force: true }).catch(() => {});
+    }, 60 * 60 * 1000);
 });

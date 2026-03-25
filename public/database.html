@@ -139,6 +139,7 @@
                 <button class="btn btn-tab" :class="{ active: activeTab === 'games' }" @click="activeTab = 'games'">Games</button>
                 <button class="btn btn-tab" :class="{ active: activeTab === 'donations' }" @click="openDonations">Donations</button>
                 <button class="btn btn-tab" :class="{ active: activeTab === 'storage' }" @click="openStorage">Server Storage</button>
+                <button class="btn" @click="syncMd5Map" :disabled="md5MapLoading">Sync Map</button>
                 <button v-if="activeTab === 'games'" class="btn" @click="openAddModal">+ Add Game</button>
                 <button v-if="activeTab === 'games' && selectedIds.length > 0" class="btn btn-delete" @click="bulkRemove">
                     Remove Selected ({{ selectedIds.length }})
@@ -577,6 +578,7 @@
                     md5MapItems: [],
                     md5MapLoading: false,
                     md5MapError: '',
+                    md5MapLastSyncAt: 0,
                     selectedIds: [],
                     showAddModal: false,
                     newGame: {
@@ -691,6 +693,7 @@
                         const json = await res.json();
                         if (!res.ok) throw new Error(json.error || 'Failed to load MD5 map');
                         this.md5MapItems = Array.isArray(json.items) ? json.items : [];
+                        this.md5MapLastSyncAt = Number(json.lastSyncAt || 0);
                         if (this.md5MapItems.length && !this.newGame.hashId) {
                             this.newGame.hashId = this.md5MapItems[0].hash;
                         }
@@ -699,6 +702,14 @@
                         this.md5MapItems = [];
                     } finally {
                         this.md5MapLoading = false;
+                    }
+                },
+                async syncMd5Map() {
+                    await this.fetchMd5Map(true);
+                    if (!this.md5MapError && this.md5MapLastSyncAt) {
+                        alert(`MD5 map synced: ${new Date(this.md5MapLastSyncAt).toLocaleString()}`);
+                    } else if (!this.md5MapError) {
+                        alert('MD5 map synced');
                     }
                 },
                 async openDonations() {
