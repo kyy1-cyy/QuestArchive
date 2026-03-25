@@ -5,8 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js",
-    "r2:hash-folders": "node scripts/r2_md5_folder_rename.js"
+    "dev": "node --watch server.js"
   },
   "keywords": [],
   "author": "",

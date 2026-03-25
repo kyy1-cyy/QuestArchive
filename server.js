@@ -145,6 +145,7 @@ const s3Client = new S3Client({
 const DB_PATH = path.join(__dirname, 'data', 'database.txt');
 const R2_DB_KEY = process.env.R2_DB_KEY || '';
 const DONATIONS_PUBLIC_DOMAIN = process.env.DONATIONS_PUBLIC_DOMAIN || '';
+const R2_MD5_MAP_KEY = process.env.R2_MD5_MAP_KEY || 'map_md5.json';
 const GITHUB_OWNER = process.env.GITHUB_OWNER || 'kyy1-cyy';
 const GITHUB_REPO = process.env.GITHUB_REPO || 'QuestArchive';
 const GITHUB_BRANCH = process.env.GITHUB_BRANCH || 'main';
@@ -269,9 +270,145 @@ async function writeDBToR2(data) {
     await s3Client.send(command);
 }
 
+function md5Newline(value) {
+    return crypto.createHash('md5').update(`${value}\n`, 'utf8').digest('hex');
+}
+
+async function readJsonFromR2(key, fallbackValue) {
+    const bucket = process.env.R2_BUCKET_NAME || '';
+    if (!bucket) return fallbackValue;
+
+    try {
+        const command = new GetObjectCommand({
+            Bucket: bucket,
+            Key: key
+        });
+        const result = await s3Client.send(command);
+        const bodyString = result.Body ? await streamToString(result.Body) : '';
+        return bodyString ? JSON.parse(bodyString) : fallbackValue;
+    } catch (err) {
+        const status = err?.$metadata?.httpStatusCode;
+        if (status === 404) return fallbackValue;
+        return fallbackValue;
+    }
+}
+
+async function writeJsonToR2(key, value) {
+    const bucket = process.env.R2_BUCKET_NAME || '';
+    if (!bucket) return;
+
+    const body = JSON.stringify(value ?? {}, null, 2);
+    const command = new PutObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        Body: body,
+        ContentType: 'application/json',
+        CacheControl: 'no-store'
+    });
+    await s3Client.send(command);
+}
+
+const md5MapState = {
+    lastSyncAt: 0,
+    syncing: null,
+    map: null
+};
+
+async function listTopLevelFolders() {
+    const bucket = process.env.R2_BUCKET_NAME || '';
+    if (!bucket) return [];
+
+    let token = undefined;
+    const folders = [];
+    const seen = new Set();
+
+    while (true) {
+        const out = await s3Client.send(new ListObjectsV2Command({
+            Bucket: bucket,
+            Delimiter: '/',
+            ContinuationToken: token
+        }));
+
+        for (const p of out.CommonPrefixes || []) {
+            const pref = p?.Prefix;
+            if (!pref) continue;
+            const name = pref.endsWith('/') ? pref.slice(0, -1) : pref;
+            if (!name) continue;
+            if (seen.has(name)) continue;
+            seen.add(name);
+            folders.push(name);
+        }
+
+        if (!out.IsTruncated) break;
+        token = out.NextContinuationToken;
+        if (!token) break;
+    }
+
+    return folders;
+}
+
+function buildMd5MapFromFolders(folders) {
+    const map = {};
+    for (const folder of folders) {
+        map[md5Newline(folder)] = folder;
+    }
+    return map;
+}
+
+function shallowEqualObject(a, b) {
+    if (a === b) return true;
+    if (!a || !b) return false;
+    const ak = Object.keys(a);
+    const bk = Object.keys(b);
+    if (ak.length !== bk.length) return false;
+    for (const k of ak) {
+        if (a[k] !== b[k]) return false;
+    }
+    return true;
+}
+
+async function ensureMd5MapFresh({ force = false } = {}) {
+    if (!process.env.R2_BUCKET_NAME || !process.env.R2_ENDPOINT || !process.env.R2_ACCESS_KEY_ID || !process.env.R2_SECRET_ACCESS_KEY) {
+        md5MapState.map = md5MapState.map || {};
+        return md5MapState.map;
+    }
+
+    const ttlMs = 10 * 60 * 1000;
+    const now = Date.now();
+    if (!force && md5MapState.map && now - md5MapState.lastSyncAt < ttlMs) {
+        return md5MapState.map;
+    }
+
+    if (md5MapState.syncing) return md5MapState.syncing;
+
+    md5MapState.syncing = (async () => {
+        const existing = await readJsonFromR2(R2_MD5_MAP_KEY, {});
+        const folders = await listTopLevelFolders();
+        const rebuilt = buildMd5MapFromFolders(folders);
+
+        if (!shallowEqualObject(existing, rebuilt)) {
+            await writeJsonToR2(R2_MD5_MAP_KEY, rebuilt);
+        }
+
+        md5MapState.map = rebuilt;
+        md5MapState.lastSyncAt = Date.now();
+        md5MapState.syncing = null;
+        return rebuilt;
+    })().catch(err => {
+        console.error('MD5 map sync failed:', err);
+        md5MapState.syncing = null;
+        md5MapState.lastSyncAt = Date.now();
+        md5MapState.map = md5MapState.map || {};
+        return md5MapState.map;
+    });
+
+    return md5MapState.syncing;
+}
+
 // Routes
 // Get all games
 app.get('/api/games', async (req, res) => {
+    ensureMd5MapFresh().catch(() => {});
     const games = await readDB();
     const publicGames = games.map(g => ({
         id: g.publicId,
@@ -316,6 +453,18 @@ app.post('/api/database', async (req, res) => {
     await writeDB(games);
 
     res.status(201).json(newGame);
+});
+
+app.get('/api/md5-map', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    if (!ensureUploadEnv(req, res)) return;
+
+    const map = await ensureMd5MapFresh({ force: true });
+    const items = Object.entries(map)
+        .map(([hash, folder]) => ({ hash, folder }))
+        .sort((a, b) => a.folder.localeCompare(b.folder));
+
+    res.json({ items, key: R2_MD5_MAP_KEY });
 });
 
 // Admin Route: Bulk Delete Games
@@ -887,15 +1036,37 @@ app.get('/api/download/:id', async (req, res) => {
     try {
         const hashId = String(game.hashId || '').trim().toLowerCase();
         const title = String(game.title || '').trim();
-        const fileKey = /^[a-f0-9]{32}$/.test(hashId)
-            ? `${hashId}.zip`
-            : (title.toLowerCase().endsWith('.zip') ? title : `${title}.zip`);
+        let fileKey;
+        if (/^[a-f0-9]{32}$/.test(hashId)) {
+            const map = await ensureMd5MapFresh({ force: false });
+            const folder = map[hashId];
+
+            if (folder) {
+                const prefix = folder.endsWith('/') ? folder : `${folder}/`;
+                const list = await s3Client.send(new ListObjectsV2Command({
+                    Bucket: process.env.R2_BUCKET_NAME || 'quest-archive',
+                    Prefix: prefix
+                }));
+                const apks = (list.Contents || [])
+                    .filter(o => o.Key && o.Key.toLowerCase().endsWith('.apk'))
+                    .sort((a, b) => (b.Size || 0) - (a.Size || 0));
+                const apkKey = apks[0]?.Key;
+                if (!apkKey) {
+                    return res.status(404).send('APK not found in folder');
+                }
+                fileKey = apkKey;
+            } else {
+                fileKey = `${hashId}.zip`;
+            }
+        } else {
+            fileKey = title.toLowerCase().endsWith('.zip') ? title : `${title}.zip`;
+        }
         
         // If you set up a custom domain on your Cloudflare R2 bucket (highly recommended for speed),
         // we redirect straight to that domain. This ensures the user hits the nearest Cloudflare Edge node.
         if (process.env.R2_PUBLIC_DOMAIN) {
             // Encode the title so spaces become %20, e.g., "Marvels_Deadpool_VR.zip" stays valid
-            const publicUrl = `${process.env.R2_PUBLIC_DOMAIN}/${encodeURIComponent(fileKey)}`;
+            const publicUrl = `${process.env.R2_PUBLIC_DOMAIN}/${encodeKeyForPublicUrl(fileKey)}`;
             return res.redirect(302, publicUrl);
         }
 
@@ -923,6 +1094,7 @@ app.get('/ping', (req, res) => {
 
 // Serve frontend
 app.get('/', (req, res) => {
+    ensureMd5MapFresh().catch(() => {});
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
