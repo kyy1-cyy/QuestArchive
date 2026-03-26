@@ -475,18 +475,14 @@
                         </div>
 
                         <div v-else class="flex-1 flex flex-col h-full animate-fade-in">
-                            <!-- Thumbnail -->
                             <div
-                                class="w-full aspect-[18/9] rounded-xl overflow-hidden bg-black mb-4 relative border border-white/5 shrink-0">
-                                <div v-if="!imgLoaded" class="absolute inset-0 img-placeholder"></div>
-                                <transition name="fade">
-                                    <img v-show="imgLoaded" :src="selectedGame.thumbnailUrl" @load="imgLoaded = true"
-                                        class="w-full h-full object-cover opacity-90" loading="lazy"
-                                        @error="handleImageError">
-                                </transition>
-                                <div
-                                    class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent pointer-events-none">
-                                </div>
+                                class="w-full aspect-[18/9] rounded-xl overflow-hidden bg-[#111] mb-6 relative border border-white/10 shrink-0">
+                                <img :src="selectedGame.thumbnailUrl || 'https://via.placeholder.com/800x400?text=No+Thumbnail'"
+                                    class="w-full h-full object-cover transition-opacity duration-500" 
+                                    :class="{'opacity-0': !selectedGame.thumbnailUrl, 'opacity-100': selectedGame.thumbnailUrl}"
+                                    loading="lazy"
+                                    @error="handleImageError">
+                                <div class="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none"></div>
                             </div>
 
                             <!-- Meta -->

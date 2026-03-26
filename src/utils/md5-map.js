@@ -85,3 +85,10 @@ export async function ensureMd5MapFresh({ force = false } = {}) {
 
     return readJsonFromR2(config.R2.MD5_MAP_KEY, {});
 }
+
+export async function findKeyByHash(hash) {
+    const map = await readJsonFromR2(config.R2.MD5_MAP_KEY, {});
+    const originalName = map[hash];
+    if (!originalName) return null;
+    return originalName.toLowerCase().endsWith('.zip') ? originalName : `${originalName}.zip`;
+}
