@@ -913,6 +913,19 @@
                         document.body.removeChild(a);
                         setTimeout(() => URL.revokeObjectURL(url), 60000);
 
+                        try {
+                            const m = String(info.url || '').match(/\/api\/download\/([^/?#]+)/);
+                            const publicId = m ? m[1] : '';
+                            if (publicId) {
+                                await fetch('/api/download-complete', {
+                                    method: 'POST',
+                                    cache: 'no-store',
+                                    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', Pragma: 'no-cache' },
+                                    body: JSON.stringify({ publicId })
+                                });
+                            }
+                        } catch (_) { }
+
                         this.dlState.percent = 100;
                         this.dlState.active = false;
                         this.dlState.message = 'Download complete';

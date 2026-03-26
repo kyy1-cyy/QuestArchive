@@ -44,7 +44,7 @@ function issueDownloadTicket(req, res, publicId) {
         httpOnly: true,
         secure: req.hostname !== 'localhost' && req.hostname !== '127.0.0.1',
         sameSite: 'lax',
-        path: '/api/download',
+        path: '/api',
         maxAge: 2 * 60 * 1000
     });
 }
@@ -58,6 +58,25 @@ function requireDownloadTicket(req, res, publicId) {
     } catch {
         return false;
     }
+}
+
+const usedDownloadTickets = new Map();
+function markTicketUsed(token) {
+    usedDownloadTickets.set(token, Date.now());
+    if (usedDownloadTickets.size > 2000) {
+        const entries = Array.from(usedDownloadTickets.entries()).sort((a, b) => a[1] - b[1]);
+        for (const [k] of entries.slice(0, 500)) usedDownloadTickets.delete(k);
+    }
+}
+
+function isTicketUsed(token) {
+    const ts = usedDownloadTickets.get(token);
+    if (!ts) return false;
+    if (Date.now() - ts > 5 * 60 * 1000) {
+        usedDownloadTickets.delete(token);
+        return false;
+    }
+    return true;
 }
 
 async function checkObjectExists(key) {
@@ -229,7 +248,9 @@ async function streamFromR2(key, req, res, gameId) {
     
     res.status(s3Res.$metadata.httpStatusCode || 200);
     
-    incrementDownloadCount(gameId).catch(e => logger.error('Incr error', e));
+    if (!req.headers.range) {
+        incrementDownloadCount(gameId).catch(e => logger.error('Incr error', e));
+    }
 
     if (s3Res.Body) {
         s3Res.Body.pipe(res);
@@ -237,5 +258,28 @@ async function streamFromR2(key, req, res, gameId) {
         res.end();
     }
 }
+
+router.post('/download-complete', async (req, res) => {
+    try {
+        const { publicId } = req.body ?? {};
+        const pid = String(publicId || '').trim();
+        if (!pid) return res.status(400).json({ error: 'publicId is required' });
+
+        const token = req.cookies?.dl_ticket;
+        if (!token) return res.status(403).json({ error: 'Expired' });
+        if (isTicketUsed(token)) return res.json({ success: true });
+        if (!requireDownloadTicket(req, res, pid)) return res.status(403).json({ error: 'Expired' });
+
+        const games = await readDB();
+        const game = games.find(g => g.publicId === pid) || null;
+        if (!game) return res.status(404).json({ error: 'Game not found' });
+
+        markTicketUsed(token);
+        await incrementDownloadCount(game.publicId);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: 'Failed' });
+    }
+});
 
 export default router;
