@@ -15,7 +15,7 @@ const loginLimiter = rateLimit({
 router.post('/login', loginLimiter, (req, res, next) => {
     try {
         const { password } = req.body;
-        
+
         if (password !== config.ADMIN_PASSWORD) {
             return res.status(401).json({ error: 'Invalid password' });
         }
@@ -24,9 +24,9 @@ router.post('/login', loginLimiter, (req, res, next) => {
 
         res.cookie('admin_token', token, {
             httpOnly: true,
-            secure: true, // Always use secure cookies for Render/HTTPS
-            sameSite: 'lax', // Lax is better for cross-site navigation while still being secure
-            maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+            secure: true,
+            sameSite: 'lax',
+            maxAge: 7 * 24 * 60 * 60 * 1000
         });
 
         res.json({ success: true });

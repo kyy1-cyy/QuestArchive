@@ -10,8 +10,8 @@ import { logger } from '../utils/logger.js';
 const router = express.Router();
 
 const downloadLimiter = rateLimit({
-    windowMs: 60 * 1000, 
-    max: 5, // Increased from 2 to 5 for the actual download
+    windowMs: 60 * 1000,
+    max: 5,
     message: { error: 'Download limit exceeded. Please wait a minute.' },
     standardHeaders: true,
     legacyHeaders: false,
@@ -70,7 +70,7 @@ router.get('/download-info/:id', async (req, res, next) => {
                 const cl = headRes.headers.get('content-length');
                 if (cl) fileSize = parseInt(cl, 10);
             }
-        } catch (_) {}
+        } catch (_) { }
 
         const CHUNK_SIZE = 10 * 1024 * 1024;
         let chunks = [];
@@ -109,8 +109,7 @@ router.get('/download/:id', downloadLimiter, async (req, res, next) => {
 
         const fileKey = resolveFileKey(game);
         const url = await buildDownloadUrl(fileKey);
-        
-        // Background increment
+
         incrementDownloadCount(game.id).catch(err => {
             logger.error('Failed to increment download count', { error: err.message, gameId: game.id });
         });

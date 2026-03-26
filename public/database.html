@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,71 +8,191 @@
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <style>
         body {
-            background-color: #1e1e1e;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background-color: #0c0c0c;
             color: #d4d4d4;
-            font-family: 'Consolas', 'Courier New', monospace;
             margin: 0;
-            padding: 20px;
+            padding: 24px;
+            line-height: 1.5;
         }
+
         .toolbar {
             display: flex;
             align-items: center;
-            gap: 15px;
-            padding-bottom: 15px;
-            border-bottom: 1px dashed #555;
-            margin-bottom: 20px;
+            gap: 12px;
+            margin-bottom: 24px;
+            padding: 12px 20px;
+            background: rgba(25, 25, 25, 0.8);
+            backdrop-filter: blur(12px);
+            border: 1px solid #333;
+            border-radius: 8px;
+            position: sticky;
+            top: 24px;
+            z-index: 100;
         }
+
         .btn {
             background: #333;
-            color: #fff;
-            border: 1px solid #555;
-            padding: 6px 12px;
+            color: #eee;
+            border: 1px solid #444;
+            padding: 8px 16px;
+            border-radius: 6px;
             cursor: pointer;
-            font-family: inherit;
-            font-size: 14px;
-            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
         }
-        .btn:hover { background: #444; }
-        .btn-delete { background: #5a1a1a; border-color: #7a2a2a; color: #ff9999; }
-        .btn-delete:hover { background: #7a2a2a; color: #fff; }
-        .btn-tab { background: transparent; border-color: #444; color: #d4d4d4; }
-        .btn-tab:hover { background: #2a2d2e; }
-        .btn-tab.active { background: #2a2d2e; border-color: #007acc; color: #fff; }
-        
+
+        .btn:hover {
+            background: #444;
+            border-color: #555;
+            transform: translateY(-1px);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn.active {
+            background: #007acc;
+            color: #fff;
+            border-color: #008be1;
+            box-shadow: 0 0 12px rgba(0, 122, 204, 0.3);
+        }
+
+        .btn-delete {
+            background: #5a1a1a;
+            border-color: #7a2a2a;
+            color: #ff9999;
+        }
+
+        .btn-delete:hover {
+            background: #7a2a2a;
+            color: #fff;
+        }
+
+        .btn-tab {
+            background: transparent;
+            border-color: #444;
+            color: #d4d4d4;
+        }
+
+        .btn-tab:hover {
+            background: #2a2d2e;
+        }
+
+        .btn-tab.active {
+            background: #2a2d2e;
+            border-color: #007acc;
+            color: #fff;
+        }
+
         /* Table Styles */
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th { text-align: left; padding: 12px 10px; border-bottom: 1px solid #555; color: #9cdcfe; font-weight: normal; }
-        td { padding: 12px 10px; border-bottom: 1px solid #333; }
-        tr:hover { background-color: #2a2d2e; }
-        
+        table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            background: #181818;
+            border: 1px solid #2a2a2a;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        th {
+            background: #252526;
+            text-align: left;
+            padding: 14px;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #888;
+            border-bottom: 1px solid #333;
+        }
+
+        td {
+            padding: 14px;
+            border-bottom: 1px solid #2a2a2a;
+            font-size: 13px;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        tr:hover td {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
         /* Checkbox */
-        input[type="checkbox"] { cursor: pointer; width: 16px; height: 16px; accent-color: #007acc; }
+        input[type="checkbox"] {
+            cursor: pointer;
+            width: 16px;
+            height: 16px;
+            accent-color: #007acc;
+        }
 
         /* Modal */
         .overlay {
-            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,0.7);
-            display: flex; align-items: center; justify-content: center;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
             z-index: 100;
         }
+
         .modal {
             background: #252526;
             border: 1px solid #454545;
             padding: 20px;
             width: 400px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
             border-radius: 6px;
         }
-        .form-group { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 5px; color: #9cdcfe; font-size: 13px; }
-        input[type="text"], input[type="password"], textarea {
-            width: 100%; box-sizing: border-box;
-            background: #3c3c3c; color: #d4d4d4;
-            border: 1px solid #555; padding: 8px;
-            font-family: inherit; border-radius: 4px;
+
+        .form-group {
+            margin-bottom: 15px;
         }
-        input:focus, textarea:focus { outline: none; border-color: #007acc; }
-        .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #9cdcfe;
+            font-size: 13px;
+        }
+
+        input[type="text"],
+        input[type="password"],
+        textarea {
+            width: 100%;
+            box-sizing: border-box;
+            background: #3c3c3c;
+            color: #d4d4d4;
+            border: 1px solid #555;
+            padding: 8px;
+            font-family: inherit;
+            border-radius: 4px;
+        }
+
+        input:focus,
+        textarea:focus {
+            outline: none;
+            border-color: #007acc;
+        }
+
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 20px;
+        }
 
         .uploader {
             margin-bottom: 20px;
@@ -80,6 +201,7 @@
             padding: 14px;
             background: #1b1b1b;
         }
+
         .dropzone {
             border: 1px solid #333;
             border-radius: 8px;
@@ -90,10 +212,12 @@
             justify-content: space-between;
             gap: 12px;
         }
+
         .dropzone.active {
             border-color: #007acc;
             box-shadow: 0 0 0 1px rgba(0, 122, 204, 0.35);
         }
+
         .progress-wrap {
             margin-top: 12px;
             border: 1px solid #333;
@@ -102,25 +226,113 @@
             background: #101010;
             height: 12px;
         }
+
         .progress-bar {
             height: 100%;
             width: 0%;
             background: #007acc;
             transition: width 0.15s linear;
         }
-        .muted { color: #808080; font-size: 12px; }
+
+        .muted {
+            color: #808080;
+            font-size: 12px;
+        }
+
+        /* Toast Notifications */
+        .toast-container {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            z-index: 2000;
+        }
+
+        .toast {
+            background: #1e1e1e;
+            border: 1px solid #333;
+            color: #ccc;
+            padding: 12px 20px;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 500;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+            animation: toastIn 0.3s ease-out forwards;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            max-width: 320px;
+        }
+
+        @keyframes toastIn {
+            from {
+                transform: translateY(20px);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .toast.error {
+            border-left: 4px solid #f44336;
+            color: #ff9999;
+        }
+
+        .toast.success {
+            border-left: 4px solid #4caf50;
+            color: #99ff99;
+        }
+
+        .toast.info {
+            border-left: 4px solid #2196f3;
+        }
+
         @media (max-width: 640px) {
-            body { padding: 12px; }
-            .toolbar { flex-wrap: wrap; gap: 10px; }
-            .dropzone { flex-direction: column; align-items: stretch; }
-            .dropzone > div:last-child { flex-wrap: wrap; justify-content: flex-end; }
-            .dropzone input[type="text"] { width: 100% !important; }
-            table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+            body {
+                padding: 12px;
+            }
+
+            .toolbar {
+                flex-wrap: wrap;
+                gap: 10px;
+            }
+
+            .dropzone {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .dropzone>div:last-child {
+                flex-wrap: wrap;
+                justify-content: flex-end;
+            }
+
+            .dropzone input[type="text"] {
+                width: 100% !important;
+            }
+
+            table {
+                display: block;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
         }
     </style>
 </head>
+
 <body>
     <div id="app">
+        <!-- Toast Notifications -->
+        <div class="toast-container">
+            <div v-for="toast in toasts" :key="toast.id" class="toast" :class="toast.type">
+                {{ toast.message }}
+            </div>
+        </div>
         <div v-if="!isAuthenticated" class="overlay">
             <div class="modal">
                 <div class="form-group">
@@ -136,91 +348,111 @@
         <template v-else>
             <div class="toolbar">
                 <span style="color: #4ec9b0; font-size: 16px;">Database Viewer</span>
-                <button class="btn btn-tab" :class="{ active: activeTab === 'games' }" @click="activeTab = 'games'">Games</button>
-                <button class="btn btn-tab" :class="{ active: activeTab === 'donations' }" @click="openDonations">Donations</button>
-                <button class="btn btn-tab" :class="{ active: activeTab === 'storage' }" @click="openStorage">Server Storage</button>
-                <button class="btn btn-tab" :class="{ active: activeTab === 'migration' }" @click="openMigration">Migration</button>
+                <button class="btn btn-tab" :class="{ active: activeTab === 'games' }"
+                    @click="activeTab = 'games'">Games</button>
+                <button class="btn btn-tab" :class="{ active: activeTab === 'donations' }"
+                    @click="openDonations">Donations</button>
+                <button class="btn btn-tab" :class="{ active: activeTab === 'storage' }" @click="openStorage">Server
+                    Storage</button>
+                <button class="btn btn-tab" :class="{ active: activeTab === 'migration' }"
+                    @click="openMigration">Migration</button>
+                <button class="btn btn-tab" :class="{ active: activeTab === 'logs' }" @click="openLogs">Logs</button>
                 <button class="btn" @click="syncMd5Map" :disabled="md5MapLoading">Sync Map</button>
                 <button v-if="activeTab === 'games'" class="btn" @click="openAddModal">+ Add Game</button>
                 <button if="activeTab === 'games' && selectedIds.length > 0" class="btn btn-delete" @click="bulkRemove">
                     Remove Selected ({{ selectedIds.length }})
                 </button>
-                <select v-if="activeTab === 'games'" v-model="categoryFilter" class="btn btn-tab" style="padding: 6px 10px;">
-                    <option value="">All Categories</option>
-                    <option v-for="cat in categories" :key="cat" :value="cat">{{ cat }}</option>
-                </select>
-                <span style="color: #808080; font-size: 12px; margin-left: auto;">Total Titles: {{ filteredGames.length }} / {{ games.length }}</span>
+                <span style="color: #808080; font-size: 12px; margin-left: auto;">Total Titles: {{ filteredGames.length
+                    }} / {{ games.length }}</span>
             </div>
 
             <div v-if="activeTab === 'games'" class="uploader">
-                <div class="dropzone" :class="{ active: isDragOver }" @dragenter.prevent="isDragOver = true" @dragover.prevent="isDragOver = true" @dragleave.prevent="isDragOver = false" @drop.prevent="handleDrop">
+                <div class="dropzone" :class="{ active: isDragOver }" @dragenter.prevent="isDragOver = true"
+                    @dragover.prevent="isDragOver = true" @dragleave.prevent="isDragOver = false"
+                    @drop.prevent="handleDrop">
                     <div>
                         <div style="color:#fff; font-size: 13px; font-weight: 600;">Upload Game File (.zip)</div>
-                        <div class="muted">Pick a .zip, we compute an MD5 Hash ID, then upload as &lt;hash&gt;.zip.</div>
+                        <div class="muted">Pick a .zip, we compute an MD5 Hash ID, then upload as &lt;hash&gt;.zip.
+                        </div>
                     </div>
                     <div style="display:flex; gap:10px; align-items:center;">
-                        <button class="btn" @click="openFilePicker" :disabled="uploadState.inProgress || hashState.computing">Choose File</button>
-                        <button class="btn" @click="startUploadPrepared" :disabled="!preparedFile || !hashState.hash || uploadState.inProgress || hashState.computing">Upload</button>
-                        <button v-if="uploadState.inProgress || hashState.computing" class="btn btn-delete" @click="cancelUpload">Cancel</button>
+                        <button class="btn" @click="openFilePicker"
+                            :disabled="uploadState.inProgress || hashState.computing">Choose File</button>
+                        <button class="btn" @click="startUploadPrepared"
+                            :disabled="!preparedFile || !hashState.hash || uploadState.inProgress || hashState.computing">Upload</button>
+                        <button v-if="uploadState.inProgress || hashState.computing" class="btn btn-delete"
+                            @click="cancelUpload">Cancel</button>
                         <input ref="fileInput" type="file" accept=".zip" style="display:none" @change="handleFileInput">
                     </div>
                 </div>
 
                 <div :style="{ opacity: uploadState.removing ? 0 : 1, transition: 'opacity 0.45s ease' }">
-                <div v-if="preparedFileName" style="margin-top: 10px;">
-                    <div class="muted">
-                        File: <span style="color:#ce9178;">{{ preparedFileName }}</span>
-                        <span v-if="hashState.hash"> → Hash ID: <span style="color:#9cdcfe;">{{ hashState.hash }}</span></span>
-                        <span v-if="uploadState.key"> → Key: <span style="color:#9cdcfe;">{{ uploadState.key }}</span></span>
+                    <div v-if="preparedFileName" style="margin-top: 10px;">
+                        <div class="muted">
+                            File: <span style="color:#ce9178;">{{ preparedFileName }}</span>
+                            <span v-if="hashState.hash"> → Hash ID: <span style="color:#9cdcfe;">{{ hashState.hash
+                                    }}</span></span>
+                            <span v-if="uploadState.key"> → Key: <span style="color:#9cdcfe;">{{ uploadState.key
+                                    }}</span></span>
+                        </div>
+                        <div v-if="hashState.hash"
+                            style="margin-top: 8px; display:flex; gap:10px; align-items:center; flex-wrap: wrap;">
+                            <select class="btn btn-tab active" style="padding: 6px 10px;">
+                                <option :value="hashState.hash">{{ hashState.hash }}</option>
+                            </select>
+                            <button class="btn" @click="copyHash" :disabled="!hashState.hash">Copy Hash</button>
+                            <span class="muted" v-if="hashState.computing">Computing MD5…</span>
+                            <span class="muted" v-else-if="hashState.copied">Copied</span>
+                        </div>
                     </div>
-                    <div v-if="hashState.hash" style="margin-top: 8px; display:flex; gap:10px; align-items:center; flex-wrap: wrap;">
-                        <select class="btn btn-tab active" style="padding: 6px 10px;">
-                            <option :value="hashState.hash">{{ hashState.hash }}</option>
-                        </select>
-                        <button class="btn" @click="copyHash" :disabled="!hashState.hash">Copy Hash</button>
-                        <span class="muted" v-if="hashState.computing">Computing MD5…</span>
-                        <span class="muted" v-else-if="hashState.copied">Copied</span>
-                    </div>
-                </div>
 
-                <div v-if="uploadState.inProgress || uploadState.percent === 100" style="margin-top: 10px;">
-                    <div class="progress-wrap">
-                        <div class="progress-bar" :style="{ width: uploadState.percent + '%' }"></div>
+                    <div v-if="uploadState.inProgress || uploadState.percent === 100" style="margin-top: 10px;">
+                        <div class="progress-wrap">
+                            <div class="progress-bar" :style="{ width: uploadState.percent + '%' }"></div>
+                        </div>
+                        <div class="muted"
+                            style="margin-top: 8px; display:flex; justify-content: space-between; gap: 10px;">
+                            <div>{{ uploadState.percent.toFixed(2) }}% · {{ uploadState.mbps.toFixed(2) }} MB/s · ETA {{
+                                uploadState.eta }}</div>
+                            <div v-if="uploadState.message" style="color:#b5cea8;">{{ uploadState.message }}</div>
+                        </div>
                     </div>
-                    <div class="muted" style="margin-top: 8px; display:flex; justify-content: space-between; gap: 10px;">
-                        <div>{{ uploadState.percent.toFixed(2) }}% · {{ uploadState.mbps.toFixed(2) }} MB/s · ETA {{ uploadState.eta }}</div>
-                        <div v-if="uploadState.message" style="color:#b5cea8;">{{ uploadState.message }}</div>
-                    </div>
-                </div>
 
-                <div v-if="uploadState.error" style="margin-top: 10px; color:#ff9999; font-size: 12px;">
-                    {{ uploadState.error }}
-                </div>
+                    <div v-if="uploadState.error" style="margin-top: 10px; color:#ff9999; font-size: 12px;">
+                        {{ uploadState.error }}
+                    </div>
                 </div>
             </div>
 
             <div v-if="activeTab === 'games'" class="uploader">
-                <div class="dropzone" :class="{ active: bulkDragOver }"
-                     @dragenter.prevent="bulkDragOver = true"
-                     @dragover.prevent="bulkDragOver = true"
-                     @dragleave.prevent="bulkDragOver = false"
-                     @drop.prevent="handleBulkDrop">
+                <div class="dropzone" :class="{ active: bulkDragOver }" @dragenter.prevent="bulkDragOver = true"
+                    @dragover.prevent="bulkDragOver = true" @dragleave.prevent="bulkDragOver = false"
+                    @drop.prevent="handleBulkDrop">
                     <div>
-                        <div style="color:#fff; font-size: 13px; font-weight: 600;">Bulk Upload Games (up to 20 .zip)</div>
-                        <div class="muted">Drag & drop multiple .zip files. Uploads run one-by-one and shows per-file + total ETA.</div>
+                        <div style="color:#fff; font-size: 13px; font-weight: 600;">Bulk Upload Games (up to 20 .zip)
+                        </div>
+                        <div class="muted">Drag & drop multiple .zip files. Uploads run one-by-one and shows per-file +
+                            total ETA.</div>
                     </div>
-                    <div style="display:flex; gap:10px; align-items:center; flex-wrap: wrap; justify-content: flex-end;">
-                        <button class="btn btn-tab" :class="{ active: bulkQueueOpen }" @click="bulkQueueOpen = !bulkQueueOpen" :disabled="bulkQueue.length === 0">
+                    <div
+                        style="display:flex; gap:10px; align-items:center; flex-wrap: wrap; justify-content: flex-end;">
+                        <button class="btn btn-tab" :class="{ active: bulkQueueOpen }"
+                            @click="bulkQueueOpen = !bulkQueueOpen" :disabled="bulkQueue.length === 0">
                             Queue ({{ bulkQueue.length }})
                         </button>
-                        <button class="btn" @click="openBulkPicker" :disabled="bulkState.inProgress">Choose Files</button>
-                        <button class="btn" @click="startBulkUpload" :disabled="bulkQueue.length === 0 || bulkState.inProgress">Start</button>
-                        <button v-if="bulkState.inProgress" class="btn btn-delete" @click="cancelBulkUpload">Cancel All</button>
-                        <input ref="bulkInput" type="file" accept=".zip" multiple style="display:none" @change="handleBulkPick">
+                        <button class="btn" @click="openBulkPicker" :disabled="bulkState.inProgress">Choose
+                            Files</button>
+                        <button class="btn" @click="startBulkUpload"
+                            :disabled="bulkQueue.length === 0 || bulkState.inProgress">Start</button>
+                        <button v-if="bulkState.inProgress" class="btn btn-delete" @click="cancelBulkUpload">Cancel
+                            All</button>
+                        <input ref="bulkInput" type="file" accept=".zip" multiple style="display:none"
+                            @change="handleBulkPick">
                     </div>
                 </div>
 
-                <div v-if="bulkQueueOpen" style="margin-top: 12px; border: 1px solid #333; border-radius: 8px; background:#101010; max-height: 240px; overflow:auto;">
+                <div v-if="bulkQueueOpen"
+                    style="margin-top: 12px; border: 1px solid #333; border-radius: 8px; background:#101010; max-height: 240px; overflow:auto;">
                     <table style="margin-top:0;">
                         <thead>
                             <tr>
@@ -231,14 +463,18 @@
                             </tr>
                         </thead>
                         <tbody>
-                            <tr v-for="item in bulkQueue" :key="item.name" :style="{ opacity: item.removing ? 0 : 1, transition: 'opacity 0.45s ease' }">
+                            <tr v-for="item in bulkQueue" :key="item.name"
+                                :style="{ opacity: item.removing ? 0 : 1, transition: 'opacity 0.45s ease' }">
                                 <td style="color:#ce9178;">{{ item.name }}</td>
                                 <td style="color:#9cdcfe; font-size: 12px;">{{ item.hash }}</td>
-                                <td style="text-align:right; font-size: 12px;" :style="{ color: item.status === 'done' ? '#6a9955' : (item.status === 'uploading' ? '#9cdcfe' : '#808080') }">
+                                <td style="text-align:right; font-size: 12px;"
+                                    :style="{ color: item.status === 'done' ? '#6a9955' : (item.status === 'uploading' ? '#9cdcfe' : '#808080') }">
                                     {{ item.status === 'cancelled' ? 'cancelled' : item.status }}
                                 </td>
                                 <td style="text-align:right;">
-                                    <button v-if="item.status === 'uploading' && bulkState.inProgress" class="btn btn-delete" style="padding: 2px 8px;" @click="cancelCurrentBulkItem">✕</button>
+                                    <button v-if="item.status === 'uploading' && bulkState.inProgress"
+                                        class="btn btn-delete" style="padding: 2px 8px;"
+                                        @click="cancelCurrentBulkItem">✕</button>
                                 </td>
                             </tr>
                         </tbody>
@@ -248,14 +484,18 @@
                 <div v-if="bulkState.inProgress || bulkState.totalPercent === 100" style="margin-top: 12px;">
                     <div class="muted">
                         Current: <span style="color:#ce9178;">{{ bulkState.currentName || '-' }}</span>
-                        <span v-if="bulkState.currentHash"> → <span style="color:#9cdcfe;">{{ bulkState.currentHash }}</span></span>
-                        <button v-if="bulkState.inProgress && bulkState.currentName" class="btn btn-delete" style="padding: 2px 8px; margin-left: 10px;" @click="cancelCurrentBulkItem">✕</button>
+                        <span v-if="bulkState.currentHash"> → <span style="color:#9cdcfe;">{{ bulkState.currentHash
+                                }}</span></span>
+                        <button v-if="bulkState.inProgress && bulkState.currentName" class="btn btn-delete"
+                            style="padding: 2px 8px; margin-left: 10px;" @click="cancelCurrentBulkItem">✕</button>
                     </div>
                     <div class="progress-wrap">
                         <div class="progress-bar" :style="{ width: bulkState.currentPercent + '%' }"></div>
                     </div>
-                    <div class="muted" style="margin-top: 8px; display:flex; justify-content: space-between; gap: 10px; flex-wrap: wrap;">
-                        <div>File: {{ bulkState.currentPercent.toFixed(2) }}% · {{ bulkState.currentMbps.toFixed(2) }} MB/s · ETA {{ bulkState.currentEta }}</div>
+                    <div class="muted"
+                        style="margin-top: 8px; display:flex; justify-content: space-between; gap: 10px; flex-wrap: wrap;">
+                        <div>File: {{ bulkState.currentPercent.toFixed(2) }}% · {{ bulkState.currentMbps.toFixed(2) }}
+                            MB/s · ETA {{ bulkState.currentEta }}</div>
                         <div>Total: {{ bulkState.totalPercent.toFixed(2) }}% · ETA {{ bulkState.totalEta }}</div>
                     </div>
                 </div>
@@ -269,7 +509,8 @@
                 <thead>
                     <tr>
                         <th style="width: 40px;">
-                            <input type="checkbox" @change="toggleAll" :checked="selectedIds.length === games.length && games.length > 0">
+                            <input type="checkbox" @change="toggleAll"
+                                :checked="selectedIds.length === games.length && games.length > 0">
                         </th>
                         <th>Title</th>
                         <th>Image</th>
@@ -279,18 +520,21 @@
                 </thead>
                 <tbody>
                     <tr v-if="filteredGames.length === 0">
-                        <td colspan="5" style="text-align: center; color: #888; padding: 30px;">No games match your criteria.</td>
+                        <td colspan="5" style="text-align: center; color: #888; padding: 30px;">No games match your
+                            criteria.</td>
                     </tr>
                     <tr v-for="game in filteredGames" :key="game.id">
                         <td>
                             <input type="checkbox" :value="game.id" v-model="selectedIds">
                         </td>
                         <td style="color: #ce9178;">"{{ game.title }}"</td>
-                        <td style="color:#9cdcfe; font-size: 12px; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                        <td
+                            style="color:#9cdcfe; font-size: 12px; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
                             {{ game.thumbnailUrl || '-' }}
                         </td>
                         <td style="color: #b5cea8;">{{ game.version }}</td>
-                        <td style="color: #6a9955; font-size: 12px;">Active ({{ (game.hashId && game.hashId.length === 32) ? (game.hashId + '.zip') : (game.title + '.zip') }})</td>
+                        <td style="color: #6a9955; font-size: 12px;">Active ({{ (game.hashId && game.hashId.length ===
+                            32) ? (game.hashId + '.zip') : (game.title + '.zip') }})</td>
                     </tr>
                 </tbody>
             </table>
@@ -305,14 +549,17 @@
                 </thead>
                 <tbody>
                     <tr v-if="donationsLoading">
-                        <td colspan="3" style="text-align: center; color: #888; padding: 30px;">Loading donations...</td>
+                        <td colspan="3" style="text-align: center; color: #888; padding: 30px;">Loading donations...
+                        </td>
                     </tr>
                     <tr v-else-if="donations.length === 0">
-                        <td colspan="3" style="text-align: center; color: #888; padding: 30px;">No donated games found.</td>
+                        <td colspan="3" style="text-align: center; color: #888; padding: 30px;">No donated games found.
+                        </td>
                     </tr>
                     <tr v-for="item in donations" :key="item.key">
                         <td style="color:#ce9178;">{{ item.key }}</td>
-                        <td style="color:#b5cea8; font-size: 12px;">{{ item.lastModified ? new Date(item.lastModified).toLocaleString() : '-' }}</td>
+                        <td style="color:#b5cea8; font-size: 12px;">{{ item.lastModified ? new
+                            Date(item.lastModified).toLocaleString() : '-' }}</td>
                         <td style="text-align:right;">
                             <button class="btn" @click="downloadDonation(item.key)">Download</button>
                         </td>
@@ -326,14 +573,18 @@
                         <div style="color:#fff; font-size: 13px; font-weight: 600;">Server Storage (quest-archive)</div>
                         <div class="muted">Browse folders and files inside your bucket. Click a folder to open it.</div>
                     </div>
-                    <div style="display:flex; gap:10px; align-items:center; flex-wrap: wrap; justify-content: flex-end;">
+                    <div
+                        style="display:flex; gap:10px; align-items:center; flex-wrap: wrap; justify-content: flex-end;">
                         <div class="muted">Path: <span style="color:#9cdcfe;">/{{ storagePrefix }}</span></div>
                         <button class="btn" @click="storageUp" :disabled="!storagePrefix || storageLoading">Up</button>
-                        <button class="btn" @click="fetchStorage(storagePrefix)" :disabled="storageLoading">Refresh</button>
+                        <button class="btn" @click="fetchStorage(storagePrefix)"
+                            :disabled="storageLoading">Refresh</button>
                     </div>
                 </div>
-                <div v-if="storageError" style="margin-top: 10px; color:#ff9999; font-size: 12px;">{{ storageError }}</div>
-                <div v-if="storageTruncated" style="margin-top: 10px; color:#b5cea8; font-size: 12px;">More than 1000 items exist in this folder. Showing the first page.</div>
+                <div v-if="storageError" style="margin-top: 10px; color:#ff9999; font-size: 12px;">{{ storageError }}
+                </div>
+                <div v-if="storageTruncated" style="margin-top: 10px; color:#b5cea8; font-size: 12px;">More than 1000
+                    items exist in this folder. Showing the first page.</div>
             </div>
 
             <table v-if="activeTab === 'storage'">
@@ -351,10 +602,12 @@
                         <td colspan="5" style="text-align: center; color: #888; padding: 30px;">Loading storage...</td>
                     </tr>
                     <tr v-else-if="storageFolders.length === 0 && storageObjects.length === 0">
-                        <td colspan="5" style="text-align: center; color: #888; padding: 30px;">This folder is empty.</td>
+                        <td colspan="5" style="text-align: center; color: #888; padding: 30px;">This folder is empty.
+                        </td>
                     </tr>
                     <tr v-for="p in storageFolders" :key="p">
-                        <td style="color:#9cdcfe; cursor:pointer;" @click="openStorageFolder(p)">{{ storageDisplayName(p) }}</td>
+                        <td style="color:#9cdcfe; cursor:pointer;" @click="openStorageFolder(p)">{{
+                            storageDisplayName(p) }}</td>
                         <td style="color:#808080; font-size: 12px;">folder</td>
                         <td style="color:#b5cea8; font-size: 12px;">-</td>
                         <td style="text-align:right; color:#808080; font-size: 12px;">-</td>
@@ -365,7 +618,8 @@
                     <tr v-for="o in storageObjects" :key="o.key">
                         <td style="color:#ce9178;">{{ storageDisplayName(o.key) }}</td>
                         <td style="color:#808080; font-size: 12px;">file</td>
-                        <td style="color:#b5cea8; font-size: 12px;">{{ o.lastModified ? new Date(o.lastModified).toLocaleString() : '-' }}</td>
+                        <td style="color:#b5cea8; font-size: 12px;">{{ o.lastModified ? new
+                            Date(o.lastModified).toLocaleString() : '-' }}</td>
                         <td style="text-align:right; color:#808080; font-size: 12px;">{{ formatBytes(o.size) }}</td>
                         <td style="text-align:right; display:flex; gap:10px; justify-content:flex-end;">
                             <button class="btn" @click="downloadStorage(o.key)">Download</button>
@@ -378,26 +632,32 @@
             <div v-if="activeTab === 'migration'" class="uploader">
                 <div class="dropzone">
                     <div>
-                        <div style="color:#fff; font-size: 13px; font-weight: 600;">R2 Migration (Folder -> Hash ZIP)</div>
+                        <div style="color:#fff; font-size: 13px; font-weight: 600;">R2 Migration (Folder -> Hash ZIP)
+                        </div>
                         <div class="muted">Converts all raw folders in R2 to MD5-hashed ZIPs and adds them to DB.</div>
                     </div>
-                    <div style="display:flex; gap:10px; align-items:center; flex-wrap: wrap; justify-content: flex-end;">
-                        <button class="btn" @click="startMigration" :disabled="migration.inProgress">Start Migration</button>
+                    <div
+                        style="display:flex; gap:10px; align-items:center; flex-wrap: wrap; justify-content: flex-end;">
+                        <button class="btn" @click="startMigration" :disabled="migration.inProgress">Start
+                            Migration</button>
                         <button class="btn" @click="fetchMigrationStatus">Refresh Status</button>
                     </div>
                 </div>
-                
+
                 <div v-if="migration.inProgress" style="margin-top: 15px;">
                     <div class="muted">
                         Processing: <span style="color:#ce9178;">{{ migration.currentFolder || '...' }}</span>
                         <div style="margin-top:5px;">Progress: {{ migration.processed }} / {{ migration.total }}</div>
                     </div>
                     <div class="progress-wrap">
-                        <div class="progress-bar" :style="{ width: (migration.total ? (migration.processed / migration.total) * 100 : 0) + '%' }"></div>
+                        <div class="progress-bar"
+                            :style="{ width: (migration.total ? (migration.processed / migration.total) * 100 : 0) + '%' }">
+                        </div>
                     </div>
                 </div>
 
-                <div v-if="migration.logs.length > 0" style="margin-top: 15px; background: #101010; border: 1px solid #333; padding: 10px; border-radius: 6px; font-size: 12px; max-height: 300px; overflow-y: auto;">
+                <div v-if="migration.logs.length > 0"
+                    style="margin-top: 15px; background: #101010; border: 1px solid #333; padding: 10px; border-radius: 6px; font-size: 12px; max-height: 300px; overflow-y: auto;">
                     <div v-for="log in migration.logs" :key="log" style="margin-bottom: 2px;">{{ log }}</div>
                 </div>
 
@@ -407,11 +667,57 @@
                 </div>
             </div>
 
+            <div v-if="activeTab === 'logs'">
+                <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h3 style="margin:0; color: #4ec9b0;">Server Logs (Last 100 lines)</h3>
+                    <button class="btn" @click="fetchLogs">Refresh</button>
+                </div>
+                <div class="logs-container"
+                    style="background: #111; padding: 15px; border-radius: 8px; border: 1px solid #333; font-family: 'Consolas', monospace; font-size: 12px; height: 600px; overflow-y: auto;">
+                    <div v-if="serverLogs.length === 0" class="muted">No logs found or directory empty.</div>
+                    <div v-for="(log, i) in serverLogs" :key="i"
+                        style="margin-bottom: 4px; border-bottom: 1px solid #222; padding-bottom: 4px;">
+                        <span
+                            :style="{ color: log.level === 'error' ? '#f44336' : (log.level === 'warn' ? '#ff9800' : '#888') }">
+                            [{{ log.timestamp }}] {{ log.level ? log.level.toUpperCase() : 'INFO' }}:
+                        </span>
+                        <span style="color: #eee;">{{ log.message }}</span>
+                        <div v-if="Object.keys(log).length > 3" class="muted" style="margin-left: 20px;">
+                            {{ JSON.stringify(Object.fromEntries(Object.entries(log).filter(([k]) =>
+                            !['level','message','timestamp'].includes(k)))) }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div v-if="activeTab === 'logs'">
+                <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h3 style="margin:0; color: #4ec9b0;">Server Logs (Last 100 lines)</h3>
+                    <button class="btn" @click="fetchLogs">Refresh</button>
+                </div>
+                <div class="logs-container"
+                    style="background: #111; padding: 15px; border-radius: 8px; border: 1px solid #333; font-family: 'Consolas', monospace; font-size: 12px; height: 600px; overflow-y: auto;">
+                    <div v-if="serverLogs.length === 0" class="muted">No logs found or directory empty.</div>
+                    <div v-for="(log, i) in serverLogs" :key="i"
+                        style="margin-bottom: 4px; border-bottom: 1px solid #222; padding-bottom: 4px;">
+                        <span
+                            :style="{ color: log.level === 'error' ? '#f44336' : (log.level === 'warn' ? '#ff9800' : '#888') }">
+                            [{{ log.timestamp }}] {{ log.level ? log.level.toUpperCase() : 'INFO' }}:
+                        </span>
+                        <span style="color: #eee;">{{ log.message }}</span>
+                        <div v-if="Object.keys(log).length > 3" class="muted" style="margin-left: 20px;">
+                            {{ JSON.stringify(Object.fromEntries(Object.entries(log).filter(([k]) =>
+                            !['level','message','timestamp'].includes(k)))) }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Add Modal -->
             <div v-if="showAddModal" class="overlay">
                 <div class="modal">
                     <h3 style="margin-top:0; color:#fff;">Append to Database</h3>
-                    
+
                     <div class="form-group">
                         <label>Title (Display Name)</label>
                         <input v-model="newGame.title" type="text" placeholder="e.g. Beat Saber">
@@ -420,7 +726,8 @@
                     <div class="form-group">
                         <label>Hash ID (MD5)</label>
                         <div style="display:flex; gap:10px; align-items:center; flex-wrap: wrap;">
-                            <select v-model="newGame.hashId" class="btn btn-tab active" style="padding: 8px 10px; flex: 1; min-width: 260px;" :disabled="md5MapLoading">
+                            <select v-model="newGame.hashId" class="btn btn-tab active"
+                                style="padding: 8px 10px; flex: 1; min-width: 260px;" :disabled="md5MapLoading">
                                 <option value="" disabled>Select from map_md5.json…</option>
                                 <option v-for="item in md5MapItems" :key="item.hash" :value="item.hash">
                                     {{ item.hash }} | {{ item.folder }}
@@ -429,19 +736,20 @@
                             <button class="btn" @click="fetchMd5Map(true)" :disabled="md5MapLoading">Refresh</button>
                         </div>
                         <div class="muted" style="margin-top: 8px;" v-if="md5MapLoading">Loading MD5 map…</div>
-                        <div style="margin-top: 8px; color:#ff9999; font-size: 12px;" v-if="md5MapError">{{ md5MapError }}</div>
+                        <div style="margin-top: 8px; color:#ff9999; font-size: 12px;" v-if="md5MapError">{{ md5MapError
+                            }}</div>
                     </div>
-                    
+
                     <div class="form-group">
                         <label>Version</label>
                         <input v-model="newGame.version" type="text" placeholder="1.0">
                     </div>
-                    
+
                     <div class="form-group">
                         <label>Description</label>
                         <textarea v-model="newGame.description" rows="3"></textarea>
                     </div>
-                    
+
                     <div class="form-group">
                         <label>Thumbnail URL</label>
                         <input v-model="newGame.thumbnailUrl" type="text" placeholder="https://...">
@@ -450,27 +758,31 @@
                     <div class="form-group">
                         <label>Upload Image (png/jpg/jpeg → GitHub)</label>
                         <div class="dropzone" :class="{ active: imageDragOver }"
-                             @dragenter.prevent="imageDragOver = true"
-                             @dragover.prevent="imageDragOver = true"
-                             @dragleave.prevent="imageDragOver = false"
-                             @drop.prevent="handleImageDrop"
-                             style="justify-content: space-between;">
+                            @dragenter.prevent="imageDragOver = true" @dragover.prevent="imageDragOver = true"
+                            @dragleave.prevent="imageDragOver = false" @drop.prevent="handleImageDrop"
+                            style="justify-content: space-between;">
                             <div>
                                 <div style="color:#fff; font-size: 12px; font-weight: 600;">Drag & drop or choose</div>
                                 <div class="muted">Uploads to GitHub and auto-fills the URL.</div>
                             </div>
-                            <div style="display:flex; gap:10px; align-items:center; flex-wrap: wrap; justify-content: flex-end;">
-                                <button class="btn" @click="openImagePicker" :disabled="imageState.inProgress">Choose</button>
+                            <div
+                                style="display:flex; gap:10px; align-items:center; flex-wrap: wrap; justify-content: flex-end;">
+                                <button class="btn" @click="openImagePicker"
+                                    :disabled="imageState.inProgress">Choose</button>
                                 <button class="btn" v-if="newGame.thumbnailUrl" @click="copyImageUrl">Copy URL</button>
-                                <input ref="imageInput" type="file" accept=".png,.jpg,.jpeg,image/png,image/jpeg" style="display:none" @change="handleImagePick">
+                                <input ref="imageInput" type="file" accept=".png,.jpg,.jpeg,image/png,image/jpeg"
+                                    style="display:none" @change="handleImagePick">
                             </div>
                         </div>
-                        <div class="muted" style="margin-top: 8px;" v-if="imageState.message">{{ imageState.message }}</div>
-                        <div style="margin-top: 8px; color:#ff9999; font-size: 12px;" v-if="imageState.error">{{ imageState.error }}</div>
+                        <div class="muted" style="margin-top: 8px;" v-if="imageState.message">{{ imageState.message }}
+                        </div>
+                        <div style="margin-top: 8px; color:#ff9999; font-size: 12px;" v-if="imageState.error">{{
+                            imageState.error }}</div>
                     </div>
 
                     <div class="modal-actions">
-                        <button class="btn" style="background:transparent; border-color:transparent;" @click="showAddModal = false">Cancel</button>
+                        <button class="btn" style="background:transparent; border-color:transparent;"
+                            @click="showAddModal = false">Cancel</button>
                         <button class="btn" @click="addGame">Save</button>
                     </div>
                 </div>
@@ -543,10 +855,10 @@
                 0x6fa87e4f, 0xfe2ce6e0, 0xa3014314, 0x4e0811a1, 0xf7537e82, 0xbd3af235, 0x2ad7d2bb, 0xeb86d391
             ];
             const s = [
-                7,12,17,22, 7,12,17,22, 7,12,17,22, 7,12,17,22,
-                5,9,14,20, 5,9,14,20, 5,9,14,20, 5,9,14,20,
-                4,11,16,23, 4,11,16,23, 4,11,16,23, 4,11,16,23,
-                6,10,15,21, 6,10,15,21, 6,10,15,21, 6,10,15,21
+                7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22,
+                5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20,
+                4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23,
+                6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21
             ];
 
             for (let i = 0; i < x.length; i += 16) {
@@ -692,21 +1004,19 @@
                         logs: []
                     },
                     migrationTimer: null,
-                    categoryFilter: '',
-                    categories: ['Action', 'Adventure', 'Shooter', 'Puzzle', 'Uncategorized']
+                    toasts: [],
+                    serverLogs: []
                 }
             },
             computed: {
                 filteredGames() {
-                    if (!this.categoryFilter) return this.games;
-                    return this.games.filter(g => g.category === this.categoryFilter);
+                    return this.games;
                 }
             },
             mounted() {
                 const savedPwd = sessionStorage.getItem('adminPwd');
                 if (savedPwd) {
                     this.password = savedPwd;
-                    // Try to restore session via automated check first
                     fetch('/api/admin/check').then(r => r.json()).then(j => {
                         if (j.authenticated) {
                             this.isAuthenticated = true;
@@ -719,23 +1029,27 @@
             },
             methods: {
                 async login() {
-                    try {
-                        const res = await fetch('/api/admin/login', {
-                           method: 'POST',
-                           headers: { 'Content-Type': 'application/json' },
-                           body: JSON.stringify({ password: this.password })
-                        });
-                        if (res.ok) {
-                            this.isAuthenticated = true;
-                            sessionStorage.setItem('adminPwd', this.password);
-                            this.fetchGames();
-                        } else {
-                            alert('Access Denied');
-                            this.password = '';
-                        }
-                    } catch (e) {
-                        alert('Error connecting');
+                    const res = await fetch('/api/admin/login', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ password: this.password })
+                    });
+                    const json = await res.json();
+                    if (res.ok && json.success) {
+                        this.isAuthenticated = true;
+                        localStorage.setItem('admin_pwd', this.password);
+                        this.fetchGames();
+                        this.showToast('Logged in successfully', 'success');
+                    } else {
+                        this.showToast(json.error || 'Invalid password', 'error');
                     }
+                },
+                showToast(message, type = 'info') {
+                    const id = Date.now();
+                    this.toasts.push({ id, message, type });
+                    setTimeout(() => {
+                        this.toasts = this.toasts.filter(t => t.id !== id);
+                    }, 4000);
                 },
                 async openAddModal() {
                     this.showAddModal = true;
@@ -763,7 +1077,7 @@
                 },
                 async syncMd5Map() {
                     await this.fetchMd5Map(true);
-                    alert('MD5 map synced');
+                    this.showToast('MD5 map synced successfully', 'success');
                 },
                 async openDonations() {
                     this.activeTab = 'donations';
@@ -777,7 +1091,7 @@
                         if (!res.ok) throw new Error(json.error || 'Failed to load donations');
                         this.donations = Array.isArray(json.items) ? json.items : [];
                     } catch (e) {
-                        alert(String(e.message || e));
+                        this.showToast(String(e.message || e), 'error');
                         this.donations = [];
                     } finally {
                         this.donationsLoading = false;
@@ -790,10 +1104,10 @@
                         if (res.ok && json.url) {
                             window.open(json.url, '_blank');
                         } else {
-                            alert(json.error || 'Failed map');
+                            this.showToast(json.error || 'Failed map', 'error');
                         }
                     } catch (e) {
-                        alert(e.message);
+                        this.showToast(e.message, 'error');
                     }
                 },
                 async openStorage() {
@@ -850,7 +1164,7 @@
                         const json = await res.json();
                         if (res.ok) window.open(json.url, '_blank');
                     } catch (e) {
-                        alert(e.message);
+                        this.showToast(e.message, 'error');
                     }
                 },
                 async deleteStorageKey(key) {
@@ -951,9 +1265,10 @@
                     try {
                         await navigator.clipboard.writeText(this.newGame.thumbnailUrl);
                         this.imageState.message = 'Copied image URL';
+                        this.showToast('Image URL copied to clipboard', 'info');
                         setTimeout(() => { this.imageState.message = ''; }, 1200);
                     } catch {
-                        alert('Copy failed');
+                        this.showToast('Copy failed', 'error');
                     }
                 },
                 async uploadImageToGithub(file) {
@@ -1017,22 +1332,53 @@
                     this.uploadState.inProgress = true;
                     this.uploadInternals.startedAt = Date.now();
                     this.uploadInternals.totalBytes = file.size;
+
+                    const cacheKey = `upload_${hashId}_${file.size}`;
+                    let uploadMeta = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+
                     try {
-                        const init = await fetch('/api/uploads/init', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ filename: file.name, hashId })
-                        }).then(r => r.json());
-                        const partSize = 64 * 1024 * 1024, totalParts = Math.ceil(file.size / partSize);
+                        let initKey, initUploadId;
                         const parts = [];
+
+                        if (uploadMeta && uploadMeta.key && uploadMeta.uploadId) {
+                            initKey = uploadMeta.key;
+                            initUploadId = uploadMeta.uploadId;
+                            parts.push(...(uploadMeta.parts || []));
+                        } else {
+                            const init = await fetch('/api/uploads/init', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ filename: file.name, hashId })
+                            }).then(r => r.json());
+
+                            initKey = init.key;
+                            initUploadId = init.uploadId;
+                            localStorage.setItem(cacheKey, JSON.stringify({ key: initKey, uploadId: initUploadId, parts: [] }));
+                        }
+
+                        const partSize = 64 * 1024 * 1024, totalParts = Math.ceil(file.size / partSize);
+
                         for (let i = 0; i < totalParts; i++) {
-                            const num = i + 1, start = i * partSize, end = Math.min(start + partSize, file.size);
+                            if (!this.uploadState.inProgress) throw new Error('Canceled');
+                            const num = i + 1;
+
+                            if (parts.some(p => p.PartNumber === num)) {
+                                this.uploadInternals.perPartLoaded[num] = Math.min(partSize, file.size - i * partSize);
+                                let sum = 0; for (const k in this.uploadInternals.perPartLoaded) sum += this.uploadInternals.perPartLoaded[k];
+                                this.uploadInternals.uploadedBytes = sum;
+                                this.updateProgress();
+                                continue;
+                            }
+
+                            const start = i * partSize, end = Math.min(start + partSize, file.size);
                             const blob = file.slice(start, end);
+
                             const { url } = await fetch('/api/uploads/part-url', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ key: init.key, uploadId: init.uploadId, partNumber: num })
+                                body: JSON.stringify({ key: initKey, uploadId: initUploadId, partNumber: num })
                             }).then(r => r.json());
+
                             const etag = await new Promise((resolve, reject) => {
                                 const xhr = new XMLHttpRequest();
                                 this.uploadInternals.activeRequests.push(xhr);
@@ -1044,19 +1390,30 @@
                                     this.updateProgress();
                                 };
                                 xhr.onload = () => resolve(xhr.getResponseHeader('ETag'));
-                                xhr.onerror = reject; xhr.send(blob);
+                                xhr.onerror = reject;
+                                xhr.onabort = () => reject(new Error('Canceled'));
+                                xhr.send(blob);
                             });
+
                             parts.push({ ETag: etag, PartNumber: num });
+                            localStorage.setItem(cacheKey, JSON.stringify({ key: initKey, uploadId: initUploadId, parts }));
                         }
+
                         await fetch('/api/uploads/complete', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ key: init.key, uploadId: init.uploadId, parts })
+                            body: JSON.stringify({ key: initKey, uploadId: initUploadId, parts: parts.sort((a, b) => a.PartNumber - b.PartNumber) })
                         });
+
+                        localStorage.removeItem(cacheKey);
                         this.uploadState.message = 'Done';
+                        this.showToast('Upload completed', 'success');
                         setTimeout(() => this.fetchGames(), 1000);
+                        this.uploadState.inProgress = false;
                     } catch (e) {
                         this.uploadState.error = e.message;
+                        this.showToast('Upload interrupted or failed', 'error');
+                        this.uploadState.inProgress = false;
                     }
                 },
                 async startBulkUpload() {
@@ -1080,59 +1437,93 @@
                     this.bulkState.inProgress = false;
                 },
                 async uploadOneBulkItem(item) {
-                   const file = item.file;
-                   const init = await fetch('/api/uploads/init', {
-                       method: 'POST',
-                       headers: { 'Content-Type': 'application/json' },
-                       body: JSON.stringify({ filename: file.name, hashId: item.hash })
-                   }).then(r => r.json());
-                   
-                   const partSize = 64 * 1024 * 1024;
-                   const totalParts = Math.ceil(file.size / partSize);
-                   const parts = [];
-                   
-                   for (let i = 0; i < totalParts; i++) {
-                       if (!this.bulkState.inProgress) throw new Error('Cancelled');
-                       const num = i + 1;
-                       const start = i * partSize;
-                       const end = Math.min(start + partSize, file.size);
-                       const blob = file.slice(start, end);
-                       
-                       const { url } = await fetch('/api/uploads/part-url', {
-                           method: 'POST',
-                           headers: { 'Content-Type': 'application/json' },
-                           body: JSON.stringify({ key: init.key, uploadId: init.uploadId, partNumber: num })
-                       }).then(r => r.json());
-                       
-                       const etag = await new Promise((resolve, reject) => {
-                           const xhr = new XMLHttpRequest();
-                           this.bulkInternals.activeXhrs.push(xhr);
-                           xhr.open('PUT', url, true);
-                           xhr.upload.onprogress = (e) => {
-                               const loaded = e.loaded;
-                               const currentUploaded = (i * partSize) + loaded;
-                               this.bulkState.currentPercent = (currentUploaded / file.size) * 100;
-                               
-                               const totalUploaded = this.bulkInternals.doneBytes + currentUploaded;
-                               this.bulkState.totalPercent = (totalUploaded / this.bulkInternals.totalBytes) * 100;
-                               
-                               const elapsed = (Date.now() - this.bulkInternals.batchStartedAt) / 1000;
-                               const bps = elapsed > 0 ? totalUploaded / elapsed : 0;
-                               this.bulkState.currentMbps = bps / (1024 * 1024);
-                               this.bulkState.totalEta = this.fmtEta(bps > 0 ? (this.bulkInternals.totalBytes - totalUploaded) / bps : Infinity);
-                           };
-                           xhr.onload = () => resolve(xhr.getResponseHeader('ETag'));
-                           xhr.onerror = reject;
-                           xhr.send(blob);
-                       });
-                       parts.push({ ETag: etag, PartNumber: num });
-                   }
-                   
-                   await fetch('/api/uploads/complete', {
-                       method: 'POST',
-                       headers: { 'Content-Type': 'application/json' },
-                       body: JSON.stringify({ key: init.key, uploadId: init.uploadId, parts })
-                   });
+                    const file = item.file;
+                    const cacheKey = `upload_${item.hash}_${file.size}`;
+                    let uploadMeta = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+
+                    let initKey, initUploadId;
+                    const parts = [];
+
+                    if (uploadMeta && uploadMeta.key && uploadMeta.uploadId) {
+                        initKey = uploadMeta.key;
+                        initUploadId = uploadMeta.uploadId;
+                        parts.push(...(uploadMeta.parts || []));
+                    } else {
+                        const init = await fetch('/api/uploads/init', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ filename: file.name, hashId: item.hash })
+                        }).then(r => r.json());
+                        initKey = init.key;
+                        initUploadId = init.uploadId;
+                        localStorage.setItem(cacheKey, JSON.stringify({ key: initKey, uploadId: initUploadId, parts: [] }));
+                    }
+
+                    const partSize = 64 * 1024 * 1024;
+                    const totalParts = Math.ceil(file.size / partSize);
+
+                    for (let i = 0; i < totalParts; i++) {
+                        if (!this.bulkState.inProgress) throw new Error('Cancelled');
+                        const num = i + 1;
+
+                        if (parts.some(p => p.PartNumber === num)) {
+                            const loaded = Math.min(partSize, file.size - i * partSize);
+                            const currentUploaded = (i * partSize) + loaded;
+                            this.bulkState.currentPercent = (currentUploaded / file.size) * 100;
+
+                            const totalUploaded = this.bulkInternals.doneBytes + currentUploaded;
+                            this.bulkState.totalPercent = (totalUploaded / this.bulkInternals.totalBytes) * 100;
+
+                            const elapsed = (Date.now() - this.bulkInternals.batchStartedAt) / 1000;
+                            const bps = elapsed > 0 ? totalUploaded / elapsed : 0;
+                            this.bulkState.currentMbps = bps / (1024 * 1024);
+                            this.bulkState.totalEta = this.fmtEta(bps > 0 ? (this.bulkInternals.totalBytes - totalUploaded) / bps : Infinity);
+                            continue;
+                        }
+
+                        const start = i * partSize;
+                        const end = Math.min(start + partSize, file.size);
+                        const blob = file.slice(start, end);
+
+                        const { url } = await fetch('/api/uploads/part-url', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ key: initKey, uploadId: initUploadId, partNumber: num })
+                        }).then(r => r.json());
+
+                        const etag = await new Promise((resolve, reject) => {
+                            const xhr = new XMLHttpRequest();
+                            this.bulkInternals.activeXhrs.push(xhr);
+                            xhr.open('PUT', url, true);
+                            xhr.upload.onprogress = (e) => {
+                                const loaded = e.loaded;
+                                const currentUploaded = (i * partSize) + loaded;
+                                this.bulkState.currentPercent = (currentUploaded / file.size) * 100;
+
+                                const totalUploaded = this.bulkInternals.doneBytes + currentUploaded;
+                                this.bulkState.totalPercent = (totalUploaded / this.bulkInternals.totalBytes) * 100;
+
+                                const elapsed = (Date.now() - this.bulkInternals.batchStartedAt) / 1000;
+                                const bps = elapsed > 0 ? totalUploaded / elapsed : 0;
+                                this.bulkState.currentMbps = bps / (1024 * 1024);
+                                this.bulkState.totalEta = this.fmtEta(bps > 0 ? (this.bulkInternals.totalBytes - totalUploaded) / bps : Infinity);
+                            };
+                            xhr.onload = () => resolve(xhr.getResponseHeader('ETag'));
+                            xhr.onerror = reject;
+                            xhr.onabort = () => reject(new Error('Cancelled'));
+                            xhr.send(blob);
+                        });
+                        parts.push({ ETag: etag, PartNumber: num });
+                        localStorage.setItem(cacheKey, JSON.stringify({ key: initKey, uploadId: initUploadId, parts }));
+                    }
+
+                    await fetch('/api/uploads/complete', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ key: initKey, uploadId: initUploadId, parts: parts.sort((a, b) => a.PartNumber - b.PartNumber) })
+                    });
+
+                    localStorage.removeItem(cacheKey);
                 },
                 cancelCurrentBulkItem() {
                     this.bulkInternals.activeXhrs.forEach(xhr => xhr.abort());
@@ -1155,6 +1546,10 @@
                     if (res.ok) {
                         this.fetchGames();
                         this.showAddModal = false;
+                        this.showToast('Game added successfully', 'success');
+                    } else {
+                        const json = await res.json();
+                        this.showToast(json.error || 'Failed to add game', 'error');
                     }
                 },
                 async bulkRemove() {
@@ -1166,6 +1561,7 @@
                         });
                         this.fetchGames();
                         this.selectedIds = [];
+                        this.showToast('Games deleted successfully', 'success');
                     }
                 },
                 async openMigration() {
@@ -1204,6 +1600,19 @@
                         this.migrationTimer = null;
                     }
                 },
+                async openLogs() {
+                    this.activeTab = 'logs';
+                    await this.fetchLogs();
+                },
+                async fetchLogs() {
+                    try {
+                        const res = await fetch('/api/server-logs');
+                        const json = await res.json();
+                        this.serverLogs = json.logs || [];
+                    } catch (e) {
+                        this.showToast('Failed to fetch logs', 'error');
+                    }
+                },
                 toggleAll(e) {
                     this.selectedIds = e.target.checked ? this.games.map(g => g.id) : [];
                 }
@@ -1211,4 +1620,5 @@
         }).mount('#app')
     </script>
 </body>
+
 </html>

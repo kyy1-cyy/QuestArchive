@@ -30,10 +30,6 @@ export function normalizeGames(games) {
             obj.version = '1.0';
             changed = true;
         }
-        if (!obj.category) {
-            obj.category = 'Uncategorized';
-            changed = true;
-        }
         if (!obj.lastUpdated) {
             obj.lastUpdated = new Date().toISOString();
             changed = true;

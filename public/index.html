@@ -1,9 +1,11 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Quest Archive — The largest open VR game archive. Download Quest games fast via Cloudflare's global CDN.">
+    <meta name="description"
+        content="Quest Archive — The largest open VR game archive. Download Quest games fast via Cloudflare's global CDN.">
     <meta name="theme-color" content="#050505">
     <meta property="og:title" content="Quest Archive">
     <meta property="og:description" content="The largest open VR game archive. Fast downloads via Cloudflare CDN.">
@@ -14,53 +16,58 @@
     <script src="https://unpkg.com/vue@3.5.13/dist/vue.global.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0"></script>
     <style>
-        body { 
-            font-family: 'Inter', sans-serif; 
-            background-color: #050505; 
-            color: #ededed; 
-        }
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
-        ::-webkit-scrollbar-thumb:hover { background: #555; }
-        
-        .glass-panel { 
-            background: rgba(20, 20, 20, 0.6); 
-            backdrop-filter: blur(20px); 
-            -webkit-backdrop-filter: blur(20px); 
-            border: 1px solid rgba(255, 255, 255, 0.05);
-        }
-        
-        .search-input {
-            background: rgba(0, 0, 0, 0.4);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            transition: all 0.2s ease;
-        }
-        .search-input:focus {
-            outline: none;
-            border-color: rgba(255, 255, 255, 0.3);
-            background: rgba(0, 0, 0, 0.6);
-        }
-        
-        .get-btn {
-            background: #ededed;
-            color: #000;
-            transition: all 0.2s ease;
-        }
-        .get-btn:hover {
-            background: #fff;
-            transform: scale(1.02);
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #050505;
+            color: #ededed;
         }
 
-        /* Subtle glow effect behind main container */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #333;
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+
+        .glass-panel {
+            background: rgba(18, 18, 18, 0.7);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        .search-input {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.06);
+            box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.03);
+        }
+
         .glow-bg {
             position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 80vw;
-            height: 80vh;
-            background: radial-gradient(circle, rgba(50,50,50,0.2) 0%, rgba(0,0,0,0) 70%);
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: radial-gradient(circle at 50% -20%, rgba(120, 119, 198, 0.12), rgba(255, 255, 255, 0));
             pointer-events: none;
             z-index: -1;
         }
@@ -75,6 +82,7 @@
             padding: 16px;
             z-index: 50;
         }
+
         .modal-card {
             width: 100%;
             max-width: 640px;
@@ -85,6 +93,7 @@
             -webkit-backdrop-filter: blur(22px);
             overflow: hidden;
         }
+
         .dropzone {
             border: 1px dashed rgba(255, 255, 255, 0.18);
             border-radius: 14px;
@@ -92,10 +101,12 @@
             background: rgba(0, 0, 0, 0.25);
             transition: all 0.2s ease;
         }
+
         .dropzone.active {
             border-color: rgba(255, 255, 255, 0.35);
             background: rgba(0, 0, 0, 0.35);
         }
+
         .progress-wrap {
             margin-top: 12px;
             border: 1px solid rgba(255, 255, 255, 0.12);
@@ -104,91 +115,195 @@
             background: rgba(0, 0, 0, 0.35);
             height: 10px;
         }
+
         .progress-bar {
             height: 100%;
             width: 0%;
             background: rgba(255, 255, 255, 0.9);
             transition: width 0.15s linear;
         }
+
+        /* Toast Notifications */
+        .toast-container {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            z-index: 100;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #ffffff 0%, #e0e0e0 100%);
+            color: #000;
+            font-weight: 600;
+            transition: all 0.2s;
+            box-shadow: 0 4px 12px rgba(255, 255, 255, 0.1);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 16px rgba(255, 255, 255, 0.15);
+            filter: brightness(1.1);
+        }
+
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #fff;
+            transition: all 0.2s;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .toast {
+            background: rgba(30, 30, 30, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: white;
+            padding: 12px 20px;
+            border-radius: 12px;
+            font-size: 13px;
+            font-weight: 500;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+            animation: toastIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            max-width: 320px;
+        }
+
+        @keyframes toastIn {
+            from {
+                transform: translateX(100%) translateY(10px);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateX(0) translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .toast.error {
+            border-color: rgba(239, 68, 68, 0.4);
+            color: #fca5a5;
+        }
+
+        .toast.success {
+            border-color: rgba(34, 197, 94, 0.4);
+            color: #86efac;
+        }
     </style>
 </head>
+
 <body class="min-h-screen md:h-screen overflow-x-hidden flex flex-col antialiased md:overflow-hidden">
     <div class="glow-bg"></div>
     <div id="app" class="min-h-screen md:h-full flex flex-col w-full">
-        
+
         <!-- Minimal Top Nav -->
-        <header class="glass-panel border-b border-white/5 px-4 sm:px-8 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between z-10 shrink-0 gap-3">
-            <div class="text-xl font-bold tracking-tight text-white flex items-center gap-2 w-full sm:w-auto justify-between">
+        <header
+            class="glass-panel border-b border-white/5 px-4 sm:px-8 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between z-10 shrink-0 gap-3">
+            <div
+                class="text-xl font-bold tracking-tight text-white flex items-center gap-2 w-full sm:w-auto justify-between">
                 <div class="flex items-center gap-2">
                     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" class="text-white/90">
-                        <path d="M12 2.75c4.832 0 8.75 3.918 8.75 8.75 0 4.832-3.918 8.75-8.75 8.75-4.832 0-8.75-3.918-8.75-8.75C3.25 6.668 7.168 2.75 12 2.75Z" stroke="currentColor" stroke-width="1.2" opacity="0.65"/>
-                        <path d="M8.5 12.25c1.05-2.55 2.717-3.75 3.5-3.75s2.45 1.2 3.5 3.75" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
-                        <path d="M7.25 13.25c1.8 3.35 4.2 4.75 4.75 4.75s2.95-1.4 4.75-4.75" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity="0.9"/>
-                        <path d="M12 6.5v11" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity="0.5"/>
+                        <path
+                            d="M12 2.75c4.832 0 8.75 3.918 8.75 8.75 0 4.832-3.918 8.75-8.75 8.75-4.832 0-8.75-3.918-8.75-8.75C3.25 6.668 7.168 2.75 12 2.75Z"
+                            stroke="currentColor" stroke-width="1.2" opacity="0.65" />
+                        <path d="M8.5 12.25c1.05-2.55 2.717-3.75 3.5-3.75s2.45 1.2 3.5 3.75" stroke="currentColor"
+                            stroke-width="1.2" stroke-linecap="round" />
+                        <path d="M7.25 13.25c1.8 3.35 4.2 4.75 4.75 4.75s2.95-1.4 4.75-4.75" stroke="currentColor"
+                            stroke-width="1.2" stroke-linecap="round" opacity="0.9" />
+                        <path d="M12 6.5v11" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"
+                            opacity="0.5" />
                     </svg>
                     <span>Quest</span><span class="text-gray-500 font-light">Archive</span>
                 </div>
                 <div class="sm:hidden flex items-center gap-3">
-                    <button @click="openDonateModal" class="px-3 py-2 rounded-full border border-white/10 bg-white/10 text-white text-xs font-semibold hover:bg-white/20 transition">Submit</button>
-                    <button @click="openMoneyModal" class="px-3 py-2 rounded-full border border-white/10 bg-white text-black text-xs font-semibold hover:bg-gray-200 transition">Support</button>
-                    <a href="/database" class="text-xs font-medium text-gray-500 hover:text-white transition-colors">Database</a>
+                    <button @click="openDonateModal"
+                        class="px-3 py-2 rounded-full border border-white/10 bg-white/10 text-white text-xs font-semibold hover:bg-white/20 transition">Submit</button>
+                    <button @click="openMoneyModal"
+                        class="px-3 py-2 rounded-full border border-white/10 bg-white text-black text-xs font-semibold hover:bg-gray-200 transition">Support</button>
+                    <a href="/database"
+                        class="text-xs font-medium text-gray-500 hover:text-white transition-colors">Database</a>
                 </div>
             </div>
-            
+
             <div class="w-full sm:flex-1 sm:max-w-md sm:mx-8 relative">
-                <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" fill="none"
+                    viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
-                <input v-model="searchQuery" type="text" placeholder="Search archive..." class="w-full search-input rounded-full pl-10 pr-4 py-3 sm:py-2 text-sm text-white placeholder-gray-500">
+                <input v-model="searchQuery" type="text" placeholder="Search archive..."
+                    class="w-full search-input rounded-full pl-10 pr-4 py-3 sm:py-2 text-sm text-white placeholder-gray-500">
             </div>
 
-            <!-- Removed Categories -->
             <div class="hidden sm:flex items-center gap-3">
-                <button @click="openDonateModal" class="px-3 py-2 rounded-full border border-white/10 bg-white/10 text-white text-xs font-semibold hover:bg-white/20 transition">Submit Games</button>
-                <button @click="openMoneyModal" class="px-3 py-2 rounded-full border border-white/10 bg-white text-black text-xs font-semibold hover:bg-gray-200 transition">Donate $</button>
-                <a href="/database" class="text-xs font-medium text-gray-500 hover:text-white transition-colors">Database</a>
+                <button @click="openDonateModal"
+                    class="px-3 py-2 rounded-full border border-white/10 bg-white/10 text-white text-xs font-semibold hover:bg-white/20 transition">Submit
+                    Games</button>
+                <button @click="openMoneyModal"
+                    class="px-3 py-2 rounded-full border border-white/10 bg-white text-black text-xs font-semibold hover:bg-gray-200 transition">Donate
+                    $</button>
+                <a href="/database"
+                    class="text-xs font-medium text-gray-500 hover:text-white transition-colors">Database</a>
             </div>
         </header>
 
-        <div v-if="donateModalOpen" class="modal-overlay" @keydown.escape.window="closeDonateModal" @click.self="closeDonateModal">
+        <div v-if="donateModalOpen" class="modal-overlay" @keydown.escape.window="closeDonateModal"
+            @click.self="closeDonateModal">
             <div class="modal-card" @click.stop>
                 <div class="px-5 sm:px-6 py-4 border-b border-white/10 flex items-center justify-between">
                     <div class="text-white font-semibold tracking-tight">Submit a VR Game</div>
-                    <button class="text-gray-500 hover:text-white transition-colors text-sm" @click="closeDonateModal">✕</button>
+                    <button class="text-gray-500 hover:text-white transition-colors text-sm"
+                        @click="closeDonateModal">✕</button>
                 </div>
                 <div class="p-5 sm:p-6">
                     <div class="mt-1 rounded-2xl border border-white/10 bg-white/5 px-4 py-4">
-                        <div class="text-xs font-semibold tracking-widest uppercase text-white/70">Community Powered</div>
+                        <div class="text-xs font-semibold tracking-widest uppercase text-white/70">Community Powered
+                        </div>
                         <div class="mt-2 text-base sm:text-lg font-semibold text-white leading-snug">
                             Submit a game to keep the archive alive.
                         </div>
                         <div class="mt-2 text-sm text-gray-300 leading-relaxed">
-                            Your donations help us keep everything updated, verified, and available at global Cloudflare speeds.
+                            Your donations help us keep everything updated, verified, and available at global Cloudflare
+                            speeds.
                         </div>
                     </div>
 
                     <div class="mt-5">
                         <div class="dropzone" :class="{ active: donateDragOver }"
-                             @dragenter.prevent="donateDragOver = true"
-                             @dragover.prevent="donateDragOver = true"
-                             @dragleave.prevent="donateDragOver = false"
-                             @drop.prevent="handleDonateDrop">
+                            @dragenter.prevent="donateDragOver = true" @dragover.prevent="donateDragOver = true"
+                            @dragleave.prevent="donateDragOver = false" @drop.prevent="handleDonateDrop">
                             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                                 <div>
                                     <div class="text-white text-sm font-medium">Upload .zip only</div>
-                                    <div class="text-xs text-gray-500 mt-1">Click the box or drag & drop. You’ll see live MB/s + ETA.</div>
+                                    <div class="text-xs text-gray-500 mt-1">Click the box or drag & drop. You’ll see
+                                        live MB/s + ETA.</div>
                                 </div>
                                 <div class="flex items-center gap-2">
                                     <button class="get-btn px-4 py-2 rounded-xl text-sm font-semibold"
-                                            @click="openDonatePicker"
-                                            :disabled="donateState.inProgress">
+                                        @click="openDonatePicker" :disabled="donateState.inProgress">
                                         Choose .zip
                                     </button>
-                                    <button v-if="donateState.inProgress" class="px-3 py-2 rounded-xl text-sm font-semibold border border-white/10 text-white/80 hover:text-white hover:bg-white/10 transition"
-                                            @click="cancelDonateUpload">
+                                    <button v-if="donateState.inProgress"
+                                        class="px-3 py-2 rounded-xl text-sm font-semibold border border-white/10 text-white/80 hover:text-white hover:bg-white/10 transition"
+                                        @click="cancelDonateUpload">
                                         Cancel
                                     </button>
-                                    <input ref="donateFileInput" type="file" accept=".zip" style="display:none" @change="handleDonatePick">
+                                    <input ref="donateFileInput" type="file" accept=".zip" style="display:none"
+                                        @change="handleDonatePick">
                                 </div>
                             </div>
 
@@ -200,9 +315,12 @@
                                 <div class="progress-wrap">
                                     <div class="progress-bar" :style="{ width: donateState.percent + '%' }"></div>
                                 </div>
-                                <div class="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs text-gray-500">
-                                    <div>{{ donateState.percent.toFixed(2) }}% · {{ donateState.mbps.toFixed(2) }} MB/s · ETA {{ donateState.eta }}</div>
-                                    <div v-if="donateState.message" class="text-white/80">{{ donateState.message }}</div>
+                                <div
+                                    class="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs text-gray-500">
+                                    <div>{{ donateState.percent.toFixed(2) }}% · {{ donateState.mbps.toFixed(2) }} MB/s
+                                        · ETA {{ donateState.eta }}</div>
+                                    <div v-if="donateState.message" class="text-white/80">{{ donateState.message }}
+                                    </div>
                                 </div>
                             </div>
 
@@ -215,20 +333,25 @@
             </div>
         </div>
 
-        <div v-if="moneyModalOpen" class="modal-overlay" @keydown.escape.window="closeMoneyModal" @click.self="closeMoneyModal">
+        <div v-if="moneyModalOpen" class="modal-overlay" @keydown.escape.window="closeMoneyModal"
+            @click.self="closeMoneyModal">
             <div class="modal-card" @click.stop>
                 <div class="px-5 sm:px-6 py-4 border-b border-white/10 flex items-center justify-between">
                     <div class="text-white font-semibold tracking-tight">Support Quest Archive</div>
-                    <button class="text-gray-500 hover:text-white transition-colors text-sm" @click="closeMoneyModal">✕</button>
+                    <button class="text-gray-500 hover:text-white transition-colors text-sm"
+                        @click="closeMoneyModal">✕</button>
                 </div>
                 <div class="p-5 sm:p-6">
                     <div class="mt-1 rounded-2xl border border-white/10 bg-white/5 px-4 py-4">
-                        <div class="text-xs font-semibold tracking-widest uppercase text-white/70">Keep Files Alive</div>
+                        <div class="text-xs font-semibold tracking-widest uppercase text-white/70">Keep Files Alive
+                        </div>
                         <div class="mt-2 text-base sm:text-lg font-semibold text-white leading-snug">
                             Help us keep downloads online and growing.
                         </div>
                         <div class="mt-2 text-sm text-gray-300 leading-relaxed">
-                            Donations go toward storage, bandwidth, and keeping the archive fast and available worldwide. If you want Quest Archive to become the most reliable place for VR releases, this is how you help.
+                            Donations go toward storage, bandwidth, and keeping the archive fast and available
+                            worldwide. If you want Quest Archive to become the most reliable place for VR releases, this
+                            is how you help.
                         </div>
                     </div>
 
@@ -236,8 +359,10 @@
                         <div class="text-xs text-gray-500">
                             Secure crypto donations via NOWPayments.
                         </div>
-                        <a href="https://nowpayments.io/donation?api_key=cb313bdc-92ec-4dd1-9b6f-295b1ef119e4" target="_blank" rel="noreferrer noopener" class="inline-flex">
-                            <img src="https://nowpayments.io/images/embeds/donation-button-white.svg" alt="Cryptocurrency & Bitcoin donation button by NOWPayments" class="h-10">
+                        <a href="https://nowpayments.io/donation?api_key=cb313bdc-92ec-4dd1-9b6f-295b1ef119e4"
+                            target="_blank" rel="noreferrer noopener" class="inline-flex">
+                            <img src="https://nowpayments.io/images/embeds/donation-button-white.svg"
+                                alt="Cryptocurrency & Bitcoin donation button by NOWPayments" class="h-10">
                         </a>
                     </div>
                 </div>
@@ -248,693 +373,761 @@
         <div class="flex-1 overflow-y-auto md:overflow-hidden">
             <div class="max-w-[1600px] mx-auto w-full p-4 sm:p-6 md:h-full">
                 <div class="flex flex-col lg:flex-row gap-4 sm:gap-6 min-h-0 md:h-full">
-            
-            <!-- Left: Minimalist List (Rookie inspired but clean) -->
-            <main class="lg:flex-[1.5] glass-panel rounded-2xl flex flex-col overflow-hidden relative min-h-[46vh] md:min-h-0 md:h-full">
-                <!-- Library Header -->
-                <div class="px-4 sm:px-6 py-4 border-b border-white/5 flex items-center justify-between bg-black/20">
-                    <h2 class="text-sm font-semibold text-gray-300 uppercase tracking-wider">Library</h2>
-                    <span class="text-xs text-gray-500">{{ totalFiltered }} Titles</span>
-                </div>
 
-                <div class="flex-1 overflow-y-auto">
-                    <table class="w-full text-left border-collapse text-sm">
-                        <thead class="hidden sm:table-header-group sticky top-0 bg-[#0a0a0a]/90 backdrop-blur-md z-10 text-xs text-gray-500 font-medium">
-                            <tr>
-                                <th class="py-3 px-6 border-b border-white/5 font-medium cursor-pointer select-none hover:text-white transition-colors" @click="toggleSort('title')">
-                                    Title <span v-if="sortKey === 'title'" class="text-white/50">{{ sortDir === 1 ? '↑' : '↓' }}</span>
-                                </th>
-                                <th class="py-3 px-6 border-b border-white/5 font-medium cursor-pointer select-none hover:text-white transition-colors" @click="toggleSort('version')">
-                                    Version <span v-if="sortKey === 'version'" class="text-white/50">{{ sortDir === 1 ? '↑' : '↓' }}</span>
-                                </th>
-                                <th class="py-3 px-6 border-b border-white/5 font-medium text-right">Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr v-if="loading">
-                                <td colspan="3" class="py-12 text-center text-gray-500">Syncing archive...</td>
-                            </tr>
-                            <tr v-else-if="filteredGames.length === 0">
-                                <td colspan="3" class="py-12 text-center text-gray-500">No matching titles found.</td>
-                            </tr>
-                            <tr v-for="game in paginatedGames" :key="game.id" 
-                                @click="selectGame(game)"
-                                :class="{'bg-white/10': selectedGame?.id === game.id, 'hover:bg-white/5': selectedGame?.id !== game.id}"
-                                class="border-b border-white/5 cursor-pointer transition-colors duration-150 group">
-                                <td class="py-5 sm:py-4 px-4 sm:px-6 text-white font-medium sm:group-hover:pl-8 transition-all duration-300">
-                                    {{ game.title }}
-                                    <div class="sm:hidden mt-1 flex items-center justify-between gap-3">
-                                        <div class="text-gray-400 font-mono text-xs">{{ game.version || '1.0' }}</div>
-                                        <span class="inline-flex items-center gap-1.5 text-xs text-green-400/80 bg-green-400/10 px-2 py-1 rounded-full">
-                                            <span class="w-1.5 h-1.5 rounded-full bg-green-400"></span> Online
-                                        </span>
-                                    </div>
-                                </td>
-                                <td class="hidden sm:table-cell py-4 px-6 text-gray-400 font-mono text-xs">{{ game.version || '1.0' }}</td>
-                                <td class="hidden sm:table-cell py-4 px-6 text-right">
-                                    <span class="inline-flex items-center gap-1.5 text-xs text-green-400/80 bg-green-400/10 px-2 py-1 rounded-full">
-                                        <span class="w-1.5 h-1.5 rounded-full bg-green-400"></span> Online
-                                    </span>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
+                    <!-- Left: Minimalist List (Rookie inspired but clean) -->
+                    <main
+                        class="lg:flex-[1.5] glass-panel rounded-2xl flex flex-col overflow-hidden relative min-h-[46vh] md:min-h-0 md:h-full">
+                        <!-- Library Header -->
+                        <div
+                            class="px-4 sm:px-6 py-4 border-b border-white/5 flex items-center justify-between bg-black/20">
+                            <h2 class="text-sm font-semibold text-gray-300 uppercase tracking-wider">Library</h2>
+                            <span class="text-xs text-gray-500">{{ totalFiltered }} Titles</span>
+                        </div>
 
-                <!-- Pagination -->
-                <div class="px-6 py-4 border-t border-white/5 flex items-center justify-between bg-black/10">
-                    <div class="text-[10px] text-gray-500 uppercase font-bold tracking-widest">Page {{ currentPage }} of {{ totalPages }}</div>
-                    <div class="flex items-center gap-2">
-                        <button @click="currentPage--" :disabled="currentPage <= 1" class="px-3 py-1.5 rounded-lg border border-white/5 text-xs hover:bg-white/5 disabled:opacity-30 flex items-center gap-1 transition-all">
-                            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M15 19l-7-7 7-7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                        </button>
-                        <button @click="currentPage++" :disabled="currentPage >= totalPages" class="px-3 py-1.5 rounded-lg border border-white/5 text-xs hover:bg-white/5 disabled:opacity-30 flex items-center gap-1 transition-all">
-                            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M9 5l7 7-7 7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                        </button>
-                    </div>
-                </div>
-            </main>
+                        <div class="flex-1 overflow-y-auto">
+                            <table class="w-full text-left border-collapse text-sm">
+                                <thead
+                                    class="hidden sm:table-header-group sticky top-0 bg-[#0a0a0a]/90 backdrop-blur-md z-10 text-xs text-gray-500 font-medium">
+                                    <tr>
+                                        <th class="py-3 px-6 border-b border-white/5 font-medium cursor-pointer select-none hover:text-white transition-colors"
+                                            @click="toggleSort('title')">
+                                            Title <span v-if="sortKey === 'title'" class="text-white/50">{{ sortDir ===
+                                                1 ? '↑' : '↓' }}</span>
+                                        </th>
+                                        <th class="py-3 px-6 border-b border-white/5 font-medium cursor-pointer select-none hover:text-white transition-colors"
+                                            @click="toggleSort('version')">
+                                            Version <span v-if="sortKey === 'version'" class="text-white/50">{{ sortDir
+                                                === 1 ? '↑' : '↓' }}</span>
+                                        </th>
+                                        <th class="py-3 px-6 border-b border-white/5 font-medium text-right">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-if="loading">
+                                        <td colspan="3" class="py-12 text-center text-gray-500">Syncing archive...</td>
+                                    </tr>
+                                    <tr v-else-if="filteredGames.length === 0">
+                                        <td colspan="3" class="py-12 text-center text-gray-500">No matching titles
+                                            found.</td>
+                                    </tr>
+                                    <tr v-for="game in paginatedGames" :key="game.id" @click="selectGame(game)"
+                                        :class="{'bg-white/10': selectedGame?.id === game.id, 'hover:bg-white/5': selectedGame?.id !== game.id}"
+                                        class="border-b border-white/5 cursor-pointer transition-colors duration-150 group">
+                                        <td
+                                            class="py-5 sm:py-4 px-4 sm:px-6 text-white font-medium sm:group-hover:pl-8 transition-all duration-300">
+                                            {{ game.title }}
+                                            <div class="sm:hidden mt-1 flex items-center justify-between gap-3">
+                                                <div class="text-gray-400 font-mono text-xs">{{ game.version || '1.0' }}
+                                                </div>
+                                                <span
+                                                    class="inline-flex items-center gap-1.5 text-xs text-green-400/80 bg-green-400/10 px-2 py-1 rounded-full">
+                                                    <span class="w-1.5 h-1.5 rounded-full bg-green-400"></span> Online
+                                                </span>
+                                            </div>
+                                        </td>
+                                        <td class="hidden sm:table-cell py-4 px-6 text-gray-400 font-mono text-xs">{{
+                                            game.version || '1.0' }}</td>
+                                        <td class="hidden sm:table-cell py-4 px-6 text-right">
+                                            <span
+                                                class="inline-flex items-center gap-1.5 text-xs text-green-400/80 bg-green-400/10 px-2 py-1 rounded-full">
+                                                <span class="w-1.5 h-1.5 rounded-full bg-green-400"></span> Online
+                                            </span>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
 
-            <!-- Right: Details Pane -->
-            <aside class="flex-1 glass-panel rounded-2xl p-5 sm:p-8 flex flex-col relative overflow-hidden min-h-[46vh] md:min-h-0 md:h-full">
-                <div v-if="!selectedGame" class="flex-1 flex flex-col items-center justify-center text-center opacity-50">
-                    <svg class="w-16 h-16 text-gray-600 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                    </svg>
-                    <p class="text-sm">Select a title from the library<br>to view details and fetch.</p>
-                </div>
-
-                <div v-else class="flex-1 flex flex-col h-full animate-fade-in">
-                    <!-- Thumbnail -->
-                    <div class="w-full aspect-[18/9] rounded-xl overflow-hidden bg-black mb-4 relative border border-white/5 shrink-0">
-                        <img :src="selectedGame.thumbnailUrl" class="w-full h-full object-cover opacity-90" loading="lazy" @error="handleImageError">
-                        <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent pointer-events-none"></div>
-                    </div>
-
-                    <!-- Meta -->
-                    <div class="flex-1 overflow-hidden">
-                        <div class="flex items-start justify-between mb-3 gap-4">
-                            <h2 class="text-xl sm:text-2xl font-bold text-white tracking-tight leading-tight line-clamp-2">{{ selectedGame.title }}</h2>
-                            <div class="flex flex-col items-end gap-2 shrink-0">
-                                <div class="bg-white/10 text-white text-[10px] font-mono px-1.5 py-0.5 rounded border border-white/10">
-                                    v{{ selectedGame.version || '---' }}
-                                </div>
-                                <div class="text-[9px] text-gray-500 font-mono tracking-wider uppercase">
-                                    {{ selectedGame.loadingSize ? '...' : formatBytes(selectedGame.fileSize) }}
-                                </div>
+                        <!-- Pagination -->
+                        <div class="px-6 py-4 border-t border-white/5 flex items-center justify-between bg-black/10">
+                            <div class="text-[10px] text-gray-500 uppercase font-bold tracking-widest">Page {{
+                                currentPage }} of {{ totalPages }}</div>
+                            <div class="flex items-center gap-2">
+                                <button @click="currentPage--" :disabled="currentPage <= 1"
+                                    class="px-3 py-1.5 rounded-lg border border-white/5 text-xs hover:bg-white/5 disabled:opacity-30 flex items-center gap-1 transition-all">
+                                    <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path d="M15 19l-7-7 7-7" stroke-width="2" stroke-linecap="round"
+                                            stroke-linejoin="round" />
+                                    </svg>
+                                </button>
+                                <button @click="currentPage++" :disabled="currentPage >= totalPages"
+                                    class="px-3 py-1.5 rounded-lg border border-white/5 text-xs hover:bg-white/5 disabled:opacity-30 flex items-center gap-1 transition-all">
+                                    <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path d="M9 5l7 7-7 7" stroke-width="2" stroke-linecap="round"
+                                            stroke-linejoin="round" />
+                                    </svg>
+                                </button>
                             </div>
                         </div>
-                        <div class="flex items-center gap-4 mb-4">
-                            <div v-if="selectedGame.category && selectedGame.category !== 'Uncategorized'" class="px-2 py-0.5 rounded bg-white/5 border border-white/5 text-[9px] uppercase font-bold text-gray-400 tracking-widest">{{ selectedGame.category }}</div>
-                            <div class="text-[9px] uppercase font-bold text-gray-600 tracking-widest">Updated {{ formatTime(selectedGame.lastUpdated) }}</div>
-                        </div>
-                        <p class="text-gray-400 text-xs leading-relaxed line-clamp-3 sm:line-clamp-4">{{ selectedGame.description }}</p>
-                    </div>
+                    </main>
 
-                    <!-- Action -->
-                    <div class="pt-6 border-t border-white/10 mt-6">
-                        <button v-if="!dlState.active && dlState.percent < 100"
-                                @click="startChunkedDownload(selectedGame)"
-                                class="get-btn w-full py-4 rounded-xl flex items-center justify-center font-semibold text-sm shadow-lg cursor-pointer">
-                            <svg class="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    <!-- Right: Details Pane -->
+                    <aside
+                        class="flex-1 glass-panel rounded-2xl p-5 sm:p-8 flex flex-col relative overflow-hidden min-h-[46vh] md:min-h-0 md:h-full">
+                        <div v-if="!selectedGame"
+                            class="flex-1 flex flex-col items-center justify-center text-center opacity-50">
+                            <svg class="w-16 h-16 text-gray-600 mb-4" fill="none" viewBox="0 0 24 24"
+                                stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1"
+                                    d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                             </svg>
-                            Fetch from Global Network
-                        </button>
-
-                        <div v-if="dlState.active || dlState.percent >= 100">
-                            <div class="progress-wrap">
-                                <div class="progress-bar" :style="{ width: dlState.percent + '%' }"></div>
-                            </div>
-                            <div class="flex items-center justify-between mt-3 text-xs text-gray-500">
-                                <span>{{ dlState.percent.toFixed(1) }}% · {{ dlState.mbps.toFixed(2) }} MB/s · ETA {{ dlState.eta }}</span>
-                                <span v-if="dlState.message" class="text-white/80">{{ dlState.message }}</span>
-                            </div>
-                            <button v-if="dlState.active" @click="cancelDownload"
-                                    class="mt-3 w-full py-2 rounded-xl text-xs font-semibold border border-white/10 text-white/60 hover:text-white hover:bg-white/10 transition">
-                                Cancel
-                            </button>
+                            <p class="text-sm">Select a title from the library<br>to view details and fetch.</p>
                         </div>
 
-                        <div v-if="dlState.error" class="mt-3 text-xs text-red-400">{{ dlState.error }}</div>
+                        <div v-else class="flex-1 flex flex-col h-full animate-fade-in">
+                            <!-- Thumbnail -->
+                            <div
+                                class="w-full aspect-[18/9] rounded-xl overflow-hidden bg-black mb-4 relative border border-white/5 shrink-0">
+                                <div v-if="!imgLoaded" class="absolute inset-0 img-placeholder"></div>
+                                <transition name="fade">
+                                    <img v-show="imgLoaded" :src="selectedGame.thumbnailUrl" @load="imgLoaded = true"
+                                        class="w-full h-full object-cover opacity-90" loading="lazy"
+                                        @error="handleImageError">
+                                </transition>
+                                <div
+                                    class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent pointer-events-none">
+                                </div>
+                            </div>
 
-                        <p class="text-center text-[10px] text-gray-500 mt-3 font-medium tracking-wide uppercase">
-                            Secured via Cloudflare R2 · Parallel Chunks
-                        </p>
-                    </div>
+                            <!-- Meta -->
+                            <div class="flex-1 overflow-hidden">
+                                <div class="flex items-start justify-between mb-3 gap-4">
+                                    <h2
+                                        class="text-xl sm:text-2xl font-bold text-white tracking-tight leading-tight line-clamp-2">
+                                        {{ selectedGame.title }}</h2>
+                                    <div class="flex flex-col items-end gap-2 shrink-0">
+                                        <div
+                                            class="bg-white/10 text-white text-[10px] font-mono px-1.5 py-0.5 rounded border border-white/10">
+                                            v{{ selectedGame.version || '---' }}
+                                        </div>
+                                        <div class="text-[9px] text-gray-500 font-mono tracking-wider uppercase">
+                                            {{ selectedGame.loadingSize ? '...' : formatBytes(selectedGame.fileSize) }}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-4 mb-4">
+                                    <div class="text-[9px] uppercase font-bold text-gray-600 tracking-widest">Updated {{
+                                        formatTime(selectedGame.lastUpdated) }}</div>
+                                </div>
+                                <p class="text-gray-400 text-xs leading-relaxed line-clamp-3 sm:line-clamp-4">{{
+                                    selectedGame.description }}</p>
+                            </div>
+
+                            <!-- Action -->
+                            <div class="pt-6 border-t border-white/10 mt-6">
+                                <button v-if="!dlState.active && dlState.percent < 100"
+                                    @click="startChunkedDownload(selectedGame)"
+                                    class="get-btn w-full py-4 rounded-xl flex items-center justify-center font-semibold text-sm shadow-lg cursor-pointer">
+                                    <svg class="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                    </svg>
+                                    Fetch from Global Network
+                                </button>
+
+                                <div v-if="dlState.active || dlState.percent >= 100">
+                                    <div class="progress-wrap">
+                                        <div class="progress-bar" :style="{ width: dlState.percent + '%' }"></div>
+                                    </div>
+                                    <div class="flex items-center justify-between mt-3 text-xs text-gray-500">
+                                        <span>{{ dlState.percent.toFixed(1) }}% · {{ dlState.mbps.toFixed(2) }} MB/s ·
+                                            ETA {{ dlState.eta }}</span>
+                                        <span v-if="dlState.message" class="text-white/80">{{ dlState.message }}</span>
+                                    </div>
+                                    <button v-if="dlState.active" @click="cancelDownload"
+                                        class="mt-3 w-full py-2 rounded-xl text-xs font-semibold border border-white/10 text-white/60 hover:text-white hover:bg-white/10 transition">
+                                        Cancel
+                                    </button>
+                                </div>
+
+                                <div v-if="dlState.error" class="mt-3 text-xs text-red-400">{{ dlState.error }}</div>
+
+                                <p
+                                    class="text-center text-[10px] text-gray-500 mt-3 font-medium tracking-wide uppercase">
+                                    Secured via Cloudflare R2 · Parallel Chunks
+                                </p>
+                            </div>
+                        </div>
+                    </aside>
+
                 </div>
-            </aside>
-            
+            </div>
+            <!-- Toast Notifications -->
+            <div class="toast-container">
+                <div v-for="toast in toasts" :key="toast.id" class="toast" :class="toast.type">
+                    <svg v-if="toast.type === 'success'" class="w-4 h-4" fill="none" viewBox="0 0 24 24"
+                        stroke="currentColor">
+                        <path d="M5 13l4 4L19 7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                    <svg v-if="toast.type === 'error'" class="w-4 h-4" fill="none" viewBox="0 0 24 24"
+                        stroke="currentColor">
+                        <path d="M6 18L18 6M6 6l12 12" stroke-width="2" stroke-linecap="round"
+                            stroke-linejoin="round" />
+                    </svg>
+                    {{ toast.message }}
                 </div>
             </div>
         </div>
-    </div>
 
-    <style>
-        .animate-fade-in {
-            animation: fadeIn 0.3s ease-out forwards;
-        }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(5px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-    </style>
+        <style>
+            .animate-fade-in {
+                animation: fadeIn 0.3s ease-out forwards;
+            }
 
-    <script>
-        const { createApp } = Vue
-
-        createApp({
-            data() {
-                return {
-                    games: [],
-                    searchQuery: '',
-                    sortKey: 'title',
-                    sortDir: 1,
-                    selectedCategory: 'All',
-                    categories: ['All', 'Action', 'Adventure', 'Shooter', 'Puzzle', 'Simulation', 'RPG', 'Sport', 'Horror', 'Other', 'Uncategorized'],
-                    loading: true,
-                    selectedGame: null,
-                    currentPage: 1,
-                    pageSize: 15,
-                    fuse: null,
-                    donateModalOpen: false,
-                    moneyModalOpen: false,
-                    donateDragOver: false,
-                    donateState: {
-                        inProgress: false,
-                        lastFileName: '',
-                        key: '',
-                        uploadId: '',
-                        percent: 0,
-                        mbps: 0,
-                        eta: '--:--',
-                        message: '',
-                        error: ''
-                    },
-                    donateInternals: {
-                        startedAt: 0,
-                        totalBytes: 0,
-                        uploadedBytes: 0,
-                        perPartLoaded: {},
-                        parts: [],
-                        activeRequests: []
-                    },
-                    dlState: {
-                        active: false,
-                        percent: 0,
-                        mbps: 0,
-                        eta: '--:--',
-                        message: '',
-                        error: ''
-                    },
-                    dlInternals: {
-                        startedAt: 0,
-                        totalBytes: 0,
-                        loadedBytes: 0,
-                        perChunkLoaded: {},
-                        abortControllers: [],
-                        cancelled: false
-                    }
+            @keyframes fadeIn {
+                from {
+                    opacity: 0;
+                    transform: translateY(5px);
                 }
-            },
-            computed: {
-                filteredGames() {
-                    const query = this.searchQuery.trim().toLowerCase();
-                    let list = this.games;
 
-                    // Filter by category
-                    if (this.selectedCategory !== 'All') {
-                        list = list.filter(g => g.category === this.selectedCategory);
-                    }
-
-                    // Fuzzy Search
-                    if (query && this.fuse) {
-                        const results = this.fuse.search(query);
-                        list = results.map(r => r.item);
-                    } else if (query) {
-                        list = list.filter(g => 
-                            g.title.toLowerCase().includes(query) || 
-                            g.description.toLowerCase().includes(query)
-                        );
-                    }
-
-                    // Sort
-                    const key = this.sortKey;
-                    const dir = this.sortDir;
-                    list.sort((a, b) => {
-                        const av = String(a[key] || '').toLowerCase();
-                        const bv = String(b[key] || '').toLowerCase();
-                        return av < bv ? -dir : av > bv ? dir : 0;
-                    });
-
-                    return list;
-                },
-                paginatedGames() {
-                    const start = (this.currentPage - 1) * this.pageSize;
-                    return this.filteredGames.slice(start, start + this.pageSize);
-                },
-                totalPages() {
-                    return Math.ceil(this.filteredGames.length / this.pageSize) || 1;
-                },
-                totalFiltered() {
-                    return this.filteredGames.length;
+                to {
+                    opacity: 1;
+                    transform: translateY(0);
                 }
-            },
-            watch: {
-                searchQuery() { this.currentPage = 1; },
-                selectedCategory() { this.currentPage = 1; },
-                games: {
-                    handler(newVal) {
-                        if (newVal.length > 0) {
-                            this.fuse = new Fuse(newVal, {
-                                keys: ['title', 'description', 'version', 'category'],
-                                threshold: 0.35
-                            });
-                        }
-                    },
-                    deep: true
-                }
-            },
-            mounted() {
-                this.fetchGames();
-            },
-            methods: {
-                toggleSort(key) {
-                    if (this.sortKey === key) {
-                        this.sortDir *= -1;
-                    } else {
-                        this.sortKey = key;
-                        this.sortDir = 1;
-                    }
-                },
-                formatBytes(bytes) {
-                    const n = Number(bytes || 0);
-                    if (!n) return '---';
-                    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-                    let u = 0; let v = n;
-                    while (v >= 1024 && u < units.length - 1) { v /= 1024; u++; }
-                    return `${v.toFixed(v >= 10 || u === 0 ? 0 : 1)} ${units[u]}`;
-                },
-                formatTime(iso) {
-                    if (!iso) return 'Long ago';
-                    const date = new Date(iso);
-                    const now = new Date();
-                    const diff = Math.floor((now - date) / 1000);
-                    if (diff < 60) return 'just now';
-                    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-                    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-                    return `${Math.floor(diff / 86400)}d ago`;
-                },
-                async fetchGames() {
-                    try {
-                        const response = await fetch('/api/games');
-                        this.games = await response.json();
-                    } catch (error) {
-                        console.error('Failed to fetch games:', error);
-                    } finally {
-                        this.loading = false;
-                    }
-                },
-                async selectGame(game) {
-                    this.selectedGame = { ...game, fileSize: null, loadingSize: true };
-                    this.resetDlState();
-                    try {
-                        const res = await fetch(`/api/download-info/${game.id}`);
-                        const info = await res.json();
-                        if (res.ok && this.selectedGame.id === game.id) {
-                            this.selectedGame.fileSize = info.fileSize;
-                        }
-                    } catch (e) {
-                        console.error('Failed to fetch file size:', e);
-                    } finally {
-                        if (this.selectedGame.id === game.id) {
-                            this.selectedGame.loadingSize = false;
+            }
+        </style>
+
+        <script>
+            const { createApp } = Vue
+
+            createApp({
+                data() {
+                    return {
+                        games: [],
+                        searchQuery: '',
+                        sortKey: 'title',
+                        sortDir: 1,
+                        loading: true,
+                        selectedGame: null,
+                        currentPage: 1,
+                        pageSize: 15,
+                        fuse: null,
+                        donateModalOpen: false,
+                        moneyModalOpen: false,
+                        donateDragOver: false,
+                        donateState: {
+                            inProgress: false,
+                            lastFileName: '',
+                            key: '',
+                            uploadId: '',
+                            percent: 0,
+                            mbps: 0,
+                            eta: '--:--',
+                            message: '',
+                            error: ''
+                        },
+                        donateInternals: {
+                            startedAt: 0,
+                            totalBytes: 0,
+                            uploadedBytes: 0,
+                            perPartLoaded: {},
+                            parts: [],
+                            activeRequests: []
+                        },
+                        dlState: {
+                            active: false,
+                            percent: 0,
+                            mbps: 0,
+                            eta: '--:--',
+                            message: '',
+                            error: ''
+                        },
+                        dlInternals: {
+                            startedAt: 0,
+                            totalBytes: 0,
+                            loadedBytes: 0,
+                            perChunkLoaded: {},
+                            abortControllers: [],
+                            cancelled: false
                         }
                     }
                 },
-                resetDlState() {
-                    this.dlState.active = false;
-                    this.dlState.percent = 0;
-                    this.dlState.mbps = 0;
-                    this.dlState.eta = '--:--';
-                    this.dlState.message = '';
-                    this.dlState.error = '';
-                    this.dlInternals.startedAt = 0;
-                    this.dlInternals.totalBytes = 0;
-                    this.dlInternals.loadedBytes = 0;
-                    this.dlInternals.perChunkLoaded = {};
-                    this.dlInternals.cancelled = false;
-                    (this.dlInternals.abortControllers || []).forEach(c => { try { c.abort(); } catch(_){} });
-                    this.dlInternals.abortControllers = [];
-                },
-                cancelDownload() {
-                    this.dlInternals.cancelled = true;
-                    this.dlState.active = false;
-                    this.dlState.message = 'Cancelled';
-                    (this.dlInternals.abortControllers || []).forEach(c => { try { c.abort(); } catch(_){} });
-                    this.dlInternals.abortControllers = [];
-                },
-                updateDlProgress() {
-                    const total = this.dlInternals.totalBytes || 0;
-                    let loaded = 0;
-                    for (const k in this.dlInternals.perChunkLoaded) loaded += this.dlInternals.perChunkLoaded[k] || 0;
-                    this.dlInternals.loadedBytes = loaded;
-                    this.dlState.percent = total ? Math.min(100, (loaded / total) * 100) : 0;
-                    const elapsed = (Date.now() - this.dlInternals.startedAt) / 1000;
-                    const bps = elapsed > 0 ? loaded / elapsed : 0;
-                    this.dlState.mbps = bps / (1024 * 1024);
-                    const remaining = Math.max(total - loaded, 0);
-                    const eta = bps > 0 ? remaining / bps : Infinity;
-                    this.dlState.eta = this.fmtEta(eta);
-                },
-                async startChunkedDownload(game) {
-                    if (this.dlState.active) return;
-                    this.resetDlState();
-                    this.dlState.active = true;
-                    this.dlState.message = 'Getting file info...';
+                computed: {
+                    filteredGames() {
+                        const query = this.searchQuery.trim().toLowerCase();
+                        let list = this.games;
 
-                    let info;
-                    try {
-                        const res = await fetch(`/api/download-info/${game.id}`);
-                        info = await res.json();
-                        if (!res.ok) throw new Error(info.error || 'Failed');
-                    } catch (e) {
-                        this.dlState.active = false;
-                        this.dlState.error = String(e.message || e);
-                        return;
+                        if (query && this.fuse) {
+                            const results = this.fuse.search(query);
+                            list = results.map(r => r.item);
+                        } else if (query) {
+                            list = list.filter(g =>
+                                g.title.toLowerCase().includes(query) ||
+                                g.description.toLowerCase().includes(query)
+                            );
+                        }
+
+                        const key = this.sortKey;
+                        const dir = this.sortDir;
+                        list.sort((a, b) => {
+                            const av = String(a[key] || '').toLowerCase();
+                            const bv = String(b[key] || '').toLowerCase();
+                            return av < bv ? -dir : av > bv ? dir : 0;
+                        });
+
+                        return list;
+                    },
+                    paginatedGames() {
+                        const start = (this.currentPage - 1) * this.pageSize;
+                        return this.filteredGames.slice(start, start + this.pageSize);
+                    },
+                    totalPages() {
+                        return Math.ceil(this.filteredGames.length / this.pageSize) || 1;
+                    },
+                    totalFiltered() {
+                        return this.filteredGames.length;
                     }
-
-                    if (!info.supportsRange || !info.chunks || info.chunks.length === 0) {
-                        this.dlState.message = 'Redirecting...';
-                        this.dlState.active = false;
-                        window.location.href = `/api/download/${game.id}`;
-                        return;
-                    }
-
-                    this.dlState.message = 'Downloading...';
-                    this.dlInternals.startedAt = Date.now();
-                    this.dlInternals.totalBytes = info.fileSize;
-
-                    const chunks = info.chunks;
-                    const results = new Array(chunks.length);
-                    const queue = [...chunks];
-                    const concurrency = Math.min(6, Math.max(2, Math.floor((navigator.hardwareConcurrency || 4) / 2)));
-
-                    const worker = async () => {
-                        while (queue.length && !this.dlInternals.cancelled) {
-                            const chunk = queue.shift();
-                            if (!chunk) return;
-
-                            const ac = new AbortController();
-                            this.dlInternals.abortControllers.push(ac);
-
-                            const response = await fetch(info.url, {
-                                headers: { 'Range': `bytes=${chunk.start}-${chunk.end}` },
-                                signal: ac.signal
-                            });
-                            if (!response.ok && response.status !== 206) {
-                                throw new Error(`Chunk ${chunk.index} failed (${response.status})`);
+                },
+                watch: {
+                    searchQuery() { this.currentPage = 1; },
+                    games: {
+                        handler(newVal) {
+                            if (newVal.length > 0) {
+                                this.fuse = new Fuse(newVal, {
+                                    keys: ['title', 'description', 'version'],
+                                    threshold: 0.35
+                                });
                             }
-
-                            const reader = response.body.getReader();
-                            const buffers = [];
-                            while (true) {
-                                const { done, value } = await reader.read();
-                                if (done) break;
-                                buffers.push(value);
-                                this.dlInternals.perChunkLoaded[chunk.index] = (this.dlInternals.perChunkLoaded[chunk.index] || 0) + value.byteLength;
-                                this.updateDlProgress();
-                            }
-                            results[chunk.index] = new Blob(buffers);
+                        },
+                        deep: true
+                    }
+                },
+                mounted() {
+                    this.fetchGames();
+                },
+                methods: {
+                    toggleSort(key) {
+                        if (this.sortKey === key) {
+                            this.sortDir *= -1;
+                        } else {
+                            this.sortKey = key;
+                            this.sortDir = 1;
                         }
-                    };
+                    },
+                    formatBytes(bytes) {
+                        const n = Number(bytes || 0);
+                        if (!n) return '---';
+                        const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+                        let u = 0; let v = n;
+                        while (v >= 1024 && u < units.length - 1) { v /= 1024; u++; }
+                        return `${v.toFixed(v >= 10 || u === 0 ? 0 : 1)} ${units[u]}`;
+                    },
+                    formatTime(iso) {
+                        if (!iso) return 'Long ago';
+                        const date = new Date(iso);
+                        const now = new Date();
+                        const diff = Math.floor((now - date) / 1000);
+                        if (diff < 60) return 'just now';
+                        if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+                        if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+                        return `${Math.floor(diff / 86400)}d ago`;
+                    },
+                    async fetchGames() {
+                        try {
+                            const response = await fetch('/api/games');
+                            this.games = await response.json();
+                        } catch (error) {
+                            console.error('Failed to fetch games:', error);
+                        } finally {
+                            this.loading = false;
+                        }
+                    },
+                    showToast(message, type = 'info') {
+                        const id = Date.now();
+                        this.toasts.push({ id, message, type });
+                        setTimeout(() => {
+                            this.toasts = this.toasts.filter(t => t.id !== id);
+                        }, 4000);
+                    },
+                    async selectGame(game) {
+                        this.selectedGame = { ...game, fileSize: null, loadingSize: true };
+                        this.imgLoaded = false;
+                        this.resetDlState();
+                        try {
+                            const res = await fetch(`/api/download-info/${game.id}`);
+                            const info = await res.json();
+                            if (res.ok && this.selectedGame.id === game.id) {
+                                this.selectedGame.fileSize = info.fileSize;
+                            }
+                        } catch (e) {
+                            console.error('Failed to fetch file size:', e);
+                        } finally {
+                            if (this.selectedGame.id === game.id) {
+                                this.selectedGame.loadingSize = false;
+                            }
+                        }
+                    },
+                    resetDlState() {
+                        this.dlState.active = false;
+                        this.dlState.percent = 0;
+                        this.dlState.mbps = 0;
+                        this.dlState.eta = '--:--';
+                        this.dlState.message = '';
+                        this.dlState.error = '';
+                        this.dlInternals.startedAt = 0;
+                        this.dlInternals.totalBytes = 0;
+                        this.dlInternals.loadedBytes = 0;
+                        this.dlInternals.perChunkLoaded = {};
+                        this.dlInternals.cancelled = false;
+                        (this.dlInternals.abortControllers || []).forEach(c => { try { c.abort(); } catch (_) { } });
+                        this.dlInternals.abortControllers = [];
+                    },
+                    cancelDownload() {
+                        this.dlInternals.cancelled = true;
+                        this.dlState.active = false;
+                        this.dlState.message = 'Cancelled';
+                        this.showToast('Download cancelled', 'info');
+                        (this.dlInternals.abortControllers || []).forEach(c => { try { c.abort(); } catch (_) { } });
+                        this.dlInternals.abortControllers = [];
+                    },
+                    updateDlProgress() {
+                        const total = this.dlInternals.totalBytes || 0;
+                        let loaded = 0;
+                        for (const k in this.dlInternals.perChunkLoaded) loaded += this.dlInternals.perChunkLoaded[k] || 0;
+                        this.dlInternals.loadedBytes = loaded;
+                        this.dlState.percent = total ? Math.min(100, (loaded / total) * 100) : 0;
+                        const elapsed = (Date.now() - this.dlInternals.startedAt) / 1000;
+                        const bps = elapsed > 0 ? loaded / elapsed : 0;
+                        this.dlState.mbps = bps / (1024 * 1024);
+                        const remaining = Math.max(total - loaded, 0);
+                        const eta = bps > 0 ? remaining / bps : Infinity;
+                        this.dlState.eta = this.fmtEta(eta);
+                    },
+                    async startChunkedDownload(game) {
+                        if (this.dlState.active) return;
+                        this.resetDlState();
+                        this.dlState.active = true;
+                        this.dlState.message = 'Getting file info...';
 
-                    try {
-                        await Promise.all(Array.from({ length: concurrency }, () => worker()));
-                    } catch (e) {
+                        let info;
+                        try {
+                            const res = await fetch(`/api/download-info/${game.id}`);
+                            info = await res.json();
+                            if (!res.ok) throw new Error(info.error || 'Failed');
+                        } catch (e) {
+                            this.dlState.active = false;
+                            this.dlState.error = String(e.message || e);
+                            this.showToast(String(e.message || e), 'error');
+                            return;
+                        }
+
+                        if (!info.supportsRange || !info.chunks || info.chunks.length === 0) {
+                            this.dlState.message = 'Redirecting...';
+                            this.dlState.active = false;
+                            window.location.href = `/api/download/${game.id}`;
+                            return;
+                        }
+
+                        this.dlState.message = 'Downloading...';
+                        this.dlInternals.startedAt = Date.now();
+                        this.dlInternals.totalBytes = info.fileSize;
+
+                        const chunks = info.chunks;
+                        const results = new Array(chunks.length);
+                        const queue = [...chunks];
+                        const concurrency = Math.min(6, Math.max(2, Math.floor((navigator.hardwareConcurrency || 4) / 2)));
+
+                        const worker = async () => {
+                            while (queue.length && !this.dlInternals.cancelled) {
+                                const chunk = queue.shift();
+                                if (!chunk) return;
+
+                                const ac = new AbortController();
+                                this.dlInternals.abortControllers.push(ac);
+
+                                const response = await fetch(info.url, {
+                                    headers: { 'Range': `bytes=${chunk.start}-${chunk.end}` },
+                                    signal: ac.signal
+                                });
+                                if (!response.ok && response.status !== 206) {
+                                    throw new Error(`Chunk ${chunk.index} failed (${response.status})`);
+                                }
+
+                                const reader = response.body.getReader();
+                                const buffers = [];
+                                while (true) {
+                                    const { done, value } = await reader.read();
+                                    if (done) break;
+                                    buffers.push(value);
+                                    this.dlInternals.perChunkLoaded[chunk.index] = (this.dlInternals.perChunkLoaded[chunk.index] || 0) + value.byteLength;
+                                    this.updateDlProgress();
+                                }
+                                results[chunk.index] = new Blob(buffers);
+                            }
+                        };
+
+                        try {
+                            await Promise.all(Array.from({ length: concurrency }, () => worker()));
+                        } catch (e) {
+                            if (this.dlInternals.cancelled) return;
+                            this.dlState.active = false;
+                            this.dlState.error = String(e.message || e);
+                            this.showToast(String(e.message || e), 'error');
+                            return;
+                        }
+
                         if (this.dlInternals.cancelled) return;
+
+                        this.dlState.message = 'Assembling file...';
+                        const blob = new Blob(results, { type: 'application/zip' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = info.fileKey || `${game.title}.zip`;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        setTimeout(() => URL.revokeObjectURL(url), 60000);
+
+                        this.dlState.percent = 100;
                         this.dlState.active = false;
-                        this.dlState.error = String(e.message || e);
-                        return;
-                    }
-
-                    if (this.dlInternals.cancelled) return;
-
-                    this.dlState.message = 'Assembling file...';
-                    const blob = new Blob(results, { type: 'application/zip' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = info.fileKey || `${game.title}.zip`;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    setTimeout(() => URL.revokeObjectURL(url), 60000);
-
-                    this.dlState.percent = 100;
-                    this.dlState.active = false;
-                    this.dlState.message = 'Download complete';
-                },
-                handleImageError(e) {
-                    e.target.src = 'https://via.placeholder.com/600x400?text=No+Image+Available';
-                },
-                openDonateModal() {
-                    this.donateModalOpen = true;
-                    this.resetDonateState();
-                },
-                closeDonateModal() {
-                    if (this.donateState.inProgress) {
-                        this.cancelDonateUpload();
-                    }
-                    this.donateModalOpen = false;
-                },
-                openMoneyModal() {
-                    this.moneyModalOpen = true;
-                },
-                closeMoneyModal() {
-                    this.moneyModalOpen = false;
-                },
-                openDonatePicker() {
-                    this.$refs.donateFileInput.click();
-                },
-                handleDonatePick(e) {
-                    const file = e.target.files && e.target.files[0];
-                    e.target.value = '';
-                    if (file) this.startDonateUpload(file);
-                },
-                handleDonateDrop(e) {
-                    this.donateDragOver = false;
-                    const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-                    if (file) this.startDonateUpload(file);
-                },
-                resetDonateState() {
-                    this.donateState.inProgress = false;
-                    this.donateState.percent = 0;
-                    this.donateState.mbps = 0;
-                    this.donateState.eta = '--:--';
-                    this.donateState.message = '';
-                    this.donateState.error = '';
-                    this.donateState.key = '';
-                    this.donateState.uploadId = '';
-                    this.donateState.lastFileName = '';
-                    this.donateInternals.startedAt = 0;
-                    this.donateInternals.totalBytes = 0;
-                    this.donateInternals.uploadedBytes = 0;
-                    this.donateInternals.perPartLoaded = {};
-                    this.donateInternals.parts = [];
-                    this.donateInternals.activeRequests.forEach(r => {
-                        try { r.abort(); } catch (_) {}
-                    });
-                    this.donateInternals.activeRequests = [];
-                },
-                fmtEta(seconds) {
-                    if (!Number.isFinite(seconds) || seconds <= 0) return '--:--';
-                    const m = Math.floor(seconds / 60);
-                    const s = Math.floor(seconds % 60);
-                    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-                },
-                updateDonateProgress() {
-                    const total = this.donateInternals.totalBytes || 0;
-                    const uploaded = this.donateInternals.uploadedBytes || 0;
-                    const percent = total ? (uploaded / total) * 100 : 0;
-                    this.donateState.percent = Math.min(100, Math.max(0, percent));
-
-                    const elapsed = (Date.now() - this.donateInternals.startedAt) / 1000;
-                    const bps = elapsed > 0 ? uploaded / elapsed : 0;
-                    this.donateState.mbps = bps / (1024 * 1024);
-                    const remaining = Math.max(total - uploaded, 0);
-                    const eta = bps > 0 ? remaining / bps : Infinity;
-                    this.donateState.eta = this.fmtEta(eta);
-                },
-                cancelDonateUpload() {
-                    const { key, uploadId } = this.donateState;
-                    this.donateState.message = 'Cancelling...';
-                    this.donateState.inProgress = false;
-                    this.donateInternals.activeRequests.forEach(r => {
-                        try { r.abort(); } catch (_) {}
-                    });
-                    this.donateInternals.activeRequests = [];
-
-                    if (key && uploadId) {
-                        fetch('/api/donations/abort', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ key, uploadId })
-                        }).finally(() => {
-                            this.donateState.message = 'Cancelled';
-                        });
-                    } else {
-                        this.donateState.message = 'Cancelled';
-                    }
-                },
-                async startDonateUpload(file) {
-                    if (this.donateState.inProgress) return;
-                    if (!file.name.toLowerCase().endsWith('.zip')) {
-                        this.donateState.error = 'Only .zip files are allowed';
-                        return;
-                    }
-
-                    this.resetDonateState();
-                    this.donateState.lastFileName = file.name;
-                    this.donateState.inProgress = true;
-                    this.donateState.message = 'Initializing...';
-                    this.donateInternals.startedAt = Date.now();
-                    this.donateInternals.totalBytes = file.size;
-
-                    let init;
-                    try {
-                        const res = await fetch('/api/donations/init', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ filename: file.name })
-                        });
-                        init = await res.json();
-                        if (!res.ok) throw new Error(init.error || 'Init failed');
-                    } catch (e) {
+                        this.dlState.message = 'Download complete';
+                        this.showToast('Download complete!', 'success');
+                    },
+                    handleImageError(e) {
+                        e.target.src = 'https://via.placeholder.com/600x400?text=No+Image+Available';
+                    },
+                    openDonateModal() {
+                        this.donateModalOpen = true;
+                        this.resetDonateState();
+                    },
+                    closeDonateModal() {
+                        if (this.donateState.inProgress) {
+                            this.cancelDonateUpload();
+                        }
+                        this.donateModalOpen = false;
+                    },
+                    openMoneyModal() {
+                        this.moneyModalOpen = true;
+                    },
+                    closeMoneyModal() {
+                        this.moneyModalOpen = false;
+                    },
+                    openDonatePicker() {
+                        this.$refs.donateFileInput.click();
+                    },
+                    handleDonatePick(e) {
+                        const file = e.target.files && e.target.files[0];
+                        e.target.value = '';
+                        if (file) this.startDonateUpload(file);
+                    },
+                    handleDonateDrop(e) {
+                        this.donateDragOver = false;
+                        const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+                        if (file) this.startDonateUpload(file);
+                    },
+                    resetDonateState() {
                         this.donateState.inProgress = false;
-                        this.donateState.error = String(e.message || e);
+                        this.donateState.percent = 0;
+                        this.donateState.mbps = 0;
+                        this.donateState.eta = '--:--';
                         this.donateState.message = '';
-                        return;
-                    }
+                        this.donateState.error = '';
+                        this.donateState.key = '';
+                        this.donateState.uploadId = '';
+                        this.donateState.lastFileName = '';
+                        this.donateInternals.startedAt = 0;
+                        this.donateInternals.totalBytes = 0;
+                        this.donateInternals.uploadedBytes = 0;
+                        this.donateInternals.perPartLoaded = {};
+                        this.donateInternals.parts = [];
+                        this.donateInternals.activeRequests.forEach(r => {
+                            try { r.abort(); } catch (_) { }
+                        });
+                        this.donateInternals.activeRequests = [];
+                    },
+                    fmtEta(seconds) {
+                        if (!Number.isFinite(seconds) || seconds <= 0) return '--:--';
+                        const m = Math.floor(seconds / 60);
+                        const s = Math.floor(seconds % 60);
+                        return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+                    },
+                    updateDonateProgress() {
+                        const total = this.donateInternals.totalBytes || 0;
+                        const uploaded = this.donateInternals.uploadedBytes || 0;
+                        const percent = total ? (uploaded / total) * 100 : 0;
+                        this.donateState.percent = Math.min(100, Math.max(0, percent));
 
-                    this.donateState.key = init.key;
-                    this.donateState.uploadId = init.uploadId;
-                    this.donateState.message = 'Uploading...';
+                        const elapsed = (Date.now() - this.donateInternals.startedAt) / 1000;
+                        const bps = elapsed > 0 ? uploaded / elapsed : 0;
+                        this.donateState.mbps = bps / (1024 * 1024);
+                        const remaining = Math.max(total - uploaded, 0);
+                        const eta = bps > 0 ? remaining / bps : Infinity;
+                        this.donateState.eta = this.fmtEta(eta);
+                    },
+                    cancelDonateUpload() {
+                        const { key, uploadId } = this.donateState;
+                        this.donateState.message = 'Cancelling...';
+                        this.donateState.inProgress = false;
+                        this.donateInternals.activeRequests.forEach(r => {
+                            try { r.abort(); } catch (_) { }
+                        });
+                        this.donateInternals.activeRequests = [];
 
-                    const partSize = 64 * 1024 * 1024;
-                    const totalParts = Math.ceil(file.size / partSize);
-                    const concurrency = Math.min(4, Math.max(1, (navigator.hardwareConcurrency || 4) / 2));
+                        if (key && uploadId) {
+                            fetch('/api/donations/abort', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ key, uploadId })
+                            }).finally(() => {
+                                this.donateState.message = 'Cancelled';
+                            });
+                        } else {
+                            this.donateState.message = 'Cancelled';
+                        }
+                        this.showToast('Upload cancelled', 'info');
+                    },
+                    async startDonateUpload(file) {
+                        if (this.donateState.inProgress) return;
+                        if (!file.name.toLowerCase().endsWith('.zip')) {
+                            this.donateState.error = 'Only .zip files are allowed';
+                            return;
+                        }
 
-                    const queue = [];
-                    for (let i = 0; i < totalParts; i++) {
-                        const partNumber = i + 1;
-                        const start = i * partSize;
-                        const end = Math.min(start + partSize, file.size);
-                        queue.push({ partNumber, blob: file.slice(start, end) });
-                    }
+                        this.resetDonateState();
+                        this.donateState.lastFileName = file.name;
+                        this.donateState.inProgress = true;
+                        this.donateState.message = 'Initializing...';
+                        this.donateInternals.startedAt = Date.now();
+                        this.donateInternals.totalBytes = file.size;
 
-                    const workers = Array.from({ length: Math.floor(concurrency) }, () => (async () => {
-                        while (queue.length && this.donateState.inProgress) {
-                            const job = queue.shift();
-                            if (!job) return;
+                        let init;
+                        try {
+                            const res = await fetch('/api/donations/init', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ filename: file.name })
+                            });
+                            init = await res.json();
+                            if (!res.ok) throw new Error(init.error || 'Init failed');
+                        } catch (e) {
+                            this.donateState.inProgress = false;
+                            this.donateState.error = String(e.message || e);
+                            this.showToast(String(e.message || e), 'error');
+                            this.donateState.message = '';
+                            return;
+                        }
 
-                            const urlRes = await fetch('/api/donations/part-url', {
+                        this.donateState.key = init.key;
+                        this.donateState.uploadId = init.uploadId;
+                        this.donateState.message = 'Uploading...';
+
+                        const partSize = 64 * 1024 * 1024;
+                        const totalParts = Math.ceil(file.size / partSize);
+                        const concurrency = Math.min(4, Math.max(1, (navigator.hardwareConcurrency || 4) / 2));
+
+                        const queue = [];
+                        for (let i = 0; i < totalParts; i++) {
+                            const partNumber = i + 1;
+                            const start = i * partSize;
+                            const end = Math.min(start + partSize, file.size);
+                            queue.push({ partNumber, blob: file.slice(start, end) });
+                        }
+
+                        const workers = Array.from({ length: Math.floor(concurrency) }, () => (async () => {
+                            while (queue.length && this.donateState.inProgress) {
+                                const job = queue.shift();
+                                if (!job) return;
+
+                                const urlRes = await fetch('/api/donations/part-url', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                        key: this.donateState.key,
+                                        uploadId: this.donateState.uploadId,
+                                        partNumber: job.partNumber
+                                    })
+                                });
+                                const urlJson = await urlRes.json();
+                                if (!urlRes.ok) throw new Error(urlJson.error || 'Failed to sign part');
+
+                                await new Promise((resolve, reject) => {
+                                    const xhr = new XMLHttpRequest();
+                                    this.donateInternals.activeRequests.push(xhr);
+                                    xhr.open('PUT', urlJson.url, true);
+                                    xhr.upload.onprogress = (evt) => {
+                                        if (!evt.lengthComputable) return;
+                                        this.donateInternals.perPartLoaded[job.partNumber] = evt.loaded;
+                                        let sum = 0;
+                                        for (const k in this.donateInternals.perPartLoaded) sum += this.donateInternals.perPartLoaded[k] || 0;
+                                        this.donateInternals.uploadedBytes = sum;
+                                        this.updateDonateProgress();
+                                    };
+                                    xhr.onload = () => {
+                                        const etag = xhr.getResponseHeader('ETag');
+                                        if (xhr.status >= 200 && xhr.status < 300) {
+                                            if (!etag) {
+                                                reject(new Error('Upload succeeded but ETag header is not readable. Add R2 CORS: ExposeHeaders = ETag'));
+                                                return;
+                                            }
+                                            this.donateInternals.perPartLoaded[job.partNumber] = job.blob.size;
+                                            let sum = 0;
+                                            for (const k in this.donateInternals.perPartLoaded) sum += this.donateInternals.perPartLoaded[k] || 0;
+                                            this.donateInternals.uploadedBytes = sum;
+                                            this.updateDonateProgress();
+                                            this.donateInternals.parts.push({ ETag: etag, PartNumber: job.partNumber });
+                                            resolve();
+                                        } else {
+                                            reject(new Error(`Part ${job.partNumber} failed (${xhr.status})`));
+                                        }
+                                    };
+                                    xhr.onerror = () => reject(new Error(`Part ${job.partNumber} network error`));
+                                    xhr.onabort = () => reject(new Error('Upload aborted'));
+                                    xhr.send(job.blob);
+                                });
+                            }
+                        })());
+
+                        try {
+                            await Promise.all(workers);
+                        } catch (e) {
+                            this.donateState.inProgress = false;
+                            this.donateState.error = String(e.message || e);
+                            this.donateState.message = '';
+                            if (this.donateState.key && this.donateState.uploadId) {
+                                fetch('/api/donations/abort', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ key: this.donateState.key, uploadId: this.donateState.uploadId })
+                                }).catch(() => { });
+                            }
+                            return;
+                        }
+
+                        if (!this.donateState.inProgress) return;
+
+                        this.donateState.message = 'Finalizing...';
+                        try {
+                            const res = await fetch('/api/donations/complete', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
                                     key: this.donateState.key,
                                     uploadId: this.donateState.uploadId,
-                                    partNumber: job.partNumber
+                                    parts: this.donateInternals.parts
                                 })
                             });
-                            const urlJson = await urlRes.json();
-                            if (!urlRes.ok) throw new Error(urlJson.error || 'Failed to sign part');
+                            const json = await res.json();
+                            if (!res.ok) throw new Error(json.error || 'Complete failed');
 
-                            await new Promise((resolve, reject) => {
-                                const xhr = new XMLHttpRequest();
-                                this.donateInternals.activeRequests.push(xhr);
-                                xhr.open('PUT', urlJson.url, true);
-                                xhr.upload.onprogress = (evt) => {
-                                    if (!evt.lengthComputable) return;
-                                    this.donateInternals.perPartLoaded[job.partNumber] = evt.loaded;
-                                    let sum = 0;
-                                    for (const k in this.donateInternals.perPartLoaded) sum += this.donateInternals.perPartLoaded[k] || 0;
-                                    this.donateInternals.uploadedBytes = sum;
-                                    this.updateDonateProgress();
-                                };
-                                xhr.onload = () => {
-                                    const etag = xhr.getResponseHeader('ETag');
-                                    if (xhr.status >= 200 && xhr.status < 300) {
-                                        if (!etag) {
-                                            reject(new Error('Upload succeeded but ETag header is not readable. Add R2 CORS: ExposeHeaders = ETag'));
-                                            return;
-                                        }
-                                        this.donateInternals.perPartLoaded[job.partNumber] = job.blob.size;
-                                        let sum = 0;
-                                        for (const k in this.donateInternals.perPartLoaded) sum += this.donateInternals.perPartLoaded[k] || 0;
-                                        this.donateInternals.uploadedBytes = sum;
-                                        this.updateDonateProgress();
-                                        this.donateInternals.parts.push({ ETag: etag, PartNumber: job.partNumber });
-                                        resolve();
-                                    } else {
-                                        reject(new Error(`Part ${job.partNumber} failed (${xhr.status})`));
-                                    }
-                                };
-                                xhr.onerror = () => reject(new Error(`Part ${job.partNumber} network error`));
-                                xhr.onabort = () => reject(new Error('Upload aborted'));
-                                xhr.send(job.blob);
-                            });
+                            this.donateInternals.uploadedBytes = this.donateInternals.totalBytes;
+                            this.updateDonateProgress();
+                            this.donateState.inProgress = false;
+                            this.donateState.message = 'Thank you — upload complete';
+                            this.showToast('Upload successful! Thank you.', 'success');
+                            setTimeout(() => {
+                                this.donateModalOpen = false;
+                                this.resetDonateState();
+                            }, 1200);
+                        } catch (e) {
+                            this.donateState.inProgress = false;
+                            this.donateState.error = String(e.message || e);
+                            this.donateState.message = '';
                         }
-                    })());
-
-                    try {
-                        await Promise.all(workers);
-                    } catch (e) {
-                        this.donateState.inProgress = false;
-                        this.donateState.error = String(e.message || e);
-                        this.donateState.message = '';
-                        if (this.donateState.key && this.donateState.uploadId) {
-                            fetch('/api/donations/abort', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ key: this.donateState.key, uploadId: this.donateState.uploadId })
-                            }).catch(() => {});
-                        }
-                        return;
-                    }
-
-                    if (!this.donateState.inProgress) return;
-
-                    this.donateState.message = 'Finalizing...';
-                    try {
-                        const res = await fetch('/api/donations/complete', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                key: this.donateState.key,
-                                uploadId: this.donateState.uploadId,
-                                parts: this.donateInternals.parts
-                            })
-                        });
-                        const json = await res.json();
-                        if (!res.ok) throw new Error(json.error || 'Complete failed');
-
-                        this.donateInternals.uploadedBytes = this.donateInternals.totalBytes;
-                        this.updateDonateProgress();
-                        this.donateState.inProgress = false;
-                        this.donateState.message = 'Thank you — upload complete';
-                        setTimeout(() => {
-                            this.donateModalOpen = false;
-                            this.resetDonateState();
-                        }, 1200);
-                    } catch (e) {
-                        this.donateState.inProgress = false;
-                        this.donateState.error = String(e.message || e);
-                        this.donateState.message = '';
                     }
                 }
-            }
-        }).mount('#app')
-    </script>
+            }).mount('#app')
+        </script>
 </body>
+
 </html>

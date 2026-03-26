@@ -4,8 +4,7 @@ import { config } from './config.js';
 export function requireAdmin(req, res) {
     const token = req.cookies?.admin_token || req.headers.authorization?.split(' ')[1];
     const headerPassword = req.headers['password'];
-    
-    // Fallback for user's original frontend code (if it still uses headers)
+
     if (headerPassword && headerPassword === config.ADMIN_PASSWORD) {
         return true;
     }
