@@ -57,7 +57,7 @@ export function validateEnv() {
     if (!config.R2.ACCESS_KEY_ID) warnings.push('R2_ACCESS_KEY_ID is not set');
     if (!config.R2.SECRET_ACCESS_KEY) warnings.push('R2_SECRET_ACCESS_KEY is not set');
     if (!config.R2.BUCKET_NAME) warnings.push('R2_BUCKET_NAME is not set');
-    
+
     if (warnings.length) {
         console.warn('\n⚠️  Environment warnings:');
         warnings.forEach(w => console.warn(`   • ${w}`));

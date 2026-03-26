@@ -1,4 +1,5 @@
 import { config } from './config.js';
+import { s3Client } from './s3.js';
 import { md5Newline, readJsonFromR2, writeJsonToR2, listTopLevelFolders } from './s3-helpers.js';
 
 const md5MapState = {
@@ -19,10 +20,42 @@ function shallowEqualObject(a, b) {
 async function doSyncMd5Map() {
     try {
         const folders = await listTopLevelFolders();
+        console.log(`[MD5 Sync] Found folders: ${folders.length}`);
+
+        const { ListObjectsV2Command } = await import('@aws-sdk/client-s3');
+        const objectsRes = await s3Client.send(new ListObjectsV2Command({
+            Bucket: config.R2.BUCKET_NAME,
+            Delimiter: '/'
+        }));
+
+        const items = new Set(folders);
+        const contents = objectsRes.Contents || [];
+        console.log(`[MD5 Sync] Found top-level objects: ${contents.length}`);
+
+        contents.forEach(obj => {
+            if (obj.Key && !obj.Key.endsWith('/')) {
+                const name = obj.Key.replace(/\.zip$/i, '');
+                if (name) items.add(name);
+            }
+        });
+
+        console.log(`[MD5 Sync] Total unique items to map: ${items.size}`);
+
         const newMap = {};
-        for (const f of folders) newMap[md5Newline(f)] = f;
+        for (const item of items) {
+            newMap[md5Newline(item)] = item;
+        }
 
         const remote = await readJsonFromR2(config.R2.MD5_MAP_KEY, {});
+        console.log(`[MD5 Sync] Remote map keys: ${Object.keys(remote).length}`);
+
+        if (!shallowEqualObject(newMap, remote)) {
+            console.log('[MD5 Sync] Maps differ, writing update to R2...');
+            await writeJsonToR2(config.R2.MD5_MAP_KEY, newMap);
+        } else {
+            console.log('[MD5 Sync] No changes detected in map.');
+        }
+        md5MapState.map = newMap;
         if (!shallowEqualObject(newMap, remote)) {
             await writeJsonToR2(config.R2.MD5_MAP_KEY, newMap);
         }
