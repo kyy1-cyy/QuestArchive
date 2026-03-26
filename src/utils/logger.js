@@ -1,4 +1,7 @@
 import winston from 'winston';
+import fs from 'fs';
+
+fs.mkdirSync('logs', { recursive: true });
 
 const logFormat = winston.format.printf(({ level, message, timestamp, ...metadata }) => {
     let msg = `${timestamp} [${level}] : ${message} `;
