@@ -99,4 +99,57 @@ router.post('/delete', async (req, res, next) => {
     }
 });
 
+router.post('/bulk-delete', async (req, res, next) => {
+    if (!requireAdmin(req, res)) return;
+    const { keys, prefixes } = req.body ?? {};
+    const keyList = Array.isArray(keys) ? keys.filter(Boolean) : [];
+    const prefixList = Array.isArray(prefixes) ? prefixes.filter(Boolean) : [];
+
+    try {
+        let deletedKeys = 0;
+        let deletedFromPrefixes = 0;
+
+        if (keyList.length) {
+            for (let i = 0; i < keyList.length; i += 1000) {
+                const slice = keyList.slice(i, i + 1000).map(k => ({ Key: k }));
+                await s3Client.send(new DeleteObjectsCommand({
+                    Bucket: config.R2.BUCKET_NAME,
+                    Delete: { Objects: slice }
+                }));
+                deletedKeys += slice.length;
+            }
+        }
+
+        if (prefixList.length) {
+            for (const prefix of prefixList) {
+                let token = undefined;
+                while (true) {
+                    const list = await s3Client.send(new ListObjectsV2Command({
+                        Bucket: config.R2.BUCKET_NAME,
+                        Prefix: prefix,
+                        ContinuationToken: token
+                    }));
+                    const objs = (list.Contents || []).map(o => ({ Key: o.Key })).filter(o => o.Key);
+                    if (objs.length) {
+                        for (let i = 0; i < objs.length; i += 1000) {
+                            const slice = objs.slice(i, i + 1000);
+                            await s3Client.send(new DeleteObjectsCommand({
+                                Bucket: config.R2.BUCKET_NAME,
+                                Delete: { Objects: slice }
+                            }));
+                            deletedFromPrefixes += slice.length;
+                        }
+                    }
+                    if (!list.IsTruncated) break;
+                    token = list.NextContinuationToken;
+                }
+            }
+        }
+
+        res.json({ success: true, deletedKeys, deletedFromPrefixes });
+    } catch (err) {
+        next(err);
+    }
+});
+
 export default router;

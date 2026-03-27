@@ -627,6 +627,9 @@
                         <button class="btn" @click="storageUp" :disabled="!storagePrefix || storageLoading">Up</button>
                         <button class="btn" @click="fetchStorage(storagePrefix)"
                             :disabled="storageLoading">Refresh</button>
+                        <button class="btn btn-delete" @click="deleteSelectedStorage"
+                            :disabled="storageLoading || storageSelectedKeys.length === 0">Delete Selected ({{
+                            storageSelectedKeys.length }})</button>
                     </div>
                 </div>
                 <div v-if="storageError" style="margin-top: 10px; color:#ff9999; font-size: 12px;">{{ storageError }}
@@ -638,6 +641,10 @@
             <table v-if="activeTab === 'storage'">
                 <thead>
                     <tr>
+                        <th style="width: 44px;">
+                            <input type="checkbox" :checked="storageRows.length && storageSelectedKeys.length === storageRows.length"
+                                @click.prevent.stop="toggleSelectAllStorage">
+                        </th>
                         <th>Name</th>
                         <th>Type</th>
                         <th>Timestamp</th>
@@ -647,31 +654,31 @@
                 </thead>
                 <tbody>
                     <tr v-if="storageLoading">
-                        <td colspan="5" style="text-align: center; color: #888; padding: 30px;">Loading storage...</td>
+                        <td colspan="6" style="text-align: center; color: #888; padding: 30px;">Loading storage...</td>
                     </tr>
                     <tr v-else-if="storageFolders.length === 0 && storageObjects.length === 0">
-                        <td colspan="5" style="text-align: center; color: #888; padding: 30px;">This folder is empty.
+                        <td colspan="6" style="text-align: center; color: #888; padding: 30px;">This folder is empty.
                         </td>
                     </tr>
-                    <tr v-for="p in storageFolders" :key="p">
-                        <td style="color:#9cdcfe; cursor:pointer;" @click="openStorageFolder(p)">{{
-                            storageDisplayName(p) }}</td>
-                        <td style="color:#808080; font-size: 12px;">folder</td>
-                        <td style="color:#b5cea8; font-size: 12px;">-</td>
-                        <td style="text-align:right; color:#808080; font-size: 12px;">-</td>
-                        <td style="text-align:right;">
-                            <button class="btn btn-delete" @click="deleteStoragePrefix(p)">Delete</button>
+                    <tr v-for="(row, idx) in storageRows" :key="row.kind + ':' + row.key">
+                        <td>
+                            <input type="checkbox" :checked="isStorageSelected(row.key)"
+                                @click.prevent.stop="toggleStorageSelection(row, idx, $event)">
                         </td>
-                    </tr>
-                    <tr v-for="o in storageObjects" :key="o.key">
-                        <td style="color:#ce9178;">{{ storageDisplayName(o.key) }}</td>
-                        <td style="color:#808080; font-size: 12px;">file</td>
-                        <td style="color:#b5cea8; font-size: 12px;">{{ o.lastModified ? new
-                            Date(o.lastModified).toLocaleString() : '-' }}</td>
-                        <td style="text-align:right; color:#808080; font-size: 12px;">{{ formatBytes(o.size) }}</td>
-                        <td style="text-align:right; display:flex; gap:10px; justify-content:flex-end;">
-                            <button class="btn" @click="downloadStorage(o.key)">Download</button>
-                            <button class="btn btn-delete" @click="deleteStorageKey(o.key)">Delete</button>
+                        <td v-if="row.kind === 'folder'" style="color:#9cdcfe; cursor:pointer;"
+                            @click="openStorageFolder(row.key)">{{ storageDisplayName(row.key) }}</td>
+                        <td v-else style="color:#ce9178;">{{ storageDisplayName(row.key) }}</td>
+                        <td style="color:#808080; font-size: 12px;">{{ row.kind }}</td>
+                        <td style="color:#b5cea8; font-size: 12px;">{{ row.kind === 'file' && row.lastModified ? new
+                            Date(row.lastModified).toLocaleString() : '-' }}</td>
+                        <td style="text-align:right; color:#808080; font-size: 12px;">{{ row.kind === 'file' ?
+                            formatBytes(row.size) : '-' }}</td>
+                        <td v-if="row.kind === 'folder'" style="text-align:right;">
+                            <button class="btn btn-delete" @click="deleteStoragePrefix(row.key)">Delete</button>
+                        </td>
+                        <td v-else style="text-align:right; display:flex; gap:10px; justify-content:flex-end;">
+                            <button class="btn" @click="downloadStorage(row.key)">Download</button>
+                            <button class="btn btn-delete" @click="deleteStorageKey(row.key)">Delete</button>
                         </td>
                     </tr>
                 </tbody>
@@ -1002,6 +1009,8 @@
                     storageLoading: false,
                     storageError: '',
                     storageTruncated: false,
+                    storageSelectedKeys: [],
+                    storageLastSelectedIndex: null,
                     md5MapItems: [],
                     md5MapLoading: false,
                     md5MapError: '',
@@ -1107,6 +1116,16 @@
                         const hash = String(item.hash || '').toLowerCase();
                         return name.includes(q) || hash.includes(q);
                     });
+                },
+                storageRows() {
+                    const rows = [];
+                    for (const p of (this.storageFolders || [])) {
+                        rows.push({ kind: 'folder', key: p });
+                    }
+                    for (const o of (this.storageObjects || [])) {
+                        rows.push({ kind: 'file', key: o.key, lastModified: o.lastModified, size: o.size });
+                    }
+                    return rows;
                 }
             },
             mounted() {
@@ -1262,6 +1281,8 @@
                             this.storageFolders = json.folders || [];
                             this.storageObjects = json.objects || [];
                             this.storageTruncated = !!json.isTruncated;
+                            this.storageSelectedKeys = [];
+                            this.storageLastSelectedIndex = null;
                         }
                     } catch (e) {
                         this.storageError = e.message;
@@ -1297,6 +1318,62 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ prefix })
                     });
+                    this.fetchStorage(this.storagePrefix);
+                },
+                isStorageSelected(key) {
+                    return this.storageSelectedKeys.includes(key);
+                },
+                toggleStorageSelection(row, idx, e) {
+                    const key = row.key;
+                    const has = this.storageSelectedKeys.includes(key);
+                    const willSelect = !has;
+
+                    if (e && e.shiftKey && this.storageLastSelectedIndex !== null) {
+                        const start = Math.min(this.storageLastSelectedIndex, idx);
+                        const end = Math.max(this.storageLastSelectedIndex, idx);
+                        const next = new Set(this.storageSelectedKeys);
+                        for (let i = start; i <= end; i++) {
+                            const k = this.storageRows[i]?.key;
+                            if (!k) continue;
+                            if (willSelect) next.add(k);
+                            else next.delete(k);
+                        }
+                        this.storageSelectedKeys = Array.from(next);
+                    } else {
+                        if (willSelect) this.storageSelectedKeys = [...this.storageSelectedKeys, key];
+                        else this.storageSelectedKeys = this.storageSelectedKeys.filter(k => k !== key);
+                    }
+                    this.storageLastSelectedIndex = idx;
+                },
+                toggleSelectAllStorage() {
+                    if (!this.storageRows.length) return;
+                    if (this.storageSelectedKeys.length === this.storageRows.length) {
+                        this.storageSelectedKeys = [];
+                        this.storageLastSelectedIndex = null;
+                        return;
+                    }
+                    this.storageSelectedKeys = this.storageRows.map(r => r.key);
+                    this.storageLastSelectedIndex = this.storageRows.length - 1;
+                },
+                async deleteSelectedStorage() {
+                    if (!this.storageSelectedKeys.length) return;
+                    if (!confirm(`Delete ${this.storageSelectedKeys.length} selected item(s)?`)) return;
+
+                    const keys = [];
+                    const prefixes = [];
+                    for (const k of this.storageSelectedKeys) {
+                        if (String(k).endsWith('/')) prefixes.push(k);
+                        else keys.push(k);
+                    }
+
+                    await fetch('/api/storage/bulk-delete', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ keys, prefixes })
+                    });
+
+                    this.storageSelectedKeys = [];
+                    this.storageLastSelectedIndex = null;
                     this.fetchStorage(this.storagePrefix);
                 },
                 openFilePicker() {
