@@ -5,6 +5,7 @@ import { requireAdmin, ensureEnv } from '../utils/auth.js';
 import { ensureMd5MapFresh } from '../utils/md5-map.js';
 import { logger } from '../utils/logger.js';
 import { runMigration, getMigrationStatus } from '../utils/migration.js';
+import { sendWebhook } from '../utils/discord.js';
 
 const router = express.Router();
 
@@ -46,6 +47,8 @@ router.post('/database', async (req, res, next) => {
         games.push(newGame);
         await writeDB(games);
         res.status(201).json(newGame);
+        
+        sendWebhook(newGame);
     } catch (err) {
         next(err);
     }

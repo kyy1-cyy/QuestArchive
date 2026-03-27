@@ -111,6 +111,24 @@ router.get('/games', async (req, res, next) => {
     }
 });
 
+router.get('/games/list', async (req, res, next) => {
+    try {
+        const authHeader = req.headers.authorization;
+        const validToken = config.API_TOKEN;
+
+        if (!validToken) {
+            return res.status(503).json({ error: 'API_TOKEN is not configured on the server' });
+        }
+        if (!authHeader || !authHeader.startsWith('Bearer ') || authHeader.split(' ')[1] !== validToken) {
+            return res.status(401).json({ error: 'Unauthorized: Invalid or missing Bearer token' });
+        }
+        const games = await readDB();
+        res.json({ success: true, count: games.length, games });
+    } catch (err) {
+        next(err);
+    }
+});
+
 function findGameByTitle(games, title) {
     const t = String(title || '').trim();
     if (!t) return null;
