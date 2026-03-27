@@ -783,8 +783,8 @@
                         <div class="form-group">
                             <label>R2 Hash ID (Zip)</label>
                             <div style="display:flex; gap:8px; align-items: center;">
-                                <div class="form-control" style="flex: 1; display:flex; align-items:center; gap:10px;">
-                                    <span v-if="newGame.hashId" style="color:#9cdcfe; font-family: Consolas, monospace; font-size: 12px;">
+                                <div class="form-control" style="flex: 1; min-width: 0; display:flex; align-items:center; gap:10px;">
+                                    <span v-if="newGame.hashId" style="color:#9cdcfe; font-family: Consolas, monospace; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;">
                                         {{ newGame.hashId }}
                                     </span>
                                     <span v-else style="color:#777;">No hash selected</span>
@@ -821,6 +821,12 @@
                                     style="display:none" @change="handleImagePick">
                             </div>
                         </div>
+                        <div style="margin-top: 10px; display:flex; gap:10px; align-items:center; flex-wrap: wrap;">
+                            <button class="btn btn-tab" style="padding: 6px 10px;" @click="openThumbPicker" :disabled="thumbLoading">Pick from R2</button>
+                            <span class="muted" style="font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 520px;" v-if="newGame.thumbnailUrl">
+                                {{ thumbDisplayNameFromUrl(newGame.thumbnailUrl) }}
+                            </span>
+                        </div>
                         <div class="muted" style="margin-top: 8px; color: #b5cea8;" v-if="newGame.thumbnailUrl">✓ Image mapped correctly</div>
                         <div style="margin-top: 8px; color:#ff9999; font-size: 11px;" v-if="imageState.error">{{ imageState.error }}</div>
                     </div>
@@ -843,32 +849,76 @@
                         <input v-model="md5SearchQuery" type="text" placeholder="Search by file name or hash…" style="width: 100%;">
                     </div>
 
-                    <div style="border: 1px solid #333; border-radius: 8px; overflow: hidden; flex: 1; min-height: 220px;">
+                    <div style="border: 1px solid #333; border-radius: 8px; overflow: hidden; flex: 1; min-height: 220px; display:flex; flex-direction: column;">
                         <div v-if="md5MapLoading" class="muted" style="padding: 18px;">Loading Hash map…</div>
                         <div v-else-if="filteredMd5Items.length === 0" class="muted" style="padding: 18px;">No matches.</div>
-                        <table v-else style="margin: 0; width: 100%; border-collapse: separate; border-spacing: 0;">
-                            <thead>
-                                <tr>
-                                    <th style="padding: 12px 14px;">File Name</th>
-                                    <th style="padding: 12px 14px;">Hash ID</th>
-                                    <th style="padding: 12px 14px; width: 90px;"></th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr v-for="item in filteredMd5Items" :key="item.hash" @click="selectMd5(item)" style="cursor: pointer;">
-                                    <td style="padding: 12px 14px; color:#ce9178;">{{ item.folder }}</td>
-                                    <td style="padding: 12px 14px; font-family: Consolas, monospace; color:#9cdcfe;">{{ item.hash }}</td>
-                                    <td style="padding: 12px 14px; text-align: right;">
-                                        <button class="btn btn-tab" style="padding: 6px 10px;">Pick</button>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
+                        <div v-else style="overflow: auto; flex: 1; overscroll-behavior: contain;">
+                            <table style="margin: 0; width: 100%; border-collapse: separate; border-spacing: 0;">
+                                <thead>
+                                    <tr>
+                                        <th style="padding: 12px 14px;">File Name</th>
+                                        <th style="padding: 12px 14px;">Hash ID</th>
+                                        <th style="padding: 12px 14px; width: 90px;"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="item in filteredMd5Items" :key="item.hash" @click="selectMd5(item)" style="cursor: pointer;">
+                                        <td style="padding: 12px 14px; color:#ce9178; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 320px;">{{ item.folder }}</td>
+                                        <td style="padding: 12px 14px; font-family: Consolas, monospace; color:#9cdcfe; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 420px;">{{ item.hash }}</td>
+                                        <td style="padding: 12px 14px; text-align: right;">
+                                            <button class="btn btn-tab" style="padding: 6px 10px;">Pick</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
 
                     <div style="display:flex; justify-content: space-between; align-items:center; margin-top: 14px;">
                         <div class="muted" style="font-size: 11px;">{{ filteredMd5Items.length }} items</div>
                         <button class="btn btn-tab" @click="fetchMd5Map(true)" :disabled="md5MapLoading">Refresh</button>
+                    </div>
+                </div>
+            </div>
+
+            <div v-if="showThumbPicker" class="overlay" @click.self="showThumbPicker = false" style="z-index: 200;">
+                <div class="modal" style="width: 720px; max-height: 80vh; display:flex; flex-direction: column;">
+                    <div class="modal-header" style="margin-bottom: 18px;">
+                        <h3 style="margin:0; font-size: 16px; font-weight: 600; color:#fff;">Select Thumbnail (Search)</h3>
+                        <button class="close-btn" @click="showThumbPicker = false">✕</button>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 14px;">
+                        <input v-model="thumbSearchQuery" type="text" placeholder="Search thumbnails…" style="width: 100%;">
+                    </div>
+
+                    <div style="border: 1px solid #333; border-radius: 8px; overflow: hidden; flex: 1; min-height: 220px; display:flex; flex-direction: column;">
+                        <div v-if="thumbLoading" class="muted" style="padding: 18px;">Loading thumbnails…</div>
+                        <div v-else-if="thumbError" class="muted" style="padding: 18px; color:#ff9999;">{{ thumbError }}</div>
+                        <div v-else-if="filteredThumbItems.length === 0" class="muted" style="padding: 18px;">No matches.</div>
+                        <div v-else style="overflow: auto; flex: 1; overscroll-behavior: contain;">
+                            <table style="margin: 0; width: 100%; border-collapse: separate; border-spacing: 0;">
+                                <thead>
+                                    <tr>
+                                        <th style="padding: 12px 14px;">File</th>
+                                        <th style="padding: 12px 14px; width: 110px;"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="item in filteredThumbItems" :key="item.key" @click="selectThumb(item)" style="cursor: pointer;">
+                                        <td style="padding: 12px 14px; color:#ce9178; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 560px;">{{ item.name }}</td>
+                                        <td style="padding: 12px 14px; text-align: right;">
+                                            <button class="btn btn-tab" style="padding: 6px 10px;">Pick</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div style="display:flex; justify-content: space-between; align-items:center; margin-top: 14px;">
+                        <div class="muted" style="font-size: 11px;">{{ filteredThumbItems.length }} items</div>
+                        <button class="btn btn-tab" @click="fetchThumbs(true)" :disabled="thumbLoading">Refresh</button>
                     </div>
                 </div>
             </div>
@@ -1011,6 +1061,11 @@
                     storageTruncated: false,
                     storageSelectedKeys: [],
                     storageLastSelectedIndex: null,
+                    showThumbPicker: false,
+                    thumbSearchQuery: '',
+                    thumbItems: [],
+                    thumbLoading: false,
+                    thumbError: '',
                     md5MapItems: [],
                     md5MapLoading: false,
                     md5MapError: '',
@@ -1126,6 +1181,11 @@
                         rows.push({ kind: 'file', key: o.key, lastModified: o.lastModified, size: o.size });
                     }
                     return rows;
+                },
+                filteredThumbItems() {
+                    const q = String(this.thumbSearchQuery || '').toLowerCase();
+                    if (!q) return this.thumbItems;
+                    return this.thumbItems.filter(it => String(it.name || '').toLowerCase().includes(q));
                 }
             },
             mounted() {
@@ -1186,6 +1246,56 @@
                 selectMd5(item) {
                     this.newGame.hashId = item.hash;
                     this.showMd5Picker = false;
+                },
+                thumbDisplayNameFromUrl(url) {
+                    const u = String(url || '');
+                    if (!u) return '';
+                    const idx = u.lastIndexOf('/');
+                    return idx === -1 ? u : u.slice(idx + 1);
+                },
+                async openThumbPicker() {
+                    this.thumbSearchQuery = '';
+                    this.showThumbPicker = true;
+                    if (!this.thumbItems.length) {
+                        await this.fetchThumbs(false);
+                    }
+                },
+                async fetchThumbs(force) {
+                    if (this.thumbLoading) return;
+                    if (!force && this.thumbItems.length) return;
+                    this.thumbLoading = true;
+                    this.thumbError = '';
+                    try {
+                        const res = await fetch(`/api/storage/list?prefix=${encodeURIComponent('.meta/thumbnails/')}`);
+                        const json = await res.json();
+                        if (!res.ok) throw new Error(json.error || 'Failed to load thumbnails');
+                        const objs = Array.isArray(json.objects) ? json.objects : [];
+                        const items = objs
+                            .map(o => String(o.key || ''))
+                            .filter(k => k && !k.toLowerCase().endsWith('.zip'))
+                            .map(k => ({
+                                key: k,
+                                name: k.replace(/^\.meta\/thumbnails\//, '')
+                            }))
+                            .filter(it => it.name);
+                        this.thumbItems = items;
+                    } catch (e) {
+                        this.thumbError = String(e.message || e);
+                        this.thumbItems = [];
+                    } finally {
+                        this.thumbLoading = false;
+                    }
+                },
+                async selectThumb(item) {
+                    try {
+                        const res = await fetch(`/api/storage/download-url?key=${encodeURIComponent(item.key)}`);
+                        const json = await res.json();
+                        if (!res.ok) throw new Error(json.error || 'Failed to get URL');
+                        if (json.url) this.newGame.thumbnailUrl = json.url;
+                        this.showThumbPicker = false;
+                    } catch (e) {
+                        this.showToast(String(e.message || e), 'error');
+                    }
                 },
                 md5FileName(hash) {
                     const found = this.md5MapItems.find(i => i.hash === hash);
