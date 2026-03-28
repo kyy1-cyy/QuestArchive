@@ -41,10 +41,17 @@ export function normalizeGames(games) {
         return obj;
     });
 
-    // Natural sort: Numbers first, then letters, accurately handling multi-digit numbers
+    // Custom sort: "_" first, then numbers, then a-z (using natural locale compare)
     normalized.sort((a, b) => {
         const titleA = String(a.title || '').toLowerCase();
         const titleB = String(b.title || '').toLowerCase();
+
+        const aStartsUnderscore = titleA.startsWith('_');
+        const bStartsUnderscore = titleB.startsWith('_');
+
+        if (aStartsUnderscore && !bStartsUnderscore) return -1;
+        if (!aStartsUnderscore && bStartsUnderscore) return 1;
+
         return titleA.localeCompare(titleB, undefined, { numeric: true, sensitivity: 'base' });
     });
 

@@ -696,6 +696,18 @@
                                 const bv = Number(b.downloads || 0);
                                 return av < bv ? -dir : av > bv ? dir : 0;
                             }
+                            
+                            const titleA = String(a.title || '').toLowerCase();
+                            const titleB = String(b.title || '').toLowerCase();
+                            
+                            const aStartsUnderscore = titleA.startsWith('_');
+                            const bStartsUnderscore = titleB.startsWith('_');
+
+                            if (key === 'title') {
+                                if (aStartsUnderscore && !bStartsUnderscore) return -1 * dir;
+                                if (!aStartsUnderscore && bStartsUnderscore) return 1 * dir;
+                            }
+
                             const av = String(a[key] || '').toLowerCase();
                             const bv = String(b[key] || '').toLowerCase();
                             return dir === 1 
