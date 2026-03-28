@@ -774,66 +774,70 @@
                         <button class="close-btn" @click="showAddModal = false">✕</button>
                     </div>
 
-                    <div class="form-group">
-                        <label>Display Title</label>
-                        <input v-model="newGame.title" type="text" placeholder="e.g. Beat Saber">
+                    <div class="form-group" v-if="!newGame.hashId && !manualMode" style="display:flex; flex-direction:column; gap:12px; align-items:center;">
+                        <button class="btn" style="width: 100%; justify-content: center; padding: 14px; font-size: 15px;" @click="openMd5Picker" :disabled="md5MapLoading" :style="{ opacity: md5MapLoading ? 0.5 : 1, cursor: md5MapLoading ? 'wait' : 'pointer' }">
+                            {{ md5MapLoading ? 'Loading Game Database...' : 'Pick a Game to Auto-Fill' }}
+                        </button>
                     </div>
 
-                    <div class="form-grid">
+                    <template v-if="newGame.hashId || manualMode">
                         <div class="form-group">
                             <label>R2 Hash ID (Zip)</label>
                             <div style="display:flex; gap:8px; align-items: center;">
                                 <div class="form-control" style="flex: 1; min-width: 0; display:flex; align-items:center; gap:10px;">
-                                    <span v-if="newGame.hashId" style="color:#9cdcfe; font-family: Consolas, monospace; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;">
-                                        {{ newGame.hashId }}
-                                    </span>
+                                    <span v-if="newGame.hashId" style="color:#9cdcfe; font-family: Consolas, monospace; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;">{{ newGame.hashId }}</span>
                                     <span v-else style="color:#777;">No hash selected</span>
-                                    <span v-if="newGame.hashId && md5FileName(newGame.hashId)" style="margin-left:auto; color:#ce9178; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 240px;">
-                                        {{ md5FileName(newGame.hashId) }}
-                                    </span>
+                                    <span v-if="newGame.hashId" style="margin-left:auto; color:#ce9178; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 240px;">{{ md5FileName(newGame.hashId) }}</span>
                                 </div>
-                                <button class="btn" @click="openMd5Picker" :disabled="md5MapLoading">Select</button>
-                                <button class="btn btn-tab" style="padding: 0 10px;" @click="fetchMd5Map(true)" :disabled="md5MapLoading">↻</button>
+                                <button class="btn" @click="openMd5Picker" :disabled="md5MapLoading">Change Game</button>
                             </div>
                         </div>
+
+                        <div class="form-group">
+                            <label>Display Title</label>
+                            <input v-model="newGame.title" type="text" placeholder="e.g. Beat Saber" :readonly="!(imageState.error || manualMode)">
+                        </div>
+
                         <div class="form-group">
                             <label>Version</label>
-                            <input v-model="newGame.version" type="text" placeholder="1.0">
+                            <input v-model="newGame.version" type="text" placeholder="e.g. 1.0" :readonly="!(imageState.error || manualMode)">
                         </div>
-                    </div>
 
-                    <div class="form-group">
-                        <label>Description</label>
-                        <textarea v-model="newGame.description" rows="2" placeholder="Brief game overview..."></textarea>
-                    </div>
+                        <div class="form-group">
+                            <label>Notes</label>
+                            <textarea v-model="newGame.description" rows="3" placeholder="Brief game overview..." :readonly="!(imageState.error || manualMode)"></textarea>
+                        </div>
 
-                    <div class="form-group" style="margin-bottom: 24px;">
-                        <label>Thumbnail Visual</label>
-                        <div class="grid-layout" style="display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: start;">
-                            <input v-model="newGame.thumbnailUrl" type="text" placeholder="Image URL (automatic if uploaded)">
-                            <div class="dropzone" :class="{ active: imageDragOver }"
-                                @dragenter.prevent="imageDragOver = true" @dragover.prevent="imageDragOver = true"
-                                @dragleave.prevent="imageDragOver = false" @drop.prevent="handleImageDrop"
-                                style="padding: 8px 12px; border-style: solid; min-width: 120px; height: 38px; box-sizing: border-box; justify-content: center;">
-                                <button class="btn btn-tab" style="border:none; padding:0; font-size: 11px;" @click="openImagePicker"
-                                    :disabled="imageState.inProgress">{{ imageState.inProgress ? 'Uploding...' : 'Upload Image' }}</button>
-                                <input ref="imageInput" type="file" accept=".png,.jpg,.jpeg,image/png,image/jpeg"
-                                    style="display:none" @change="handleImagePick">
+                        <div class="form-group" style="margin-bottom: 24px;">
+                            <label>Thumbnail Visual</label>
+                            <div class="grid-layout" style="display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: start;">
+                                <input v-model="newGame.thumbnailUrl" type="text" placeholder="Image URL (automatic if uploaded)" :readonly="!(imageState.error || manualMode)">
+                                <div class="dropzone" :class="{ active: imageDragOver }"
+                                    @dragenter.prevent="imageDragOver = true" @dragover.prevent="imageDragOver = true"
+                                    @dragleave.prevent="imageDragOver = false" @drop.prevent="handleImageDrop"
+                                    style="padding: 8px 12px; border-style: solid; min-width: 120px; height: 38px; box-sizing: border-box; justify-content: center;">
+                                    <button class="btn btn-tab" style="border:none; padding:0; font-size: 11px;" @click="openImagePicker"
+                                        :disabled="imageState.inProgress || !(imageState.error || manualMode)">{{ imageState.inProgress ? 'Uploading...' : 'Upload Image' }}</button>
+                                    <input ref="imageInput" type="file" accept=".png,.jpg,.jpeg,image/png,image/jpeg"
+                                        style="display:none" @change="handleImagePick" :disabled="!(imageState.error || manualMode)">
+                                </div>
                             </div>
+                            <div style="margin-top: 10px; display:flex; gap:10px; align-items:center; flex-wrap: wrap;" v-if="newGame.thumbnailUrl">
+                                <span class="muted" style="font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 520px;">
+                                    {{ thumbDisplayNameFromUrl(newGame.thumbnailUrl) }}
+                                </span>
+                            </div>
+                            <div class="muted" style="margin-top: 8px; color: #b5cea8;" v-if="imageState.message">{{ imageState.message }}</div>
+                            <div class="muted" style="margin-top: 8px; color: #b5cea8;" v-else-if="newGame.thumbnailUrl && !imageState.error">Success: Game info auto-filled</div>
+                            <div style="margin-top: 8px; color:#ff9999; font-size: 11px;" v-if="imageState.error">Error: {{ imageState.error }} - Manual override enabled</div>
                         </div>
-                        <div style="margin-top: 10px; display:flex; gap:10px; align-items:center; flex-wrap: wrap;">
-                            <button class="btn btn-tab" style="padding: 6px 10px;" @click="openThumbPicker" :disabled="thumbLoading">Pick from R2</button>
-                            <span class="muted" style="font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 520px;" v-if="newGame.thumbnailUrl">
-                                {{ thumbDisplayNameFromUrl(newGame.thumbnailUrl) }}
-                            </span>
-                        </div>
-                        <div class="muted" style="margin-top: 8px; color: #b5cea8;" v-if="newGame.thumbnailUrl">✓ Image mapped correctly</div>
-                        <div style="margin-top: 8px; color:#ff9999; font-size: 11px;" v-if="imageState.error">{{ imageState.error }}</div>
-                    </div>
+                    </template>
 
-                    <div class="modal-actions">
+                    <div class="modal-actions" style="display:flex; gap:10px;">
                         <button class="btn btn-tab" style="border:none;" @click="showAddModal = false">Cancel</button>
-                        <button class="btn" style="min-width: 100px; justify-content: center;" @click="addGame">Save to DB</button>
+                        <div style="flex: 1;"></div>
+                        <button class="btn btn-tab" style="border:1px solid #333; opacity:0.7; font-size: 12px; padding: 4px 10px;" @click="manualMode = true" v-if="newGame.hashId && !manualMode && !imageState.error">Manual Add</button>
+                        <button class="btn" style="min-width: 100px; justify-content: center;" @click="addGame" v-if="(newGame.hashId || manualMode) && !imageState.inProgress" :disabled="imageState.inProgress">Save to DB</button>
                     </div>
                 </div>
             </div>
@@ -1072,6 +1076,7 @@
                     md5MapLastSyncAt: 0,
                     selectedIds: [],
                     showAddModal: false,
+                    manualMode: false,
                     showMd5Picker: false,
                     md5SearchQuery: '',
                     newGame: {
@@ -1156,20 +1161,20 @@
             computed: {
                 filteredGames() {
                     if (!this.searchQuery) return this.games;
-                    const q = this.searchQuery.toLowerCase();
-                    return this.games.filter(g => 
-                        g.title.toLowerCase().includes(q) || 
-                        g.hashId.toLowerCase().includes(q) ||
-                        g.version.toLowerCase().includes(q)
-                    );
+                    const queries = this.searchQuery.toLowerCase().split(/\s+/).filter(x => x);
+                    return this.games.filter(g => {
+                        const fileName = (this.md5MapItems.find(i => i.hash === g.hashId)?.folder || '').toLowerCase();
+                        const content = `${g.title} ${g.hashId} ${g.version} ${g.description} ${g.thumbnailUrl} ${fileName}`.toLowerCase();
+                        return queries.every(q => content.includes(q));
+                    });
                 },
                 filteredMd5Items() {
                     const q = String(this.md5SearchQuery || '').toLowerCase();
                     if (!q) return this.md5MapItems;
+                    const queries = q.split(/\s+/).filter(x => x);
                     return this.md5MapItems.filter(item => {
-                        const name = String(item.folder || '').toLowerCase();
-                        const hash = String(item.hash || '').toLowerCase();
-                        return name.includes(q) || hash.includes(q);
+                        const text = `${item.folder} ${item.hash}`.toLowerCase();
+                        return queries.every(qi => text.includes(qi));
                     });
                 },
                 storageRows() {
@@ -1185,7 +1190,11 @@
                 filteredThumbItems() {
                     const q = String(this.thumbSearchQuery || '').toLowerCase();
                     if (!q) return this.thumbItems;
-                    return this.thumbItems.filter(it => String(it.name || '').toLowerCase().includes(q));
+                    const queries = q.split(/\s+/).filter(x => x);
+                    return this.thumbItems.filter(it => {
+                        const text = String(it.name || '').toLowerCase();
+                        return queries.every(qi => text.includes(qi));
+                    });
                 }
             },
             mounted() {
@@ -1196,6 +1205,7 @@
                         if (j.authenticated) {
                             this.isAuthenticated = true;
                             this.fetchGames();
+                            this.fetchMd5Map(false);
                         } else {
                             // Try auto-login if a password was saved locally
                             const savedPwd = localStorage.getItem('admin_pwd');
@@ -1237,15 +1247,77 @@
                 },
                 async openAddModal() {
                     this.showAddModal = true;
+                    this.manualMode = false;
                     await this.fetchMd5Map(false);
                 },
                 openMd5Picker() {
+                    console.log('Opening MD5 Picker...');
                     this.md5SearchQuery = '';
                     this.showMd5Picker = true;
                 },
                 selectMd5(item) {
-                    this.newGame.hashId = item.hash;
+                    console.log('Match selected:', item);
                     this.showMd5Picker = false;
+                    this.newGame.hashId = item.hash;
+                    
+                    const filename = String(item.folder || '');
+                    
+                    const tMatch = filename.match(/^(.*?)\sv\d/i);
+                    this.newGame.title = tMatch ? tMatch[1].trim() : filename.replace(/\.zip$/i, '');
+                    
+                    const vMatch = filename.match(/\sv(.*?)\s-VRP/i);
+                    if (vMatch && vMatch[1]) {
+                        this.newGame.version = vMatch[1];
+                    }
+
+                    this.autoProcessGame(item.hash, filename);
+                },
+                async autoProcessGame(hash, filename) {
+                    this.imageState.error = '';
+                    this.imageState.inProgress = true;
+                    this.imageState.message = 'Auto-filling details...';
+                    
+                    let localError = '';
+                    
+                    try {
+                        const notesRes = await fetch(`/api/game-notes/${encodeURIComponent(filename)}`);
+                        const notesJson = await notesRes.json();
+                        if (notesRes.ok && notesJson.found) {
+                            this.newGame.description = notesJson.description;
+                        } else {
+                            localError = 'Notes not found. ';
+                        }
+
+                        const zipRes = await fetch(`/api/inspect-zip/${hash}`);
+                        const zipJson = await zipRes.json();
+                        if (zipRes.ok && zipJson.packageName) {
+                            const pkg = zipJson.packageName;
+                            const thumbRes = await fetch(`/api/find-thumbnail/${pkg}`);
+                            const thumbJson = await thumbRes.json();
+                            if (thumbRes.ok && thumbJson.found) {
+                                const urlRes = await fetch(`/api/storage/download-url?key=${encodeURIComponent(thumbJson.key)}`);
+                                const urlJson = await urlRes.json();
+                                if (urlRes.ok && urlJson.url) {
+                                    this.newGame.thumbnailUrl = urlJson.url;
+                                    this.imageState.message = 'Success! Game details matched.';
+                                    localError = ''; // Wipe notes error since thumbnail was a success
+                                } else {
+                                    localError += 'Thumbnail download failed.';
+                                }
+                            } else {
+                                localError += 'Thumbnail not found on R2.';
+                            }
+                        } else {
+                            if (!localError) localError = 'Package not found in VRP-GameList.csv';
+                        }
+                    } catch (e) {
+                         console.error('Auto-process error:', e);
+                         localError = 'Failed to auto-process game.';
+                    } finally {
+                         this.imageState.inProgress = false;
+                         this.imageState.error = localError; // Only apply reactive error at the exact end!
+                         if (this.imageState.error) this.imageState.message = '';
+                    }
                 },
                 thumbDisplayNameFromUrl(url) {
                     const u = String(url || '');

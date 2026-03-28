@@ -5,6 +5,10 @@ import { requireAdmin, ensureEnv } from '../utils/auth.js';
 import { ensureMd5MapFresh } from '../utils/md5-map.js';
 import { logger } from '../utils/logger.js';
 import { runMigration, getMigrationStatus } from '../utils/migration.js';
+import { getPackageNameFromList } from '../utils/game-list.js';
+import { readJsonFromR2 } from '../utils/s3-helpers.js';
+import { HeadObjectCommand } from '@aws-sdk/client-s3';
+import { s3Client } from '../utils/s3.js';
 
 const router = express.Router();
 
@@ -66,6 +70,77 @@ router.post('/database/bulk-delete', async (req, res, next) => {
         res.json({ success: true });
     } catch (err) {
         next(err);
+    }
+});
+
+router.get('/inspect-zip/:hash', async (req, res, next) => {
+    if (!requireAdmin(req, res)) return;
+    const { hash } = req.params;
+    console.log(`List Inspect requested for hash: ${hash}`);
+    try {
+        const map = await readJsonFromR2(config.R2.MD5_MAP_KEY, {});
+        const key = map[hash];
+        if (!key) return res.status(404).json({ error: 'Hash not found in map' });
+        
+        const packageName = await getPackageNameFromList(key);
+        res.json({ packageName });
+    } catch (err) {
+        next(err);
+    }
+});
+
+router.get('/find-thumbnail/:packageName', async (req, res, next) => {
+    if (!requireAdmin(req, res)) return;
+    const { packageName } = req.params;
+    const key = `.meta/thumbnails/${packageName}.jpg`;
+    try {
+        await s3Client.send(new HeadObjectCommand({
+            Bucket: config.R2.BUCKET_NAME,
+            Key: key
+        }));
+        // If it succeeds, it exists
+        res.json({ found: true, key });
+    } catch (err) {
+        if (err.name === 'NotFound' || err.$metadata?.httpStatusCode === 404) {
+            return res.json({ found: false });
+        }
+        res.status(500).json({ error: 'Failed to verify thumbnail' });
+    }
+});
+
+async function streamToString(stream) {
+    const chunks = [];
+    for await (const chunk of stream) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    return Buffer.concat(chunks).toString('utf-8');
+}
+
+router.get('/game-notes/:filename', async (req, res, next) => {
+    if (!requireAdmin(req, res)) return;
+    const { filename } = req.params;
+    
+    // Strip external .zip if provided
+    const baseName = filename.replace(/\.zip$/i, '').trim();
+    const key = `.meta/notes/${baseName}.txt`;
+    
+    try {
+        const { GetObjectCommand } = await import('@aws-sdk/client-s3');
+        const command = new GetObjectCommand({
+            Bucket: config.R2.BUCKET_NAME,
+            Key: key
+        });
+        const response = await s3Client.send(command);
+        if (!response.Body) return res.json({ found: false });
+        
+        const description = await streamToString(response.Body);
+        res.json({ found: true, description: description.trim() });
+    } catch (err) {
+        if (err.name === 'NoSuchKey' || err.$metadata?.httpStatusCode === 404) {
+            return res.json({ found: false });
+        }
+        console.error('Error fetching game notes:', err);
+        res.status(500).json({ error: 'Failed to fetch game notes' });
     }
 });
 

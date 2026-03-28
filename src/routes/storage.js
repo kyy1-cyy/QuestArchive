@@ -18,24 +18,44 @@ router.get('/list', async (req, res, next) => {
 
     const prefix = String(req.query.prefix || '');
     try {
-        const command = new ListObjectsV2Command({
-            Bucket: config.R2.BUCKET_NAME,
-            Prefix: prefix || undefined,
-            Delimiter: '/'
-        });
-        const result = await s3Client.send(command);
+        let token = undefined;
+        let allFolders = [];
+        let allObjects = [];
+
+        while (true) {
+            const command = new ListObjectsV2Command({
+                Bucket: config.R2.BUCKET_NAME,
+                Prefix: prefix || undefined,
+                Delimiter: '/',
+                ContinuationToken: token
+            });
+            const result = await s3Client.send(command);
+
+            if (result.CommonPrefixes) {
+                const folders = result.CommonPrefixes.map(p => p.Prefix).filter(Boolean);
+                allFolders.push(...folders);
+            }
+
+            if (result.Contents) {
+                const objects = result.Contents
+                    .filter(o => o.Key && o.Key !== prefix && !o.Key.endsWith('/'))
+                    .map(o => ({
+                        key: o.Key,
+                        lastModified: o.LastModified,
+                        size: o.Size
+                    }));
+                allObjects.push(...objects);
+            }
+
+            if (!result.IsTruncated) break;
+            token = result.NextContinuationToken;
+        }
 
         res.json({
             prefix,
-            folders: (result.CommonPrefixes || []).map(p => p.Prefix).filter(Boolean),
-            objects: (result.Contents || [])
-                .filter(o => o.Key && o.Key !== prefix && !o.Key.endsWith('/'))
-                .map(o => ({
-                    key: o.Key,
-                    lastModified: o.LastModified,
-                    size: o.Size
-                })),
-            isTruncated: result.IsTruncated
+            folders: allFolders,
+            objects: allObjects,
+            isTruncated: false
         });
     } catch (err) {
         next(err);
