@@ -494,7 +494,7 @@
                             </div>
 
                             <!-- Meta -->
-                            <div class="flex-1 overflow-hidden">
+                            <div class="overflow-hidden">
                                 <div class="flex items-start justify-between mb-3 gap-4">
                                     <h2
                                         class="text-xl sm:text-2xl font-bold text-white tracking-tight leading-tight line-clamp-2">
@@ -522,16 +522,39 @@
                             </div>
 
                             <!-- Action -->
-                            <div class="pt-6 border-t border-white/10 mt-6">
-                                <button v-if="!dlState.active && dlState.percent < 100"
-                                    @click="startChunkedDownload(selectedGame)"
-                                    class="get-btn w-full py-4 rounded-xl flex items-center justify-center font-semibold text-sm shadow-lg cursor-pointer">
-                                    <svg class="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                                    </svg>
-                                    Fetch from Global Network
-                                </button>
+                            <div class="pt-6 border-t border-white/10 mt-6 shrink-0">
+                                <template v-if="!dlState.active && dlState.percent < 100">
+                                    <!-- Fallback for Safari/Firefox where FSA is unavailable -->
+                                    <button v-if="!hasDirectorySupport" @click="startChunkedDownload(selectedGame)"
+                                        class="get-btn w-full py-4 rounded-xl flex items-center justify-center font-semibold text-sm shadow-lg cursor-pointer">
+                                        <svg class="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                        </svg>
+                                        Download Game
+                                    </button>
+
+                                    <!-- FSA Supported but directory NOT SET -->
+                                    <button v-else-if="!dlDirectory" @click="setDlDirectory"
+                                        class="get-btn w-full py-4 rounded-xl flex items-center justify-center font-semibold text-sm shadow-lg cursor-pointer" style="opacity: 0.6;">
+                                        <svg class="w-5 h-5 mr-2 opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                        </svg>
+                                        Set Download Directory (ONCE)
+                                    </button>
+
+                                    <div v-else class="flex flex-col gap-2">
+                                        <button @click="startChunkedDownload(selectedGame)"
+                                            class="get-btn w-full py-4 flex items-center justify-center font-semibold text-sm rounded-xl shadow-lg cursor-pointer">
+                                            <svg class="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                            </svg>
+                                            Download Game
+                                        </button>
+                                        <button @click="setDlDirectory" class="text-[10px] text-gray-500 hover:text-white transition uppercase tracking-widest font-semibold text-center">
+                                            Change Directory ({{ dlDirectory.name }})
+                                        </button>
+                                    </div>
+                                </template>
 
                                 <div v-if="dlState.active || dlState.percent >= 100">
                                     <div class="progress-wrap">
@@ -547,13 +570,7 @@
                                         Cancel
                                     </button>
                                 </div>
-
                                 <div v-if="dlState.error" class="mt-3 text-xs text-red-400">{{ dlState.error }}</div>
-
-                                <p
-                                    class="text-center text-[10px] text-gray-500 mt-3 font-medium tracking-wide uppercase">
-                                    Secured via Cloudflare R2 · Parallel Chunks
-                                </p>
                             </div>
                         </div>
                     </aside>
@@ -646,11 +663,17 @@
                             loadedBytes: 0,
                             perChunkLoaded: {},
                             abortControllers: [],
-                            cancelled: false
-                        }
+                            cancelled: false,
+                            activeWritable: null,
+                            currentFileName: ''
+                        },
+                        dlDirectory: null
                     }
                 },
                 computed: {
+                    hasDirectorySupport() {
+                        return typeof window !== 'undefined' && !!window.showDirectoryPicker;
+                    },
                     filteredGames() {
                         const query = this.searchQuery.trim().toLowerCase();
                         let list = this.games;
@@ -798,18 +821,55 @@
                         this.dlInternals.startedAt = 0;
                         this.dlInternals.totalBytes = 0;
                         this.dlInternals.loadedBytes = 0;
+                        this.dlInternals.lastCalcTime = 0;
+                        this.dlInternals.lastLoadedBytes = 0;
+                        this.dlInternals.rollingBps = undefined;
                         this.dlInternals.perChunkLoaded = {};
                         this.dlInternals.cancelled = false;
+                        this.dlInternals.currentFileName = '';
                         (this.dlInternals.abortControllers || []).forEach(c => { try { c.abort(); } catch (_) { } });
                         this.dlInternals.abortControllers = [];
                     },
-                    cancelDownload() {
+                    async cancelDownload() {
                         this.dlInternals.cancelled = true;
                         this.dlState.active = false;
                         this.dlState.message = 'Cancelled';
+                        
+                        const fileName = this.dlInternals.currentFileName;
+                        const dir = this.dlDirectory;
                         this.showToast('Download cancelled', 'info');
+                        
                         (this.dlInternals.abortControllers || []).forEach(c => { try { c.abort(); } catch (_) { } });
                         this.dlInternals.abortControllers = [];
+
+                        if (this.dlInternals.activeWritable) {
+                            try { await this.dlInternals.activeWritable.abort(); } catch (_) {}
+                            this.dlInternals.activeWritable = null;
+                        }
+
+                        if (dir && fileName) {
+                            // OS file locks are persistent; attempt removal with a tiny delay and retries
+                            const attempts = [0, 300, 800];
+                            for (const delay of attempts) {
+                                if (delay) await new Promise(r => setTimeout(r, delay));
+                                try {
+                                    await dir.removeEntry(fileName);
+                                    await dir.removeEntry(fileName + '.crswap');
+                                    break; // Success!
+                                } catch (e) {
+                                    console.warn(`Removal attempt failed (${delay}ms):`, e.message);
+                                }
+                            }
+                        }
+                    },
+                    async setDlDirectory() {
+                        try {
+                            const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+                            this.dlDirectory = handle;
+                            this.showToast(`Default directory set to: ${handle.name}`, 'success');
+                        } catch (e) {
+                            // User cancelled picker
+                        }
                     },
                     updateDlProgress() {
                         const total = this.dlInternals.totalBytes || 0;
@@ -817,12 +877,30 @@
                         for (const k in this.dlInternals.perChunkLoaded) loaded += this.dlInternals.perChunkLoaded[k] || 0;
                         this.dlInternals.loadedBytes = loaded;
                         this.dlState.percent = total ? Math.min(100, (loaded / total) * 100) : 0;
-                        const elapsed = (Date.now() - this.dlInternals.startedAt) / 1000;
-                        const bps = elapsed > 0 ? loaded / elapsed : 0;
-                        this.dlState.mbps = bps / (1024 * 1024);
-                        const remaining = Math.max(total - loaded, 0);
-                        const eta = bps > 0 ? remaining / bps : Infinity;
-                        this.dlState.eta = this.fmtEta(eta);
+                        
+                        const now = Date.now();
+                        const lastTime = this.dlInternals.lastCalcTime || this.dlInternals.startedAt;
+                        const lastLoaded = this.dlInternals.lastLoadedBytes || 0;
+                        const timeDiff = (now - lastTime) / 1000;
+
+                        if (timeDiff >= 0.4) {
+                            const bytesDiff = loaded - lastLoaded;
+                            const currentBps = bytesDiff / timeDiff;
+
+                            if (this.dlInternals.rollingBps === undefined) {
+                                this.dlInternals.rollingBps = currentBps;
+                            } else {
+                                this.dlInternals.rollingBps = this.dlInternals.rollingBps * 0.75 + currentBps * 0.25;
+                            }
+
+                            this.dlState.mbps = this.dlInternals.rollingBps / (1024 * 1024);
+                            const remaining = Math.max(total - loaded, 0);
+                            const eta = this.dlInternals.rollingBps > 0 ? remaining / this.dlInternals.rollingBps : Infinity;
+                            this.dlState.eta = this.fmtEta(eta);
+
+                            this.dlInternals.lastCalcTime = now;
+                            this.dlInternals.lastLoadedBytes = loaded;
+                        }
                     },
                     async startChunkedDownload(game) {
                         if (this.dlState.active) return;
@@ -856,37 +934,98 @@
                         this.dlInternals.startedAt = Date.now();
                         this.dlInternals.totalBytes = info.fileSize;
 
+                        const hasFSA = !!window.showSaveFilePicker;
+                        let fileHandle = null;
+                        let writable = null;
+
+                        if (hasFSA) {
+                            try {
+                                if (this.dlDirectory) {
+                                    fileHandle = await this.dlDirectory.getFileHandle(`${game.title}.zip`, { create: true });
+                                    writable = await fileHandle.createWritable();
+                                } else {
+                                    fileHandle = await window.showSaveFilePicker({
+                                        suggestedName: `${game.title}.zip`,
+                                        types: [{ description: 'Zip Archive', accept: { 'application/zip': ['.zip'] } }]
+                                    });
+                                    writable = await fileHandle.createWritable();
+                                }
+                                this.dlInternals.activeWritable = writable;
+                                this.dlInternals.currentFileName = `${game.title}.zip`;
+                            } catch (e) {
+                                this.dlState.active = false;
+                                return; // User cancelled
+                            }
+                        }
+
                         const chunks = info.chunks;
-                        const results = new Array(chunks.length);
+                        const results = hasFSA ? null : new Array(chunks.length);
                         const queue = [...chunks];
                         const concurrency = Math.min(6, Math.max(2, Math.floor((navigator.hardwareConcurrency || 4) / 2)));
+
+                        let writePromise = Promise.resolve();
+                        const writeToDisk = async (offset, buffer) => {
+                            if (!writable || this.dlInternals.cancelled) return;
+                            const p = writePromise.then(() => {
+                                if (this.dlInternals.cancelled) return;
+                                return writable.write({ type: 'write', position: offset, data: buffer });
+                            });
+                            writePromise = p.catch(() => {});
+                            await p;
+                        };
 
                         const worker = async () => {
                             while (queue.length && !this.dlInternals.cancelled) {
                                 const chunk = queue.shift();
                                 if (!chunk) return;
 
-                                const ac = new AbortController();
-                                this.dlInternals.abortControllers.push(ac);
+                                let chunkSuccess = false;
+                                let retries = 5;
 
-                                const response = await fetch(info.url, {
-                                    headers: { 'Range': `bytes=${chunk.start}-${chunk.end}` },
-                                    signal: ac.signal
-                                });
-                                if (!response.ok && response.status !== 206) {
-                                    throw new Error(`Chunk ${chunk.index} failed (${response.status})`);
-                                }
+                                while (!chunkSuccess && retries > 0 && !this.dlInternals.cancelled) {
+                                    const ac = new AbortController();
+                                    this.dlInternals.abortControllers.push(ac);
+                                    
+                                    try {
+                                        const response = await fetch(info.url, {
+                                            headers: { 'Range': `bytes=${chunk.start}-${chunk.end}` },
+                                            signal: ac.signal
+                                        });
+                                        if (!response.ok && response.status !== 206) {
+                                            throw new Error(`Chunk ${chunk.index} failed (${response.status})`);
+                                        }
 
-                                const reader = response.body.getReader();
-                                const buffers = [];
-                                while (true) {
-                                    const { done, value } = await reader.read();
-                                    if (done) break;
-                                    buffers.push(value);
-                                    this.dlInternals.perChunkLoaded[chunk.index] = (this.dlInternals.perChunkLoaded[chunk.index] || 0) + value.byteLength;
-                                    this.updateDlProgress();
+                                        const reader = response.body.getReader();
+                                        const buffers = hasFSA ? null : [];
+                                        let currentOffset = chunk.start;
+                                        
+                                        while (true) {
+                                            const { done, value } = await reader.read();
+                                            if (done) break;
+                                            
+                                            if (hasFSA) {
+                                                await writeToDisk(currentOffset, value);
+                                                currentOffset += value.byteLength;
+                                            } else {
+                                                buffers.push(value);
+                                            }
+                                            
+                                            this.dlInternals.perChunkLoaded[chunk.index] = (this.dlInternals.perChunkLoaded[chunk.index] || 0) + value.byteLength;
+                                            this.updateDlProgress();
+                                        }
+                                        if (!hasFSA) results[chunk.index] = new Blob(buffers);
+                                        chunkSuccess = true;
+                                    } catch (err) {
+                                        retries--;
+                                        this.dlInternals.perChunkLoaded[chunk.index] = 0; // Reset corrupted tracked bytes
+                                        if (retries <= 0) {
+                                            if (!this.dlInternals.cancelled) throw err;
+                                        } else {
+                                            // Handle rate limits or stutters invisible to user via exponentially increasing wait
+                                            await new Promise(r => setTimeout(r, (6 - retries) * 1500));
+                                        }
+                                    }
                                 }
-                                results[chunk.index] = new Blob(buffers);
                             }
                         };
 
@@ -902,16 +1041,22 @@
 
                         if (this.dlInternals.cancelled) return;
 
-                        this.dlState.message = 'Assembling file...';
-                        const blob = new Blob(results, { type: 'application/zip' });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = `${game.title}.zip`;
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                        setTimeout(() => URL.revokeObjectURL(url), 60000);
+                        if (hasFSA) {
+                            this.dlState.message = 'Finalizing file...';
+                            await writePromise; // Ensure all writes finished
+                            await writable.close();
+                        } else {
+                            this.dlState.message = 'Assembling file...';
+                            const blob = new Blob(results, { type: 'application/zip' });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = `${game.title}.zip`;
+                            document.body.appendChild(a);
+                            a.click();
+                            document.body.removeChild(a);
+                            setTimeout(() => URL.revokeObjectURL(url), 60000);
+                        }
 
                         try {
                             const m = String(info.url || '').match(/\/api\/download\/([^/?#]+)/);

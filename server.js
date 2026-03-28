@@ -16,8 +16,8 @@ import uploadsRouter from './src/routes/uploads.js';
 import donationsRouter from './src/routes/donations.js';
 import storageRouter from './src/routes/storage.js';
 import githubRouter from './src/routes/github.js';
-import maintenanceRouter from './src/routes/maintenance.js';
 import logsRouter from './src/routes/logs.js';
+import maintenanceRouter from './src/routes/maintenance.js';
 
 const app = express();
 
@@ -52,6 +52,7 @@ app.use('/api/donations', donationsRouter);
 app.use('/api/storage', storageRouter);
 app.use('/api/github', githubRouter);
 app.use('/api', maintenanceRouter);
+
 app.use('/api', logsRouter);
 
 const swaggerDocument = YAML.load(path.join(config.PATHS.ROOT, 'openapi.yaml'));

@@ -413,8 +413,7 @@
                     @click="openDonations">Donations</button>
                 <button class="btn btn-tab" :class="{ active: activeTab === 'storage' }" @click="openStorage">Server
                     Storage</button>
-                <button class="btn btn-tab" :class="{ active: activeTab === 'migration' }"
-                    @click="activeTab = 'migration'">Maintenance</button>
+
                 <button class="btn btn-tab" :class="{ active: activeTab === 'logs' }" @click="openLogs">Logs</button>
                 <button v-if="activeTab === 'games'" class="btn" @click="openAddModal" style="background: #007acc; border-color: #008be1;">+ Add Game</button>
                 <button v-if="activeTab === 'games' && selectedIds.length > 0" class="btn btn-delete" @click="bulkRemove">
@@ -684,42 +683,7 @@
                 </tbody>
             </table>
 
-            <div v-if="activeTab === 'migration'" class="uploader">
-                <div class="dropzone">
-                    <div>
-                        <div style="color:#fff; font-size: 13px; font-weight: 600;">Maintenance & Migration</div>
-                        <div class="muted">Sync the Hash map or convert raw R2 folders to hashed ZIPs.</div>
-                    </div>
-                    <div
-                        style="display:flex; gap:10px; align-items:center; flex-wrap: wrap; justify-content: flex-end;">
-                        <button class="btn" @click="syncMd5Map" :disabled="md5MapLoading">Sync Hash Map</button>
-                        <button class="btn" @click="startMigration" :disabled="migration.inProgress">Start Bulk Migration</button>
-                        <button class="btn" @click="fetchMigrationStatus">Refresh Status</button>
-                    </div>
-                </div>
 
-                <div v-if="migration.inProgress" style="margin-top: 15px;">
-                    <div class="muted">
-                        Processing: <span style="color:#ce9178;">{{ migration.currentFolder || '...' }}</span>
-                        <div style="margin-top:5px;">Progress: {{ migration.processed }} / {{ migration.total }}</div>
-                    </div>
-                    <div class="progress-wrap">
-                        <div class="progress-bar"
-                            :style="{ width: (migration.total ? (migration.processed / migration.total) * 100 : 0) + '%' }">
-                        </div>
-                    </div>
-                </div>
-
-                <div v-if="migration.logs.length > 0"
-                    style="margin-top: 15px; background: #101010; border: 1px solid #333; padding: 10px; border-radius: 6px; font-size: 12px; max-height: 300px; overflow-y: auto;">
-                    <div v-for="log in migration.logs" :key="log" style="margin-bottom: 2px;">{{ log }}</div>
-                </div>
-
-                <div v-if="migration.errors.length > 0" style="margin-top: 10px; color:#ff9999; font-size: 12px;">
-                    <strong>Errors ({{ migration.errors.length }}):</strong>
-                    <div v-for="err in migration.errors" :key="err" style="margin-top: 2px;">- {{ err }}</div>
-                </div>
-            </div>
 
             <div v-if="activeTab === 'logs'">
                 <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
@@ -1144,15 +1108,6 @@
                         currentUploadId: '',
                         cancelCurrent: false
                     },
-                    migration: {
-                        inProgress: false,
-                        currentFolder: '',
-                        processed: 0,
-                        total: 0,
-                        errors: [],
-                        logs: []
-                    },
-                    migrationTimer: null,
                     toasts: [],
                     serverLogs: [],
                     searchQuery: ''
@@ -1373,6 +1328,7 @@
                     const found = this.md5MapItems.find(i => i.hash === hash);
                     return found ? found.folder : '';
                 },
+
                 async fetchMd5Map(force) {
                     if (this.md5MapLoading) return;
                     this.md5MapLoading = true;
@@ -1994,42 +1950,7 @@
                         this.showToast('Games deleted successfully', 'success');
                     }
                 },
-                async openMigration() {
-                    this.activeTab = 'migration';
-                    await this.fetchMigrationStatus();
-                },
-                async startMigration() {
-                    if (!confirm('Start R2 to ZIP migration? This may take a long time.')) return;
-                    const res = await fetch('/api/migrate/start', { method: 'POST' });
-                    if (res.ok) {
-                        this.startMigrationPolling();
-                    } else {
-                        alert('Failed to start');
-                    }
-                },
-                async fetchMigrationStatus() {
-                    const res = await fetch('/api/migrate/status');
-                    if (res.ok) {
-                        const status = await res.json();
-                        this.migration = status;
-                        if (status.inProgress) {
-                            this.startMigrationPolling();
-                        } else {
-                            this.stopMigrationPolling();
-                            if (this.activeTab === 'migration') this.fetchGames();
-                        }
-                    }
-                },
-                startMigrationPolling() {
-                    if (this.migrationTimer) return;
-                    this.migrationTimer = setInterval(() => this.fetchMigrationStatus(), 3000);
-                },
-                stopMigrationPolling() {
-                    if (this.migrationTimer) {
-                        clearInterval(this.migrationTimer);
-                        this.migrationTimer = null;
-                    }
-                },
+
                 async openLogs() {
                     this.activeTab = 'logs';
                     await this.fetchLogs();

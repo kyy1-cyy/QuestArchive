@@ -37,7 +37,7 @@ function issueDownloadTicket(req, res, publicId) {
     const token = jwt.sign(
         { dl: true, publicId: String(publicId) },
         config.JWT_SECRET,
-        { expiresIn: '2m' }
+        { expiresIn: '3m' }
     );
 
     res.cookie('dl_ticket', token, {
@@ -45,7 +45,7 @@ function issueDownloadTicket(req, res, publicId) {
         secure: req.hostname !== 'localhost' && req.hostname !== '127.0.0.1',
         sameSite: 'lax',
         path: '/api',
-        maxAge: 2 * 60 * 1000
+        maxAge: 3 * 60 * 1000
     });
 }
 
@@ -221,6 +221,9 @@ router.get('/download/:id', downloadLimiter, async (req, res, next) => {
             if (!requireDownloadTicket(req, res, game.publicId)) {
                 return res.status(403).send('Download link expired. Please click download again.');
             }
+            // Rolling Ticket: Refresh the cookie timer for another 3 minutes!
+            issueDownloadTicket(req, res, game.publicId);
+
             const fileKey = await resolveGameFileKey(game);
             if (!fileKey) return res.status(404).send('File not found');
             await streamFromR2(fileKey, req, res, game.id);
