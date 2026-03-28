@@ -13,6 +13,10 @@ export function makePublicId() {
 export function normalizeGames(games) {
     if (!Array.isArray(games)) return { games: [], changed: false };
     let changed = false;
+
+    // Track original order via publicId (if they exist)
+    const originalIds = games.map(g => String(g.publicId || '')).join('|');
+
     const normalized = games.map(g => {
         const obj = (g && typeof g === 'object') ? { ...g } : {};
         if (!obj.publicId) {
@@ -36,6 +40,20 @@ export function normalizeGames(games) {
         }
         return obj;
     });
+
+    // Natural sort: Numbers first, then letters, accurately handling multi-digit numbers
+    normalized.sort((a, b) => {
+        const titleA = String(a.title || '').toLowerCase();
+        const titleB = String(b.title || '').toLowerCase();
+        return titleA.localeCompare(titleB, undefined, { numeric: true, sensitivity: 'base' });
+    });
+
+    // Check if sorting actually moved things
+    const currentIds = normalized.map(g => g.publicId).join('|');
+    if (originalIds !== currentIds) {
+        changed = true;
+    }
+
     return { games: normalized, changed };
 }
 

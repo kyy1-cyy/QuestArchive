@@ -698,7 +698,9 @@
                             }
                             const av = String(a[key] || '').toLowerCase();
                             const bv = String(b[key] || '').toLowerCase();
-                            return av < bv ? -dir : av > bv ? dir : 0;
+                            return dir === 1 
+                                ? av.localeCompare(bv, undefined, { numeric: true, sensitivity: 'base' })
+                                : bv.localeCompare(av, undefined, { numeric: true, sensitivity: 'base' });
                         });
 
                         return list;

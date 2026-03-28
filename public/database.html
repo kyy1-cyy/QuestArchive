@@ -1115,12 +1115,20 @@
             },
             computed: {
                 filteredGames() {
-                    if (!this.searchQuery) return this.games;
-                    const queries = this.searchQuery.toLowerCase().split(/\s+/).filter(x => x);
-                    return this.games.filter(g => {
-                        const fileName = (this.md5MapItems.find(i => i.hash === g.hashId)?.folder || '').toLowerCase();
-                        const content = `${g.title} ${g.hashId} ${g.version} ${g.description} ${g.thumbnailUrl} ${fileName}`.toLowerCase();
-                        return queries.every(q => content.includes(q));
+                    let list = [...this.games];
+                    if (this.searchQuery) {
+                        const queries = this.searchQuery.toLowerCase().split(/\s+/).filter(x => x);
+                        list = list.filter(g => {
+                            const fileName = (this.md5MapItems.find(i => i.hash === g.hashId)?.folder || '').toLowerCase();
+                            const content = `${g.title} ${g.hashId} ${g.version} ${g.description} ${g.thumbnailUrl} ${fileName}`.toLowerCase();
+                            return queries.every(q => content.includes(q));
+                        });
+                    }
+
+                    return list.sort((a, b) => {
+                        const titleA = String(a.title || '').toLowerCase();
+                        const titleB = String(b.title || '').toLowerCase();
+                        return titleA.localeCompare(titleB, undefined, { numeric: true, sensitivity: 'base' });
                     });
                 },
                 filteredMd5Items() {
