@@ -1217,10 +1217,10 @@
                     
                     const filename = String(item.folder || '');
                     
-                    const tMatch = filename.match(/^(.*?)\sv\d/i);
+                    const tMatch = filename.match(/^(.*?)\s[vV]\d/);
                     this.newGame.title = tMatch ? tMatch[1].trim() : filename.replace(/\.zip$/i, '');
                     
-                    const vMatch = filename.match(/\sv(.*?)\s-VRP/i);
+                    const vMatch = filename.match(/\s[vV](\d.*?)\s-VRP/i);
                     if (vMatch && vMatch[1]) {
                         this.newGame.version = vMatch[1];
                     }
