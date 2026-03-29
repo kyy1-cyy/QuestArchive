@@ -5,6 +5,7 @@ import { config } from '../utils/config.js';
 import { s3Client } from '../utils/s3.js';
 import { requireAdmin, ensureEnv } from '../utils/auth.js';
 import { logger } from '../utils/logger.js';
+import { ensureMd5MapFresh } from '../utils/md5-map.js';
 
 const router = express.Router();
 
@@ -89,6 +90,9 @@ router.post('/delete', async (req, res, next) => {
     try {
         if (key) {
             await s3Client.send(new DeleteObjectCommand({ Bucket: config.R2.BUCKET_NAME, Key: key }));
+            if (config.R2.MD5_MAP_KEY) {
+                await ensureMd5MapFresh({ force: true });
+            }
             return res.json({ success: true });
         }
         if (prefix) {
@@ -110,6 +114,9 @@ router.post('/delete', async (req, res, next) => {
                 }
                 if (!list.IsTruncated) break;
                 token = list.NextContinuationToken;
+            }
+            if (config.R2.MD5_MAP_KEY) {
+                await ensureMd5MapFresh({ force: true });
             }
             return res.json({ success: true, deleted });
         }
@@ -164,6 +171,10 @@ router.post('/bulk-delete', async (req, res, next) => {
                     token = list.NextContinuationToken;
                 }
             }
+        }
+
+        if (config.R2.MD5_MAP_KEY && (deletedKeys > 0 || deletedFromPrefixes > 0)) {
+            await ensureMd5MapFresh({ force: true });
         }
 
         res.json({ success: true, deletedKeys, deletedFromPrefixes });
