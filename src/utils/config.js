@@ -20,6 +20,7 @@ const effectiveMapKey = insecureMapKey ? 'private/map_md5.json' : legacyMapKey;
 export const config = {
     PORT: process.env.PORT || 3000,
     ADMIN_PASSWORD: process.env.ADMIN_PASSWORD || '',
+    OWNER_PASSWORD: process.env.OWNER_PASSWORD || '',
     JWT_SECRET: process.env.JWT_SECRET || 'quest-archive-fallback-secret',
     HASH_SECRET: process.env.HASH_SECRET || process.env.R2_SECRET_ACCESS_KEY || process.env.JWT_SECRET || 'quest-archive-fallback-secret',
     R2: {

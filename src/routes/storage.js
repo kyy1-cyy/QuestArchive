@@ -3,7 +3,7 @@ import { ListObjectsV2Command, GetObjectCommand, DeleteObjectCommand, DeleteObje
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { config } from '../utils/config.js';
 import { s3Client } from '../utils/s3.js';
-import { requireAdmin, ensureEnv } from '../utils/auth.js';
+import { requireOwner, ensureEnv } from '../utils/auth.js';
 import { logger } from '../utils/logger.js';
 import { ensureMd5MapFresh } from '../utils/md5-map.js';
 
@@ -14,7 +14,7 @@ function encodeKeyForPublicUrl(key) {
 }
 
 router.get('/list', async (req, res, next) => {
-    if (!requireAdmin(req, res)) return;
+    if (!requireOwner(req, res)) return;
     if (!ensureEnv(req, res, ['R2.BUCKET_NAME'])) return;
 
     const prefix = String(req.query.prefix || '');
@@ -64,7 +64,7 @@ router.get('/list', async (req, res, next) => {
 });
 
 router.get('/download-url', async (req, res, next) => {
-    if (!requireAdmin(req, res)) return;
+    if (!requireOwner(req, res)) return;
     const key = String(req.query.key || '');
     if (!key) return res.status(400).json({ error: 'Key required' });
 
@@ -84,7 +84,7 @@ router.get('/download-url', async (req, res, next) => {
 });
 
 router.post('/delete', async (req, res, next) => {
-    if (!requireAdmin(req, res)) return;
+    if (!requireOwner(req, res)) return;
     const { key, prefix } = req.body ?? {};
 
     try {
@@ -127,7 +127,7 @@ router.post('/delete', async (req, res, next) => {
 });
 
 router.post('/bulk-delete', async (req, res, next) => {
-    if (!requireAdmin(req, res)) return;
+    if (!requireOwner(req, res)) return;
     const { keys, prefixes } = req.body ?? {};
     const keyList = Array.isArray(keys) ? keys.filter(Boolean) : [];
     const prefixList = Array.isArray(prefixes) ? prefixes.filter(Boolean) : [];

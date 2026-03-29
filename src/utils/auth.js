@@ -15,12 +15,38 @@ export function requireAdmin(req, res) {
     }
 
     try {
-        jwt.verify(token, config.JWT_SECRET);
+        const decoded = jwt.verify(token, config.JWT_SECRET);
         return true;
     } catch (err) {
         res.status(401).json({ error: 'Unauthorized' });
         return false;
     }
+}
+
+export function requireOwner(req, res) {
+    // 1. Check for the Super Admin (Owner) Token cookie
+    const token = req.cookies?.owner_token;
+    // 2. Check for the Owner password in headers (for dev tools/overrides)
+    const headerPassword = req.headers['owner-password'];
+
+    // If you provide the physical owner password, you get in instantly
+    if (headerPassword && headerPassword === config.OWNER_PASSWORD) {
+        return true;
+    }
+
+    // If you have the Owner JWT cookie, you get in
+    if (token) {
+        try {
+            const decoded = jwt.verify(token, config.JWT_SECRET);
+            if (decoded.role === 'owner') return true;
+        } catch (err) {
+            // Token expired or invalid
+        }
+    }
+
+    // If neither, we reject even if they are a "Mod"
+    res.status(403).json({ error: 'Forbidden: Owner eyes only. 🚫🔑' });
+    return false;
 }
 
 export function ensureEnv(req, res, keys) {

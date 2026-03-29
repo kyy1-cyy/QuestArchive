@@ -35,9 +35,29 @@ router.post('/login', loginLimiter, (req, res, next) => {
     }
 });
 
+router.post('/owner/login', loginLimiter, (req, res, next) => {
+    try {
+        const { password } = req.body;
+        if (!config.OWNER_PASSWORD || password !== config.OWNER_PASSWORD) {
+            return res.status(401).json({ error: 'Invalid owner password' });
+        }
+        const token = jwt.sign({ role: 'owner' }, config.JWT_SECRET, { expiresIn: '7d' });
+        res.cookie('owner_token', token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            maxAge: 7 * 24 * 60 * 60 * 1000
+        });
+        res.json({ success: true });
+    } catch (err) {
+        next(err);
+    }
+});
+
 router.post('/logout', (req, res, next) => {
     try {
         res.clearCookie('admin_token');
+        res.clearCookie('owner_token');
         res.json({ success: true });
     } catch (err) {
         next(err);
@@ -47,14 +67,30 @@ router.post('/logout', (req, res, next) => {
 router.get('/check', (req, res, next) => {
     try {
         const token = req.cookies.admin_token;
-        if (!token) return res.json({ authenticated: false });
+        const ownerToken = req.cookies.owner_token;
+        
+        const status = { authenticated: false, isOwner: false };
 
-        jwt.verify(token, config.JWT_SECRET);
-        res.json({ authenticated: true });
-    } catch (err) {
-        if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError') {
-            return res.json({ authenticated: false });
+        if (!token && !ownerToken) return res.json(status);
+
+        if (token) {
+            try {
+                jwt.verify(token, config.JWT_SECRET);
+                status.authenticated = true;
+            } catch (err) { }
         }
+
+        if (ownerToken) {
+            try {
+                const decoded = jwt.verify(ownerToken, config.JWT_SECRET);
+                if (decoded.role === 'owner') {
+                    status.isOwner = true;
+                }
+            } catch (err) { }
+        }
+
+        res.json(status);
+    } catch (err) {
         next(err);
     }
 });
