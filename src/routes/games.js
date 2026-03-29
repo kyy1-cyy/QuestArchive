@@ -6,6 +6,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { config } from '../utils/config.js';
 import { s3Client } from '../utils/s3.js';
 import { readDB, incrementDownloadCount } from '../utils/db.js';
+import { ensureCloudflare } from '../utils/auth.js';
 import { logger } from '../utils/logger.js';
 
 const router = express.Router();
@@ -118,6 +119,7 @@ function findGameByTitle(games, title) {
 }
 
 router.get('/download-info/:id', async (req, res, next) => {
+    if (!ensureCloudflare(req, res)) return;
     try {
         const games = await readDB();
         const reqId = String(req.params.id || '');
@@ -165,6 +167,7 @@ router.get('/download-info/:id', async (req, res, next) => {
 });
 
 router.get('/download-info-by-title', async (req, res, next) => {
+    if (!ensureCloudflare(req, res)) return;
     try {
         const games = await readDB();
         const game = findGameByTitle(games, req.query.title);
@@ -210,6 +213,7 @@ router.get('/download-info-by-title', async (req, res, next) => {
 import { findKeyByHash } from '../utils/md5-map.js';
 
 router.get('/download/:id', downloadLimiter, async (req, res, next) => {
+    if (!ensureCloudflare(req, res)) return;
     try {
         const games = await readDB();
         const reqId = req.params.id;

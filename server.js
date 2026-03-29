@@ -53,12 +53,17 @@ app.use(express.static(config.PATHS.PUBLIC, {
     }
 }));
 
+import { ensureCloudflare } from './src/utils/auth.js';
+const cfGuard = (req, res, next) => {
+    ensureCloudflare(req, res, next);
+};
+
 app.use('/api/admin', authRouter);
 app.use('/api', gamesRouter);
 app.use('/api', adminRouter);
-app.use('/api/uploads', uploadsRouter);
-app.use('/api/donations', donationsRouter);
-app.use('/api/storage', storageRouter);
+app.use('/api/uploads', cfGuard, uploadsRouter);
+app.use('/api/donations', cfGuard, donationsRouter);
+app.use('/api/storage', cfGuard, storageRouter);
 app.use('/api/github', githubRouter);
 app.use('/api', maintenanceRouter);
 

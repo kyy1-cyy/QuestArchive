@@ -49,6 +49,15 @@ export function requireOwner(req, res) {
     return false;
 }
 
+export function ensureCloudflare(req, res, next) {
+    if (!config.CLOUDFLARE_ON) {
+        res.status(503).json({ error: 'Cloudflare services are currently disabled by the administrator. 🛑' });
+        return false;
+    }
+    if (next) return next();
+    return true;
+}
+
 export function ensureEnv(req, res, keys) {
     const missing = [];
     keys.forEach(k => {

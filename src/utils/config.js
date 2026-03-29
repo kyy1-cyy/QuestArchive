@@ -18,6 +18,7 @@ const effectiveDbKey = insecureDbKey ? 'private/database.json' : legacyDbKey;
 const effectiveMapKey = insecureMapKey ? 'private/map_md5.json' : legacyMapKey;
 
 export const config = {
+    CLOUDFLARE_ON: process.env.cloudfare_on !== 'false' && process.env.CLOUDFLARE_ON !== 'false',
     PORT: process.env.PORT || 3000,
     ADMIN_PASSWORD: process.env.ADMIN_PASSWORD || '',
     OWNER_PASSWORD: process.env.OWNER_PASSWORD || '',
