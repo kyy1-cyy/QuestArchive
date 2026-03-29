@@ -16,20 +16,22 @@ const insecureMapKey = !legacyMapKey || legacyMapKey === 'map_md5.json';
 
 const effectiveDbKey = insecureDbKey ? 'private/database.json' : legacyDbKey;
 const effectiveMapKey = insecureMapKey ? 'private/map_md5.json' : legacyMapKey;
+const rawCf = String(process.env.cloudfare_on || process.env.CLOUDFLARE_ON || 'true').trim().toLowerCase();
+const isCfOn = rawCf === 'true' || rawCf === '1' || rawCf === 'yes' || rawCf === 'on';
 
 export const config = {
-    CLOUDFLARE_ON: process.env.cloudfare_on !== 'false' && process.env.CLOUDFLARE_ON !== 'false',
+    CLOUDFLARE_ON: isCfOn,
     PORT: process.env.PORT || 3000,
     ADMIN_PASSWORD: process.env.ADMIN_PASSWORD || '',
     OWNER_PASSWORD: process.env.OWNER_PASSWORD || '',
     JWT_SECRET: process.env.JWT_SECRET || 'quest-archive-fallback-secret',
     HASH_SECRET: process.env.HASH_SECRET || process.env.R2_SECRET_ACCESS_KEY || process.env.JWT_SECRET || 'quest-archive-fallback-secret',
     R2: {
-        ENDPOINT: process.env.R2_ENDPOINT || '',
-        ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID || '',
-        SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY || '',
-        BUCKET_NAME: process.env.R2_BUCKET_NAME || 'quest-archive',
-        PUBLIC_DOMAIN: process.env.R2_PUBLIC_DOMAIN || '',
+        ENDPOINT: isCfOn ? (process.env.R2_ENDPOINT || '') : '',
+        ACCESS_KEY_ID: isCfOn ? (process.env.R2_ACCESS_KEY_ID || '') : '',
+        SECRET_ACCESS_KEY: isCfOn ? (process.env.R2_SECRET_ACCESS_KEY || '') : '',
+        BUCKET_NAME: isCfOn ? (process.env.R2_BUCKET_NAME || 'quest-archive') : '',
+        PUBLIC_DOMAIN: isCfOn ? (process.env.R2_PUBLIC_DOMAIN || '') : '',
         DB_KEY: effectiveDbKey,
         MD5_MAP_KEY: effectiveMapKey,
         LEGACY_DB_KEY: insecureDbKey ? 'database.json' : '',
