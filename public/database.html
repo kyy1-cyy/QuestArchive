@@ -411,7 +411,7 @@
                     @click="activeTab = 'games'">Games</button>
                 <button class="btn btn-tab" :class="{ active: activeTab === 'donations' }"
                     @click="openDonations">Donations</button>
-                <button class="btn btn-tab" :class="{ active: activeTab === 'storage' }" @click="openStorage">Server
+                <button v-if="isOwner" class="btn btn-tab" :class="{ active: activeTab === 'storage' }" @click="openStorage">Server
                     Storage</button>
 
                 <button class="btn btn-tab" :class="{ active: activeTab === 'logs' }" @click="openLogs">Logs</button>
@@ -1016,6 +1016,7 @@
             data() {
                 return {
                     isAuthenticated: false,
+                    isOwner: false,
                     password: '',
                     games: [],
                     activeTab: 'games',
@@ -1168,40 +1169,75 @@
                 }
             },
             mounted() {
-                // Check if already authenticated via cookie
                 fetch('/api/admin/check')
                     .then(r => r.json())
                     .then(j => {
-                        if (j.authenticated) {
+                        if (j.authenticated || j.isOwner) {
                             this.isAuthenticated = true;
+                            this.isOwner = !!j.isOwner;
                             this.fetchGames();
                             this.fetchMd5Map(false);
+                            
+                            if (j.isOwner) {
+                                localStorage.setItem('is_owner_session', 'true');
+                            }
                         } else {
-                            // Try auto-login if a password was saved locally
                             const savedPwd = localStorage.getItem('admin_pwd');
-                            if (savedPwd) {
+                            const savedOwnerPwd = localStorage.getItem('owner_pwd');
+                            
+                            if (savedOwnerPwd) {
+                                this.password = savedOwnerPwd;
+                                this.login();
+                            } else if (savedPwd) {
                                 this.password = savedPwd;
                                 this.login();
                             }
                         }
                     })
                     .catch(() => {
-                        // Fallback in case of server error
+                        const savedOwnerPwd = localStorage.getItem('owner_pwd');
                         const savedPwd = localStorage.getItem('admin_pwd');
-                        if (savedPwd) this.password = savedPwd;
+                        if (savedOwnerPwd) this.password = savedOwnerPwd;
+                        else if (savedPwd) this.password = savedPwd;
                     });
             },
             methods: {
                 async login() {
-                    const res = await fetch('/api/admin/login', {
+                    let endpoint = '/api/admin/login';
+                    let isOwnerAttempt = false;
+
+                    // First, let's try owner login directly (since the password field is shared)
+                    let checkOwner = await fetch('/api/admin/owner/login', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ password: this.password })
                     });
-                    const json = await res.json();
-                    if (res.ok && json.success) {
+                    
+                    if (checkOwner.ok) {
+                        endpoint = '/api/admin/owner/login'; // Success on owner
+                        isOwnerAttempt = true;
+                    } else {
+                        // Fallback to normal admin login if owner failed
+                        checkOwner = await fetch('/api/admin/login', {
+                           method: 'POST',
+                           headers: { 'Content-Type': 'application/json' },
+                           body: JSON.stringify({ password: this.password })
+                        });
+                    }
+
+                    const json = await checkOwner.json();
+                    if (checkOwner.ok && json.success) {
                         this.isAuthenticated = true;
-                        localStorage.setItem('admin_pwd', this.password);
+                        
+                        if (isOwnerAttempt) {
+                             this.isOwner = true;
+                             localStorage.setItem('owner_pwd', this.password);
+                             localStorage.setItem('is_owner_session', 'true');
+                        } else {
+                             localStorage.setItem('admin_pwd', this.password);
+                             this.isOwner = false;
+                        }
+
                         this.fetchGames();
                         this.showToast('Logged in successfully', 'success');
                     } else {
