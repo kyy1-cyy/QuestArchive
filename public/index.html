@@ -4,16 +4,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description"
-        content="QA is your one stop to download vr games">
+    <meta name="description" content="QA is your one stop to download vr games">
     <meta name="theme-color" content="#ffffff">
     <meta property="og:title" content="Quest Archive">
-    <meta property="og:description"
-        content="QA is your one stop to download vr games">
+    <meta property="og:description" content="QA is your one stop to download vr games">
     <meta property="og:site_name" content="QuestArchive.xyz">
     <meta property="og:url" content="https://questarchive.xyz">
     <meta property="og:type" content="website">
-    <title>Quest Archive — Your one-stop shop for VR Games</title>
+    <title>Quest Archive</title>
     <script src="https://cdn.tailwindcss.com?v=3.4.17"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/vue@3.5.13/dist/vue.global.prod.js"></script>
@@ -404,7 +402,8 @@
                                         </th>
                                         <th class="py-3 px-6 border-b border-white/5 font-medium cursor-pointer select-none hover:text-white transition-colors"
                                             @click="toggleSort('downloads')">
-                                            Downloads <span v-if="sortKey === 'downloads'" class="text-white/50">{{ sortDir
+                                            Downloads <span v-if="sortKey === 'downloads'" class="text-white/50">{{
+                                                sortDir
                                                 === 1 ? '↑' : '↓' }}</span>
                                         </th>
                                         <th class="py-3 px-6 border-b border-white/5 font-medium text-right">Status</th>
@@ -427,7 +426,8 @@
                                             <div class="sm:hidden mt-1 flex items-center justify-between gap-3">
                                                 <div class="text-gray-400 font-mono text-xs">{{ game.version || '1.0' }}
                                                 </div>
-                                                <div class="text-gray-500 font-mono text-xs">{{ Number(game.downloads || 0) }} dl</div>
+                                                <div class="text-gray-500 font-mono text-xs">{{ Number(game.downloads ||
+                                                    0) }} dl</div>
                                                 <span
                                                     class="inline-flex items-center gap-1.5 text-xs text-green-400/80 bg-green-400/10 px-2 py-1 rounded-full">
                                                     <span class="w-1.5 h-1.5 rounded-full bg-green-400"></span> Online
@@ -489,11 +489,12 @@
                             <div
                                 class="w-full aspect-[18/9] rounded-xl overflow-hidden bg-[#111] mb-6 relative border border-white/10 shrink-0">
                                 <img :src="selectedGame.thumbnailUrl || 'https://via.placeholder.com/800x400?text=No+Thumbnail'"
-                                    class="w-full h-full object-cover transition-opacity duration-500" 
+                                    class="w-full h-full object-cover transition-opacity duration-500"
                                     :class="{'opacity-0': !selectedGame.thumbnailUrl, 'opacity-100': selectedGame.thumbnailUrl}"
-                                    loading="lazy"
-                                    @error="handleImageError">
-                                <div class="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none"></div>
+                                    loading="lazy" @error="handleImageError">
+                                <div
+                                    class="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none">
+                                </div>
                             </div>
 
                             <!-- Meta -->
@@ -531,16 +532,20 @@
                                     <button v-if="!hasDirectorySupport" @click="startChunkedDownload(selectedGame)"
                                         class="get-btn w-full py-4 rounded-xl flex items-center justify-center font-semibold text-sm shadow-lg cursor-pointer">
                                         <svg class="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                                         </svg>
                                         Download Game
                                     </button>
 
                                     <!-- FSA Supported but directory NOT SET -->
                                     <button v-else-if="!dlDirectory" @click="setDlDirectory"
-                                        class="get-btn w-full py-4 rounded-xl flex items-center justify-center font-semibold text-sm shadow-lg cursor-pointer" style="opacity: 0.6;">
-                                        <svg class="w-5 h-5 mr-2 opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                        class="get-btn w-full py-4 rounded-xl flex items-center justify-center font-semibold text-sm shadow-lg cursor-pointer"
+                                        style="opacity: 0.6;">
+                                        <svg class="w-5 h-5 mr-2 opacity-70" fill="none" viewBox="0 0 24 24"
+                                            stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                                         </svg>
                                         Set Download Directory (ONCE)
                                     </button>
@@ -548,12 +553,15 @@
                                     <div v-else class="flex flex-col gap-2">
                                         <button @click="startChunkedDownload(selectedGame)"
                                             class="get-btn w-full py-4 flex items-center justify-center font-semibold text-sm rounded-xl shadow-lg cursor-pointer">
-                                            <svg class="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                            <svg class="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24"
+                                                stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                                             </svg>
                                             Download Game
                                         </button>
-                                        <button @click="setDlDirectory" class="text-[10px] text-gray-500 hover:text-white transition uppercase tracking-widest font-semibold text-center">
+                                        <button @click="setDlDirectory"
+                                            class="text-[10px] text-gray-500 hover:text-white transition uppercase tracking-widest font-semibold text-center">
                                             Change Directory ({{ dlDirectory.name }})
                                         </button>
                                     </div>
@@ -699,10 +707,10 @@
                                 const bv = Number(b.downloads || 0);
                                 return av < bv ? -dir : av > bv ? dir : 0;
                             }
-                            
+
                             const titleA = String(a.title || '').toLowerCase();
                             const titleB = String(b.title || '').toLowerCase();
-                            
+
                             const aStartsUnderscore = titleA.startsWith('_');
                             const bStartsUnderscore = titleB.startsWith('_');
 
@@ -713,7 +721,7 @@
 
                             const av = String(a[key] || '').toLowerCase();
                             const bv = String(b[key] || '').toLowerCase();
-                            return dir === 1 
+                            return dir === 1
                                 ? av.localeCompare(bv, undefined, { numeric: true, sensitivity: 'base' })
                                 : bv.localeCompare(av, undefined, { numeric: true, sensitivity: 'base' });
                         });
@@ -851,16 +859,16 @@
                         this.dlInternals.cancelled = true;
                         this.dlState.active = false;
                         this.dlState.message = 'Cancelled';
-                        
+
                         const fileName = this.dlInternals.currentFileName;
                         const dir = this.dlDirectory;
                         this.showToast('Download cancelled', 'info');
-                        
+
                         (this.dlInternals.abortControllers || []).forEach(c => { try { c.abort(); } catch (_) { } });
                         this.dlInternals.abortControllers = [];
 
                         if (this.dlInternals.activeWritable) {
-                            try { await this.dlInternals.activeWritable.abort(); } catch (_) {}
+                            try { await this.dlInternals.activeWritable.abort(); } catch (_) { }
                             this.dlInternals.activeWritable = null;
                         }
 
@@ -894,7 +902,7 @@
                         for (const k in this.dlInternals.perChunkLoaded) loaded += this.dlInternals.perChunkLoaded[k] || 0;
                         this.dlInternals.loadedBytes = loaded;
                         this.dlState.percent = total ? Math.min(100, (loaded / total) * 100) : 0;
-                        
+
                         const now = Date.now();
                         const lastTime = this.dlInternals.lastCalcTime || this.dlInternals.startedAt;
                         const lastLoaded = this.dlInternals.lastLoadedBytes || 0;
@@ -987,7 +995,7 @@
                                 if (this.dlInternals.cancelled) return;
                                 return writable.write({ type: 'write', position: offset, data: buffer });
                             });
-                            writePromise = p.catch(() => {});
+                            writePromise = p.catch(() => { });
                             await p;
                         };
 
@@ -1002,7 +1010,7 @@
                                 while (!chunkSuccess && retries > 0 && !this.dlInternals.cancelled) {
                                     const ac = new AbortController();
                                     this.dlInternals.abortControllers.push(ac);
-                                    
+
                                     try {
                                         const response = await fetch(info.url, {
                                             headers: { 'Range': `bytes=${chunk.start}-${chunk.end}` },
@@ -1015,18 +1023,18 @@
                                         const reader = response.body.getReader();
                                         const buffers = hasFSA ? null : [];
                                         let currentOffset = chunk.start;
-                                        
+
                                         while (true) {
                                             const { done, value } = await reader.read();
                                             if (done) break;
-                                            
+
                                             if (hasFSA) {
                                                 await writeToDisk(currentOffset, value);
                                                 currentOffset += value.byteLength;
                                             } else {
                                                 buffers.push(value);
                                             }
-                                            
+
                                             this.dlInternals.perChunkLoaded[chunk.index] = (this.dlInternals.perChunkLoaded[chunk.index] || 0) + value.byteLength;
                                             this.updateDlProgress();
                                         }
