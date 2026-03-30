@@ -46,7 +46,7 @@ app.use(expressWinston.logger({
 }));
 
 // Route the hidden system logs page - returns 404 if not admin/owner
-app.get('/admin/system-logs', (req, res) => {
+app.get('/admin/system', (req, res) => {
     if (!requireSystemAdmin(req, res)) return;
     res.sendFile(path.join(config.PATHS.PUBLIC, 'system-logs.html'));
 });

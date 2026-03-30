@@ -413,7 +413,7 @@
                     @click="openDonations">Donations</button>
                 <button v-if="isAdmin" class="btn btn-tab" :class="{ active: activeTab === 'storage' }" @click="openStorage">Server
                     Storage</button>
-                <button v-if="isAdmin" class="btn btn-tab" style="background: rgba(88, 166, 255, 0.1); border-color: rgba(88, 166, 255, 0.3); color: #58a6ff;" @click="window.location.href='/admin/system-logs'">System Logs</button>
+                <button v-if="isAdmin" class="btn btn-tab" style="background: rgba(88, 166, 255, 0.1); border-color: rgba(88, 166, 255, 0.3); color: #58a6ff;" @click="window.location.href='/admin/system'">System</button>
 
                 <button v-if="isAdmin" class="btn btn-tab" :class="{ active: activeTab === 'logs' }" @click="openLogs">Logs</button>
                 <button v-if="activeTab === 'games'" class="btn" @click="openAddModal" style="background: #007acc; border-color: #008be1;">+ Add Game</button>
