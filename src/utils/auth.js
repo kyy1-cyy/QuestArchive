@@ -24,10 +24,27 @@ export async function silentLogAction(req, action) {
     const user = req.user || getAuthenticatedUser(req);
     if (!user || user.role !== 'moderator') return;
 
+    // Intelligent action descriptions
+    let finalAction = action;
+    if (!finalAction) {
+        const path = req.originalUrl;
+        const method = req.method;
+
+        if (path === '/api/database' && method === 'POST') finalAction = 'Add Game';
+        else if (path === '/api/database/bulk-delete' && method === 'POST') finalAction = 'Bulk Remove Games';
+        else if (path === '/api/storage/delete') finalAction = 'Delete Storage File';
+        else if (path === '/api/storage/bulk-delete') finalAction = 'Bulk Delete Storage';
+        else if (path === '/api/uploads/init') finalAction = 'Init Upload';
+        else if (path === '/api/uploads/complete') finalAction = 'Finalize Upload';
+        else if (method === 'POST') finalAction = 'Submit Change';
+        else if (method === 'DELETE') finalAction = 'Remove Item';
+        else finalAction = `${method} ${path}`;
+    }
+
     const logEntry = {
         username: user.username,
         role: user.role,
-        action: action || `${req.method} ${req.originalUrl}`,
+        action: finalAction,
         ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress,
         timestamp: new Date().toISOString()
     };
