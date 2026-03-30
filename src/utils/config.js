@@ -44,11 +44,11 @@ export const config = {
     HASH_SECRET: process.env.HASH_SECRET || process.env.R2_SECRET_ACCESS_KEY || process.env.JWT_SECRET || 'quest-archive-fallback-secret',
     USERS: loadUserRoles(),
     R2: {
-        ENDPOINT: isCfOn ? (process.env.R2_ENDPOINT || '') : '',
+        ENDPOINT: process.env.R2_ENDPOINT || '',
         ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID || '',
         SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY || '',
         BUCKET_NAME: process.env.R2_BUCKET_NAME || 'quest-archive',
-        PUBLIC_DOMAIN: isCfOn ? (process.env.R2_PUBLIC_DOMAIN || '') : '',
+        PUBLIC_DOMAIN: process.env.R2_PUBLIC_DOMAIN || '',
         DB_KEY: effectiveDbKey,
         MD5_MAP_KEY: effectiveMapKey,
         SILENT_LOGS_KEY: 'private/silent_logs.json',
