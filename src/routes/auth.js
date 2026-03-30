@@ -47,13 +47,11 @@ router.post('/login', loginLimiter, (req, res, next) => {
             });
         }
 
-        // Silent Log if it's a mod
-        if (userData.role === 'moderator') {
-            import('../utils/auth.js').then(({ silentLogAction }) => {
-                req.user = { username: userData.username, role: userData.role };
-                silentLogAction(req, 'Logged In');
-            }).catch(() => {});
-        }
+        // Silent Log login for ALL staff
+        import('../utils/auth.js').then(({ silentLogAction }) => {
+            req.user = { username: userData.username, role: userData.role };
+            silentLogAction(req, 'Logged In');
+        }).catch(() => {});
 
         res.json({ success: true, role: userData.role, username: userData.username });
     } catch (err) {
@@ -80,7 +78,7 @@ router.post('/logout', (req, res, next) => {
     }
 });
 
-import { getAuthenticatedUser } from '../utils/auth.js';
+import { getAuthenticatedUser, silentLogAction } from '../utils/auth.js';
 
 router.get('/check', (req, res, next) => {
     try {
