@@ -71,7 +71,7 @@ export function requireAdmin(req, res) {
         return false;
     }
     req.user = user;
-    if (user.role === 'moderator') silentLogAction(req);
+    silentLogAction(req);
     return true;
 }
 
