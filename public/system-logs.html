@@ -131,6 +131,29 @@
             transform: rotate(0deg);
         }
         .chevron.open { transform: rotate(90deg); }
+
+        .log-item-wrap { border-bottom: 1px solid rgba(255,255,255,0.03); }
+        .log-item-wrap:last-child { border-bottom: none; }
+        .log-detail {
+            padding: 10px 20px 14px;
+            background: rgba(0,0,0,0.25);
+            border-top: 1px solid rgba(255,255,255,0.04);
+            font-size: 12px;
+            line-height: 1.7;
+        }
+        .detail-label { color: #58a6ff; font-weight: 600; margin-right: 6px; }
+        .detail-val { color: #c9d1d9; font-family: monospace; }
+        .detail-pre {
+            margin: 4px 0 8px;
+            padding: 8px 12px;
+            background: #0d1117;
+            border: 1px solid #21262d;
+            border-radius: 6px;
+            font-size: 11px;
+            color: #7ee787;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
     </style>
 </head>
 <body>
@@ -171,13 +194,25 @@
                 </div>
 
                 <div v-if="isOpen(group.username)" class="logs-list">
-                    <div v-for="(log, idx) in group.logs" :key="idx" class="log-item">
-                        <div>
-                            <div class="log-action">{{ log.action }}</div>
-                            <div style="font-size: 11px; color: var(--text-muted);">{{ formatDate(log.timestamp) }}</div>
+                    <div v-for="(log, idx) in group.logs" :key="idx" class="log-item-wrap">
+                        <div class="log-item">
+                            <div style="flex:1">
+                                <div class="log-action">{{ log.action }}</div>
+                                <div style="font-size: 11px; color: var(--text-muted);">{{ formatDate(log.timestamp) }}</div>
+                            </div>
+                            <button class="btn" style="font-size:11px; padding:2px 8px;" @click="toggleDetail(group.username + '-' + idx)">
+                                {{ isDetailOpen(group.username + '-' + idx) ? '▲ Hide' : '▼ Details' }}
+                            </button>
                         </div>
-                        <div class="log-meta">
-                            <div class="log-ip">{{ log.ip }}</div>
+                        <div v-if="isDetailOpen(group.username + '-' + idx)" class="log-detail">
+                            <div v-if="log.detail">
+                                <div><span class="detail-label">Method:</span> <span class="detail-val">{{ log.detail.method }}</span></div>
+                                <div><span class="detail-label">Endpoint:</span> <span class="detail-val">{{ log.detail.path }}</span></div>
+                                <div v-if="log.detail.body"><span class="detail-label">Body:</span> <pre class="detail-pre">{{ JSON.stringify(log.detail.body, null, 2) }}</pre></div>
+                                <div><span class="detail-label">Browser:</span> <span class="detail-val" style="word-break:break-all;">{{ log.detail.userAgent }}</span></div>
+                                <div v-if="log.detail.referrer"><span class="detail-label">Referrer:</span> <span class="detail-val">{{ log.detail.referrer }}</span></div>
+                            </div>
+                            <div v-else style="color:var(--text-muted); font-size:12px;">No extra detail available for this entry.</div>
                         </div>
                     </div>
                 </div>
@@ -194,7 +229,8 @@
                     logs: [],
                     loading: true,
                     isOwner: false,
-                    openedGroups: []
+                    openedGroups: [],
+                    openedDetails: []
                 }
             },
             computed: {
@@ -257,6 +293,14 @@
                 },
                 isOpen(user) {
                     return this.openedGroups.includes(user);
+                },
+                toggleDetail(id) {
+                    const idx = this.openedDetails.indexOf(id);
+                    if (idx === -1) this.openedDetails.push(id);
+                    else this.openedDetails.splice(idx, 1);
+                },
+                isDetailOpen(id) {
+                    return this.openedDetails.includes(id);
                 },
                 formatDate(iso) {
                     const d = new Date(iso);

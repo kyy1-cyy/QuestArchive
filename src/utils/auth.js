@@ -44,7 +44,14 @@ export async function silentLogAction(req, action) {
         username: user.username,
         role: user.role,
         action: finalAction,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        detail: {
+            method: req.method || '',
+            path: req.originalUrl || '',
+            body: req.body && Object.keys(req.body).length ? req.body : undefined,
+            userAgent: req.headers?.['user-agent'] || '',
+            referrer: req.headers?.referer || ''
+        }
     };
 
     try {
