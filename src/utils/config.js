@@ -45,9 +45,9 @@ export const config = {
     USERS: loadUserRoles(),
     R2: {
         ENDPOINT: isCfOn ? (process.env.R2_ENDPOINT || '') : '',
-        ACCESS_KEY_ID: isCfOn ? (process.env.R2_ACCESS_KEY_ID || '') : '',
-        SECRET_ACCESS_KEY: isCfOn ? (process.env.R2_SECRET_ACCESS_KEY || '') : '',
-        BUCKET_NAME: isCfOn ? (process.env.R2_BUCKET_NAME || 'quest-archive') : '',
+        ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID || '',
+        SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY || '',
+        BUCKET_NAME: process.env.R2_BUCKET_NAME || 'quest-archive',
         PUBLIC_DOMAIN: isCfOn ? (process.env.R2_PUBLIC_DOMAIN || '') : '',
         DB_KEY: effectiveDbKey,
         MD5_MAP_KEY: effectiveMapKey,
