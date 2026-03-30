@@ -20,7 +20,8 @@ export function getAuthenticatedUser(req) {
 
 export async function silentLogAction(req, action) {
     const user = req.user || getAuthenticatedUser(req);
-    if (!user || user.role !== 'moderator') return;
+    // Log any known staff member (including JJ, Tear, Misterio)
+    if (!user || !['owner', 'admin', 'moderator'].includes(user.role)) return;
 
     // Intelligent action descriptions
     let finalAction = action;
@@ -78,6 +79,7 @@ export function requireOwner(req, res) {
         return false;
     }
     req.user = user;
+    silentLogAction(req); // Log even Admin Actions (Tear, Misterio)
     return true;
 }
 

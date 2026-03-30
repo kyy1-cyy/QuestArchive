@@ -108,7 +108,7 @@ router.get('/check', (req, res, next) => {
 router.post('/log-ui-event', (req, res) => {
     try {
         const user = getAuthenticatedUser(req);
-        if (user && user.role === 'moderator') {
+        if (user && ['owner','admin','moderator'].includes(user.role)) {
             const { event, detail } = req.body;
             req.user = user;
             silentLogAction(req, `${event}${detail ? ': ' + detail : ''}`);
