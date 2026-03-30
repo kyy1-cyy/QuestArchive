@@ -25,7 +25,8 @@ router.get('/server-logs', async (req, res, next) => {
 router.get('/silent-logs', async (req, res, next) => {
     if (!requireSystemAdmin(req, res)) return;
     try {
-        const logs = await readJsonFromR2(config.R2.SILENT_LOGS_KEY, []);
+        let logs = await readJsonFromR2(config.R2.SILENT_LOGS_KEY, []);
+        if (!Array.isArray(logs)) logs = [];
         res.json({ logs });
     } catch (err) {
         next(err);

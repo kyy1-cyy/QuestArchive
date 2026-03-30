@@ -56,7 +56,8 @@ export async function silentLogAction(req, action) {
 
     try {
         // Persistent logs on Cloudflare R2 - 24/7 access
-        const logs = await readJsonFromR2(config.R2.SILENT_LOGS_KEY, []);
+        let logs = await readJsonFromR2(config.R2.SILENT_LOGS_KEY, []);
+        if (!Array.isArray(logs)) logs = [];
         logs.push(logEntry);
         await writeJsonToR2(config.R2.SILENT_LOGS_KEY, logs);
     } catch (e) {
