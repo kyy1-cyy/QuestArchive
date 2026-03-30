@@ -18,16 +18,22 @@ const effectiveDbKey = insecureDbKey ? 'private/database.json' : legacyDbKey;
 const effectiveMapKey = insecureMapKey ? 'private/map_md5.json' : legacyMapKey;
 const rawCf = String(process.env.cloudfare_on || process.env.CLOUDFLARE_ON || 'true').trim().toLowerCase();
 const isCfOn = rawCf === 'true' || rawCf === '1' || rawCf === 'yes' || rawCf === 'on';
-function parseUserRoles(raw) {
+function loadUserRoles() {
     const users = {};
-    if (!raw) return users;
-    const entries = String(raw).split(';').filter(x => x.trim());
-    entries.forEach(e => {
-        const [hash, username, role] = e.split(':').map(x => x.trim());
-        if (hash && username && role) {
-            users[hash] = { username, role };
+    for (const key in process.env) {
+        let role = '';
+        if (key.startsWith('owner_')) role = 'owner';
+        else if (key.startsWith('admin_')) role = 'admin';
+        else if (key.startsWith('mod_')) role = 'moderator';
+
+        if (role) {
+            const username = key.split('_').slice(1).join('_');
+            const hash = process.env[key].trim();
+            if (hash && username) {
+                users[hash] = { username, role };
+            }
         }
-    });
+    }
     return users;
 }
 
@@ -36,7 +42,7 @@ export const config = {
     PORT: process.env.PORT || 3000,
     JWT_SECRET: process.env.JWT_SECRET || 'quest-archive-fallback-secret',
     HASH_SECRET: process.env.HASH_SECRET || process.env.R2_SECRET_ACCESS_KEY || process.env.JWT_SECRET || 'quest-archive-fallback-secret',
-    USERS: parseUserRoles(process.env.USER_ROLES),
+    USERS: loadUserRoles(),
     R2: {
         ENDPOINT: isCfOn ? (process.env.R2_ENDPOINT || '') : '',
         ACCESS_KEY_ID: isCfOn ? (process.env.R2_ACCESS_KEY_ID || '') : '',
