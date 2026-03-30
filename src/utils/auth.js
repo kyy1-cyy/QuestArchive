@@ -44,7 +44,6 @@ export async function silentLogAction(req, action) {
         username: user.username,
         role: user.role,
         action: finalAction,
-        ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress,
         timestamp: new Date().toISOString()
     };
 
