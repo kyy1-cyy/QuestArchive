@@ -33,7 +33,10 @@ router.get('/silent-logs', async (req, res, next) => {
 });
 
 router.post('/silent-logs/clear', async (req, res, next) => {
-    if (!requireSystemAdmin(req, res)) return;
+    // Owner-only: even admins cannot clear logs
+    const { getAuthenticatedUser } = await import('../utils/auth.js');
+    const user = getAuthenticatedUser(req);
+    if (!user || user.role !== 'owner') return res.status(404).send('Not Found');
     try {
         await writeJsonToR2(config.R2.SILENT_LOGS_KEY, []);
         res.json({ success: true });
