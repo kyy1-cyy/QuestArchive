@@ -1,52 +1,86 @@
 import jwt from 'jsonwebtoken';
+import fs from 'fs/promises';
+import path from 'path';
 import { config } from './config.js';
 
-export function requireAdmin(req, res) {
-    const token = req.cookies?.admin_token || req.headers.authorization?.split(' ')[1];
-    const headerPassword = req.headers['password'];
-
-    if (headerPassword && headerPassword === config.ADMIN_PASSWORD) {
-        return true;
-    }
-
-    if (!token) {
-        res.status(401).json({ error: 'Unauthorized' });
-        return false;
-    }
+/**
+ * Validates the token and returns the user object.
+ * Checks both admin_token and owner_token cookies.
+ */
+export function getAuthenticatedUser(req) {
+    const token = req.cookies?.admin_token || req.cookies?.owner_token || req.headers.authorization?.split(' ')[1];
+    if (!token) return null;
 
     try {
         const decoded = jwt.verify(token, config.JWT_SECRET);
-        return true;
+        // decoded will have { username, role }
+        return decoded;
     } catch (err) {
-        res.status(401).json({ error: 'Unauthorized' });
-        return false;
+        return null;
     }
 }
 
-export function requireOwner(req, res) {
-    // 1. Check for the Super Admin (Owner) Token cookie
-    const token = req.cookies?.owner_token;
-    // 2. Check for the Owner password in headers (for dev tools/overrides)
-    const headerPassword = req.headers['owner-password'];
+export async function silentLogAction(req, action) {
+    const user = req.user || getAuthenticatedUser(req);
+    if (!user || user.role !== 'moderator') return;
 
-    // If you provide the physical owner password, you get in instantly
-    if (headerPassword && headerPassword === config.OWNER_PASSWORD) {
-        return true;
-    }
+    const logEntry = {
+        username: user.username,
+        role: user.role,
+        action: action || `${req.method} ${req.originalUrl}`,
+        ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress,
+        timestamp: new Date().toISOString()
+    };
 
-    // If you have the Owner JWT cookie, you get in
-    if (token) {
+    try {
+        const logPath = path.join(config.PATHS.DATA, 'silent_logs.json');
+        let logs = [];
         try {
-            const decoded = jwt.verify(token, config.JWT_SECRET);
-            if (decoded.role === 'owner') return true;
-        } catch (err) {
-            // Token expired or invalid
-        }
+            const content = await fs.readFile(logPath, 'utf8');
+            logs = JSON.parse(content);
+        } catch (e) {}
+        logs.push(logEntry);
+        await fs.writeFile(logPath, JSON.stringify(logs, null, 2));
+    } catch (e) {
+        // Fail silently as per requirement
     }
+}
 
-    // If neither, we reject even if they are a "Mod"
-    res.status(403).json({ error: 'Forbidden: Owner eyes only. 🚫🔑' });
-    return false;
+export function requireAdmin(req, res) {
+    const user = getAuthenticatedUser(req);
+    if (!user || !['moderator', 'admin', 'owner'].includes(user.role)) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return false;
+    }
+    req.user = user;
+    // Log the action if it's a mod
+    if (user.role === 'moderator') silentLogAction(req);
+    return true;
+}
+
+export function requireOwner(req, res) {
+    const user = getAuthenticatedUser(req);
+    if (!user || user.role !== 'owner') {
+        res.status(403).json({ error: 'Forbidden: Owner eyes only. 🚫🔑' });
+        return false;
+    }
+    req.user = user;
+    return true;
+}
+
+/**
+ * Hidden guard for /admin/system-logs
+ * Returns 404 if not Admin or Owner to keep it secret.
+ */
+export function requireSystemAdmin(req, res, next) {
+    const user = getAuthenticatedUser(req);
+    if (!user || !['admin', 'owner'].includes(user.role)) {
+        // Return 404 to hide the existence of the page
+        return res.status(404).send('Not Found');
+    }
+    req.user = user;
+    if (next) return next();
+    return true;
 }
 
 export function ensureCloudflare(req, res, next) {

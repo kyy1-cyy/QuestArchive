@@ -8,6 +8,7 @@ import path from 'path';
 import { config, validateEnv } from './src/utils/config.js';
 import { logger } from './src/utils/logger.js';
 import { errorHandler } from './src/utils/error-handler.js';
+import { ensureCloudflare, requireSystemAdmin } from './src/utils/auth.js';
 
 import authRouter from './src/routes/auth.js';
 import gamesRouter from './src/routes/games.js';
@@ -27,7 +28,7 @@ app.use(cors());
 app.use(cookieParser());
 app.use(express.json({ limit: '50mb' }));
 
-// Health check endpoint for UptimeRobot / Monitoring
+// Health check endpoint
 app.get('/api/health', (req, res) => {
     res.status(200).json({ 
         status: 'ok', 
@@ -44,6 +45,13 @@ app.use(expressWinston.logger({
     colorize: false
 }));
 
+// Route the hidden system logs page - returns 404 if not admin/owner
+app.get('/admin/system-logs', (req, res) => {
+    if (!requireSystemAdmin(req, res)) return;
+    res.sendFile(path.join(config.PATHS.PUBLIC, 'system-logs.html'));
+});
+
+// Serve static files
 app.use(express.static(config.PATHS.PUBLIC, { 
     extensions: ['html'],
     setHeaders: (res, path) => {
@@ -53,11 +61,11 @@ app.use(express.static(config.PATHS.PUBLIC, {
     }
 }));
 
-import { ensureCloudflare } from './src/utils/auth.js';
 const cfGuard = (req, res, next) => {
     ensureCloudflare(req, res, next);
 };
 
+// API Routes
 app.use('/api/admin', authRouter);
 app.use('/api', gamesRouter);
 app.use('/api', adminRouter);
@@ -66,24 +74,30 @@ app.use('/api/donations', cfGuard, donationsRouter);
 app.use('/api/storage', cfGuard, storageRouter);
 app.use('/api/github', githubRouter);
 app.use('/api', maintenanceRouter);
-
 app.use('/api', logsRouter);
 
 const swaggerDocument = YAML.load(path.join(config.PATHS.ROOT, 'openapi.yaml'));
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+if (swaggerDocument) {
+    app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+}
 
 app.get('/database', (req, res) => {
-    res.setHeader('Cache-Control', 'no-store');
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Expires', '0');
+    res.set({
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+    });
     res.sendFile('database.html', { root: config.PATHS.PUBLIC });
 });
 
+// Single Page App Fallback
 app.use((req, res, next) => {
     if (req.path.startsWith('/api')) return next();
-    res.setHeader('Cache-Control', 'no-store');
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Expires', '0');
+    res.set({
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+    });
     res.sendFile('index.html', { root: config.PATHS.PUBLIC });
 });
 

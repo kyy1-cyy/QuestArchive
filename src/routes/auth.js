@@ -15,43 +15,51 @@ const loginLimiter = rateLimit({
 router.post('/login', loginLimiter, (req, res, next) => {
     try {
         const { password } = req.body;
+        
+        // Find user by password hash
+        const userData = config.USERS[password];
 
-        if (password !== config.ADMIN_PASSWORD) {
+        if (!userData) {
             return res.status(401).json({ error: 'Invalid password' });
         }
 
-        const token = jwt.sign({ admin: true }, config.JWT_SECRET, { expiresIn: '7d' });
+        const token = jwt.sign(
+            { username: userData.username, role: userData.role }, 
+            config.JWT_SECRET, 
+            { expiresIn: '7d' }
+        );
 
+        // We'll use one cookie for all staff roles to simplify the frontend
         res.cookie('admin_token', token, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
+            secure: process.env.NODE_ENV === 'production' || req.hostname !== 'localhost',
             sameSite: 'lax',
             maxAge: 7 * 24 * 60 * 60 * 1000
         });
 
-        res.json({ success: true });
+        // For owner, also set owner_token to maintain compatibility with existing UI guards
+        if (userData.role === 'owner') {
+            res.cookie('owner_token', token, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production' || req.hostname !== 'localhost',
+                sameSite: 'lax',
+                maxAge: 7 * 24 * 60 * 60 * 1000
+            });
+        }
+
+        res.json({ success: true, role: userData.role, username: userData.username });
     } catch (err) {
         next(err);
     }
 });
 
+/**
+ * Legacy owner login for direct manual testing
+ */
 router.post('/owner/login', loginLimiter, (req, res, next) => {
-    try {
-        const { password } = req.body;
-        if (!config.OWNER_PASSWORD || password !== config.OWNER_PASSWORD) {
-            return res.status(401).json({ error: 'Invalid owner password' });
-        }
-        const token = jwt.sign({ role: 'owner' }, config.JWT_SECRET, { expiresIn: '7d' });
-        res.cookie('owner_token', token, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax',
-            maxAge: 7 * 24 * 60 * 60 * 1000
-        });
-        res.json({ success: true });
-    } catch (err) {
-        next(err);
-    }
+    // Keep it for now but point to the same logic
+    req.url = '/login';
+    return router.handle(req, res, next);
 });
 
 router.post('/logout', (req, res, next) => {
@@ -64,32 +72,23 @@ router.post('/logout', (req, res, next) => {
     }
 });
 
+import { getAuthenticatedUser } from '../utils/auth.js';
+
 router.get('/check', (req, res, next) => {
     try {
-        const token = req.cookies.admin_token;
-        const ownerToken = req.cookies.owner_token;
+        const user = getAuthenticatedUser(req);
         
-        const status = { authenticated: false, isOwner: false };
-
-        if (!token && !ownerToken) return res.json(status);
-
-        if (token) {
-            try {
-                jwt.verify(token, config.JWT_SECRET);
-                status.authenticated = true;
-            } catch (err) { }
+        if (!user) {
+            return res.json({ authenticated: false, isOwner: false, role: null });
         }
 
-        if (ownerToken) {
-            try {
-                const decoded = jwt.verify(ownerToken, config.JWT_SECRET);
-                if (decoded.role === 'owner') {
-                    status.isOwner = true;
-                }
-            } catch (err) { }
-        }
-
-        res.json(status);
+        res.json({ 
+            authenticated: true, 
+            isOwner: user.role === 'owner',
+            isAdmin: ['admin', 'owner'].includes(user.role),
+            role: user.role,
+            username: user.username
+        });
     } catch (err) {
         next(err);
     }

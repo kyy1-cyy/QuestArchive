@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Activity Logs | Quest Archive</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <style>
+        :root {
+            --bg-color: #0d1117;
+            --card-bg: #161b22;
+            --accent-color: #238636;
+            --accent-hover: #2ea043;
+            --text-main: #c9d1d9;
+            --text-muted: #8b949e;
+            --border-color: #30363d;
+            --danger-color: #da3633;
+        }
+
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            background: var(--bg-color);
+            color: var(--text-main);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 40px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        h1 { margin: 0; font-size: 24px; font-weight: 600; color: #fff; }
+        .muted { color: var(--text-muted); font-size: 14px; }
+
+        .btn {
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            border: 1px solid var(--border-color);
+            background: #21262d;
+            color: var(--text-main);
+            transition: 0.2s;
+        }
+        .btn:hover { background: #30363d; border-color: #8b949e; }
+        .btn-danger { color: #f85149; }
+        .btn-danger:hover { background: var(--danger-color); color: #fff; border-color: var(--danger-color); }
+
+        .user-group {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            margin-bottom: 16px;
+            overflow: hidden;
+            transition: 0.2s;
+        }
+        .user-header {
+            padding: 16px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            user-select: none;
+            background: rgba(255,255,255,0.02);
+        }
+        .user-header:hover { background: rgba(255,255,255,0.05); }
+        .user-info { display: flex; align-items: center; gap: 12px; }
+        .avatar {
+            width: 32px; height: 32px;
+            background: #238636;
+            color: #fff;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 600; font-size: 14px;
+        }
+        .user-tag {
+            font-size: 12px;
+            padding: 2px 8px;
+            border-radius: 12px;
+            background: #1f6feb22;
+            color: #58a6ff;
+            border: 1px solid #1f6feb44;
+        }
+
+        .log-count { color: var(--text-muted); font-size: 13px; }
+
+        .logs-list {
+            border-top: 1px solid var(--border-color);
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        .log-item {
+            padding: 12px 20px;
+            border-bottom: 1px solid rgba(255,255,255,0.03);
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            font-size: 13px;
+        }
+        .log-item:last-child { border-bottom: none; }
+        .log-action { color: #dcdcaa; font-family: monospace; }
+        .log-meta { text-align: right; color: var(--text-muted); font-size: 11px; }
+        .log-ip { color: #4ec9b0; margin-bottom: 2px; }
+
+        .empty {
+            padding: 60px;
+            text-align: center;
+            color: var(--text-muted);
+            background: var(--card-bg);
+            border: 2px dashed var(--border-color);
+            border-radius: 12px;
+        }
+
+        [v-cloak] { display: none; }
+
+        .chevron {
+            transition: 0.3s;
+            transform: rotate(0deg);
+        }
+        .chevron.open { transform: rotate(90deg); }
+    </style>
+</head>
+<body>
+    <div id="app" class="container" v-cloak>
+        <header>
+            <div>
+                <h1>System Activity Logs</h1>
+                <p class="muted">Monitoring active moderator sessions & actions.</p>
+            </div>
+            <div style="display: flex; gap: 12px;">
+                <button class="btn" @click="fetchLogs">Refresh</button>
+                <button class="btn btn-danger" @click="clearLogs">Clear All Logs</button>
+            </div>
+        </header>
+
+        <div v-if="loading" style="text-align: center; padding: 40px;">
+            <div class="muted">Fetching logs...</div>
+        </div>
+
+        <div v-else-if="groupedLogs.length === 0" class="empty">
+            No activity logs recorded yet.
+        </div>
+
+        <div v-else>
+            <div v-for="group in groupedLogs" :key="group.username" class="user-group">
+                <div class="user-header" @click="toggleGroup(group.username)">
+                    <div class="user-info">
+                        <span class="chevron" :class="{ open: isOpen(group.username) }">▶</span>
+                        <div class="avatar">{{ group.username[0].toUpperCase() }}</div>
+                        <div>
+                            <div style="font-weight: 600;">{{ group.username }}</div>
+                            <div class="user-tag">{{ group.role }}</div>
+                        </div>
+                    </div>
+                    <div class="log-count">
+                        {{ group.logs.length }} action{{ group.logs.length === 1 ? '' : 's' }} logged
+                    </div>
+                </div>
+
+                <div v-if="isOpen(group.username)" class="logs-list">
+                    <div v-for="(log, idx) in group.logs" :key="idx" class="log-item">
+                        <div>
+                            <div class="log-action">{{ log.action }}</div>
+                            <div style="font-size: 11px; color: var(--text-muted);">{{ formatDate(log.timestamp) }}</div>
+                        </div>
+                        <div class="log-meta">
+                            <div class="log-ip">{{ log.ip }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    logs: [],
+                    loading: true,
+                    openedGroups: []
+                }
+            },
+            computed: {
+                groupedLogs() {
+                    const groups = {};
+                    this.logs.forEach(log => {
+                        if (!groups[log.username]) {
+                            groups[log.username] = {
+                                username: log.username,
+                                role: log.role,
+                                logs: []
+                            };
+                        }
+                        groups[log.username].logs.unshift(log); // Newest first in group
+                    });
+                    // Sort groups by latest activity
+                    return Object.values(groups).sort((a, b) => {
+                        const latestA = new Date(a.logs[0].timestamp);
+                        const latestB = new Date(b.logs[0].timestamp);
+                        return latestB - latestA;
+                    });
+                }
+            },
+            mounted() {
+                this.fetchLogs();
+                // Auto refresh every 30 seconds
+                setInterval(this.fetchLogs, 30000);
+            },
+            methods: {
+                async fetchLogs() {
+                    try {
+                        const res = await fetch('/api/silent-logs');
+                        if (!res.ok) throw new Error('Failed to fetch');
+                        const data = await res.json();
+                        this.logs = data.logs || [];
+                    } catch (e) {
+                        console.error(e);
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+                async clearLogs() {
+                    if (!confirm('Are you sure you want to PERMANENTLY delete all recorded activity?')) return;
+                    try {
+                        const res = await fetch('/api/silent-logs/clear', { method: 'POST' });
+                        if (res.ok) {
+                            this.logs = [];
+                            this.openedGroups = [];
+                        }
+                    } catch (e) {
+                        alert('Failed to clear logs');
+                    }
+                },
+                toggleGroup(user) {
+                    const idx = this.openedGroups.indexOf(user);
+                    if (idx === -1) this.openedGroups.push(user);
+                    else this.openedGroups.splice(idx, 1);
+                },
+                isOpen(user) {
+                    return this.openedGroups.includes(user);
+                },
+                formatDate(iso) {
+                    const d = new Date(iso);
+                    return d.toLocaleString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                        hour12: false
+                    });
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
