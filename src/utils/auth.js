@@ -1,7 +1,6 @@
 import jwt from 'jsonwebtoken';
-import fs from 'fs/promises';
-import path from 'path';
 import { config } from './config.js';
+import { readJsonFromR2, writeJsonToR2 } from './s3-helpers.js';
 
 /**
  * Validates the token and returns the user object.
@@ -13,7 +12,6 @@ export function getAuthenticatedUser(req) {
 
     try {
         const decoded = jwt.verify(token, config.JWT_SECRET);
-        // decoded will have { username, role }
         return decoded;
     } catch (err) {
         return null;
@@ -50,14 +48,10 @@ export async function silentLogAction(req, action) {
     };
 
     try {
-        const logPath = path.join(config.PATHS.DATA, 'silent_logs.json');
-        let logs = [];
-        try {
-            const content = await fs.readFile(logPath, 'utf8');
-            logs = JSON.parse(content);
-        } catch (e) {}
+        // Persistent logs on Cloudflare R2 - 24/7 access
+        const logs = await readJsonFromR2(config.R2.SILENT_LOGS_KEY, []);
         logs.push(logEntry);
-        await fs.writeFile(logPath, JSON.stringify(logs, null, 2));
+        await writeJsonToR2(config.R2.SILENT_LOGS_KEY, logs);
     } catch (e) {
         // Fail silently as per requirement
     }
@@ -70,15 +64,17 @@ export function requireAdmin(req, res) {
         return false;
     }
     req.user = user;
-    // Log the action if it's a mod
     if (user.role === 'moderator') silentLogAction(req);
     return true;
 }
 
+/**
+ * JJ, Tear, Misterio (Full Access)
+ */
 export function requireOwner(req, res) {
     const user = getAuthenticatedUser(req);
-    if (!user || user.role !== 'owner') {
-        res.status(403).json({ error: 'Forbidden: Owner eyes only. 🚫🔑' });
+    if (!user || !['admin', 'owner'].includes(user.role)) {
+        res.status(403).json({ error: 'Forbidden: Admin or Owner eyes only. 🚫🔑' });
         return false;
     }
     req.user = user;
@@ -87,12 +83,10 @@ export function requireOwner(req, res) {
 
 /**
  * Hidden guard for /admin/system-logs
- * Returns 404 if not Admin or Owner to keep it secret.
  */
 export function requireSystemAdmin(req, res, next) {
     const user = getAuthenticatedUser(req);
     if (!user || !['admin', 'owner'].includes(user.role)) {
-        // Return 404 to hide the existence of the page
         return res.status(404).send('Not Found');
     }
     req.user = user;

@@ -51,6 +51,7 @@ export const config = {
         PUBLIC_DOMAIN: isCfOn ? (process.env.R2_PUBLIC_DOMAIN || '') : '',
         DB_KEY: effectiveDbKey,
         MD5_MAP_KEY: effectiveMapKey,
+        SILENT_LOGS_KEY: 'private/silent_logs.json',
         LEGACY_DB_KEY: insecureDbKey ? 'database.json' : '',
         LEGACY_MD5_MAP_KEY: insecureMapKey ? 'map_md5.json' : ''
     },

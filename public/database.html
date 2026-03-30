@@ -411,10 +411,10 @@
                     @click="activeTab = 'games'">Games</button>
                 <button class="btn btn-tab" :class="{ active: activeTab === 'donations' }"
                     @click="openDonations">Donations</button>
-                <button v-if="isOwner" class="btn btn-tab" :class="{ active: activeTab === 'storage' }" @click="openStorage">Server
+                <button v-if="isAdmin" class="btn btn-tab" :class="{ active: activeTab === 'storage' }" @click="openStorage">Server
                     Storage</button>
 
-                <button class="btn btn-tab" :class="{ active: activeTab === 'logs' }" @click="openLogs">Logs</button>
+                <button v-if="isAdmin" class="btn btn-tab" :class="{ active: activeTab === 'logs' }" @click="openLogs">Logs</button>
                 <button v-if="activeTab === 'games'" class="btn" @click="openAddModal" style="background: #007acc; border-color: #008be1;">+ Add Game</button>
                 <button v-if="activeTab === 'games' && selectedIds.length > 0" class="btn btn-delete" @click="bulkRemove">
                     Remove Selected ({{ selectedIds.length }})
@@ -1016,6 +1016,7 @@
             data() {
                 return {
                     isAuthenticated: false,
+                    isAdmin: false,
                     isOwner: false,
                     password: '',
                     games: [],
@@ -1174,12 +1175,13 @@
                     .then(j => {
                         if (j.authenticated || j.isOwner) {
                             this.isAuthenticated = true;
+                            this.isAdmin = !!j.isAdmin;
                             this.isOwner = !!j.isOwner;
                             this.fetchGames();
                             this.fetchMd5Map(false);
                             
-                            if (j.isOwner) {
-                                localStorage.setItem('is_owner_session', 'true');
+                            if (j.isAdmin) {
+                                localStorage.setItem('is_admin_session', 'true');
                             }
                         } else {
                             const savedPwd = localStorage.getItem('admin_pwd');
@@ -1228,14 +1230,18 @@
                     const json = await checkOwner.json();
                     if (checkOwner.ok && json.success) {
                         this.isAuthenticated = true;
+                        this.isAdmin = !!(json.role === 'admin' || json.role === 'owner');
+                        this.isOwner = !!(json.role === 'owner');
                         
-                        if (isOwnerAttempt) {
-                             this.isOwner = true;
+                        if (this.isOwner) {
                              localStorage.setItem('owner_pwd', this.password);
                              localStorage.setItem('is_owner_session', 'true');
-                        } else {
+                             localStorage.setItem('is_admin_session', 'true');
+                        } else if (this.isAdmin) {
                              localStorage.setItem('admin_pwd', this.password);
-                             this.isOwner = false;
+                             localStorage.setItem('is_admin_session', 'true');
+                        } else {
+                             localStorage.setItem('mod_pwd', this.password);
                         }
 
                         this.fetchGames();
