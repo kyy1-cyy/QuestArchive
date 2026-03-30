@@ -1135,6 +1135,9 @@
                         if (file) this.startDonateUpload(file);
                     },
                     resetDonateState() {
+                        if (!this.donateState) this.donateState = {};
+                        if (!this.donateInternals) this.donateInternals = {};
+                        
                         this.donateState.inProgress = false;
                         this.donateState.percent = 0;
                         this.donateState.mbps = 0;
@@ -1144,14 +1147,18 @@
                         this.donateState.key = '';
                         this.donateState.uploadId = '';
                         this.donateState.lastFileName = '';
+                        
                         this.donateInternals.startedAt = 0;
                         this.donateInternals.totalBytes = 0;
                         this.donateInternals.uploadedBytes = 0;
                         this.donateInternals.perPartLoaded = {};
                         this.donateInternals.parts = [];
-                        this.donateInternals.activeRequests.forEach(r => {
-                            try { r.abort(); } catch (_) { }
-                        });
+                        
+                        if (this.donateInternals.activeRequests) {
+                            this.donateInternals.activeRequests.forEach(r => {
+                                try { r.abort(); } catch (_) { }
+                            });
+                        }
                         this.donateInternals.activeRequests = [];
                     },
                     fmtEta(seconds) {
