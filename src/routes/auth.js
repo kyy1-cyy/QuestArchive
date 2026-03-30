@@ -101,5 +101,22 @@ router.get('/check', (req, res, next) => {
         next(err);
     }
 });
+/**
+ * Frontend reporting for UI Events (Open Tab, Click Button)
+ * Logged silently for Moderators.
+ */
+router.post('/log-ui-event', (req, res) => {
+    try {
+        const user = getAuthenticatedUser(req);
+        if (user && user.role === 'moderator') {
+            const { event, detail } = req.body;
+            req.user = user;
+            silentLogAction(req, `${event}${detail ? ': ' + detail : ''}`);
+        }
+        res.status(204).end(); // Silent response
+    } catch (err) {
+        res.status(204).end();
+    }
+});
 
 export default router;

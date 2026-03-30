@@ -1408,8 +1408,18 @@
                     await this.fetchMd5Map(true);
                     this.showToast('MD5 map synced successfully', 'success');
                 },
+                async logUIEvent(event, detail = '') {
+                    try {
+                        await fetch('/api/admin/log-ui-event', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ event, detail })
+                        });
+                    } catch (e) {}
+                },
                 async openDonations() {
                     this.activeTab = 'donations';
+                    this.logUIEvent('Open Donations Tab');
                     await this.fetchDonations();
                 },
                 async fetchDonations() {
@@ -1439,9 +1449,10 @@
                         this.showToast(e.message, 'error');
                     }
                 },
-                async openStorage() {
+                openStorage() {
                     this.activeTab = 'storage';
-                    await this.fetchStorage(this.storagePrefix);
+                    this.logUIEvent('Open Storage Tab');
+                    this.fetchStorage(this.storagePrefix);
                 },
                 storageDisplayName(full) {
                     const p = String(full || '');
@@ -1982,25 +1993,34 @@
                 },
                 async fetchGames() {
                     const res = await fetch('/api/database');
-                    if (res.ok) this.games = await res.json();
+                    if (res.ok) {
+                        this.games = await res.json();
+                        this.logUIEvent('Viewed Games List');
+                    } else {
+                        this.logUIEvent('Attempted to View Games', 'Failed: ' + res.status);
+                    }
                 },
                 async addGame() {
+                    this.logUIEvent('Add Game Clicked');
                     const res = await fetch('/api/database', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(this.newGame)
                     });
                     if (res.ok) {
+                        this.logUIEvent('Add Game Success', this.newGame.name);
                         this.fetchGames();
                         this.showAddModal = false;
                         this.showToast('Game added successfully', 'success');
                     } else {
                         const json = await res.json();
+                        this.logUIEvent('Add Game Failed', json.error);
                         this.showToast(json.error || 'Failed to add game', 'error');
                     }
                 },
                 async bulkRemove() {
                     if (confirm(`Delete ${this.selectedIds.length} games?`)) {
+                        this.logUIEvent('Bulk Removal Started', `${this.selectedIds.length} games`);
                         await fetch('/api/database/bulk-delete', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
@@ -2014,6 +2034,7 @@
 
                 async openLogs() {
                     this.activeTab = 'logs';
+                    this.logUIEvent('Open Logs Tab');
                     await this.fetchLogs();
                 },
                 async fetchLogs() {
