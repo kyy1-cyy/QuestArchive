@@ -740,9 +740,40 @@
                     </div>
 
                     <div class="form-group" v-if="!newGame.hashId && !manualMode" style="display:flex; flex-direction:column; gap:12px; align-items:center;">
-                        <button class="btn" style="width: 100%; justify-content: center; padding: 14px; font-size: 15px;" @click="openMd5Picker" :disabled="md5MapLoading" :style="{ opacity: md5MapLoading ? 0.5 : 1, cursor: md5MapLoading ? 'wait' : 'pointer' }">
-                            {{ md5MapLoading ? 'Loading Game Database...' : 'Pick a Game to Auto-Fill' }}
+                        <button class="btn" style="width: 100%; justify-content: center; padding: 14px; font-size: 15px;" @click="openPendingPicker" :disabled="pendingLoading">
+                            {{ pendingLoading ? 'Scanning Bucket...' : 'Pick from B2 Bucket' }}
                         </button>
+                        <button class="btn btn-tab" @click="manualMode = true" style="font-size: 11px;">Manual Mode</button>
+                    </div>
+
+                    <div v-if="showPendingModal" class="overlay" @click.self="showPendingModal = false">
+                        <div class="modal" style="width: 600px; max-height: 80vh; overflow-y: auto;">
+                            <div class="modal-header">
+                                <h3 style="margin:0; color:#fff;">Unadded Files in Bucket</h3>
+                                <button class="btn" @click="fetchPendingGames">Refresh</button>
+                            </div>
+                            <div v-if="pendingLoading" style="padding:40px; text-align:center;" class="muted">Scanning B2 bucket...</div>
+                            <div v-else-if="pendingGames.length === 0" style="padding:40px; text-align:center;" class="muted">No new .zip files found in bucket.</div>
+                            <table v-else>
+                                <thead>
+                                    <tr>
+                                        <th>File Name</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="pg in pendingGames" :key="pg.filename">
+                                        <td style="color:#ce9178; font-size: 12px;">{{ pg.filename }}</td>
+                                        <td style="text-align:right;">
+                                            <button class="btn" @click="selectPending(pg)">Pick</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                            <div class="modal-actions">
+                                <button class="btn" @click="showPendingModal = false">Cancel</button>
+                            </div>
+                        </div>
                     </div>
 
                     <template v-if="newGame.hashId || manualMode">
@@ -1990,6 +2021,28 @@
                 },
                 goToSystem() {
                     window.location.href = '/admin/system';
+                },
+                async openPendingPicker() {
+                    this.showPendingModal = true;
+                    await this.fetchPendingGames();
+                },
+                async fetchPendingGames() {
+                    this.pendingLoading = true;
+                    try {
+                        const res = await fetch('/api/admin/pending-games');
+                        this.pendingGames = await res.json();
+                    } catch (e) {
+                        this.showToast('Failed to fetch pending games', 'error');
+                    } finally {
+                        this.pendingLoading = false;
+                    }
+                },
+                selectPending(pg) {
+                    this.newGame.hashId = pg.hashId || '';
+                    this.newGame.title = pg.filename.replace(/\.zip$/i, '');
+                    this.showPendingModal = false;
+                    this.manualMode = true; // Allow editing the newly filled info
+                    this.showToast('Pre-filled from bucket', 'success');
                 },
                 async fetchGames() {
                     const res = await fetch('/api/database');

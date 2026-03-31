@@ -5,7 +5,7 @@ import { GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { config } from '../utils/config.js';
 import { s3Client, s3DownloadClient } from '../utils/s3.js';
-import { readDB, incrementDownloadCount, getBucketFileCache } from '../utils/db.js';
+import { getBucketFileCache, readDB, incrementDownloadCount } from '../utils/db.js';
 import { ensureCloudflare } from '../utils/auth.js';
 import { logger } from '../utils/logger.js';
 
@@ -177,14 +177,17 @@ router.get('/download/:id', downloadLimiter, async (req, res, next) => {
                 ResponseContentDisposition: `attachment; filename="${game.title.replace(/"/g, '_')}.zip"`
             });
 
-            // URL expires in 60 seconds (just enough for the browser to start the request)
+            // URL expires in 60 seconds
             const signedUrl = await getSignedUrl(s3DownloadClient, command, { expiresIn: 60 });
+            
+            // SECURITY: If we have a hash-based file in the bucket, use it to hide the name
+            const finalUrl = signedUrl.replace(encodeURIComponent(game.title), encodeURIComponent(idKey));
             
             if (!req.headers.range) {
                 incrementDownloadCount(game.publicId).catch(e => logger.error('Incr error', e));
             }
 
-            res.redirect(signedUrl);
+            res.redirect(finalUrl);
         } catch (s3Err) {
             logger.error('Presign error', s3Err);
             res.status(500).send('Storage connection error');

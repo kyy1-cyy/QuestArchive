@@ -10,7 +10,7 @@ import { readJsonFromB2 } from '../utils/s3-helpers.js';
 import { HeadObjectCommand } from '@aws-sdk/client-s3';
 import { s3Client } from '../utils/s3.js';
 
-const router = express.Router();
+import { getBucketFileCache, readDB } from '../utils/db.js';
 
 router.get('/database', async (req, res, next) => {
     if (!requireAdmin(req, res)) return;
@@ -141,6 +141,34 @@ router.get('/game-notes/:filename', async (req, res, next) => {
         }
         console.error('Error fetching game notes:', err);
         res.status(500).json({ error: 'Failed to fetch game notes' });
+    }
+});
+
+router.get('/pending-games', async (req, res, next) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+        const files = await getBucketFileCache();
+        const dbGames = await readDB();
+        
+        // Extract all known titles/filenames from DB
+        const dbFiles = new Set(dbGames.map(g => (g.title.toLowerCase().endsWith('.zip') ? g.title : `${g.title}.zip`).toLowerCase()));
+        const dbHashes = new Set(dbGames.map(g => g.hashId ? g.hashId.toLowerCase() : null).filter(Boolean));
+
+        const pending = files
+            .filter(f => f.toLowerCase().endsWith('.zip') && !f.includes('/'))
+            .filter(f => {
+                const name = f.toLowerCase();
+                const hash = f.replace(/\.zip$/i, '').toLowerCase();
+                return !dbFiles.has(name) && !dbHashes.has(hash);
+            })
+            .map(f => ({
+                filename: f,
+                hashId: f.replace(/\.zip$/i, '').match(/^[a-f0-9]{32}$/i) ? f.replace(/\.zip$/i, '') : null
+            }));
+
+        res.json(pending);
+    } catch (err) {
+        next(err);
     }
 });
 
