@@ -180,14 +180,12 @@ router.get('/download/:id', downloadLimiter, async (req, res, next) => {
             // URL expires in 60 seconds
             const signedUrl = await getSignedUrl(s3DownloadClient, command, { expiresIn: 60 });
             
-            // SECURITY: If we have a hash-based file in the bucket, use it to hide the name
-            const finalUrl = signedUrl.replace(encodeURIComponent(game.title), encodeURIComponent(idKey));
-            
+            // Use the signed URL directly for stability
             if (!req.headers.range) {
                 incrementDownloadCount(game.publicId).catch(e => logger.error('Incr error', e));
             }
 
-            res.redirect(finalUrl);
+            res.redirect(signedUrl);
         } catch (s3Err) {
             logger.error('Presign error', s3Err);
             res.status(500).send('Storage connection error');
