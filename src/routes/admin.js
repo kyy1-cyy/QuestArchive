@@ -10,7 +10,7 @@ import { readJsonFromB2 } from '../utils/s3-helpers.js';
 import { HeadObjectCommand } from '@aws-sdk/client-s3';
 import { s3Client } from '../utils/s3.js';
 
-
+const router = express.Router();
 
 router.get('/database', async (req, res, next) => {
     if (!requireAdmin(req, res)) return;
