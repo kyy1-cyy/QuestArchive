@@ -1,6 +1,6 @@
 import express from 'express';
 import { config } from '../utils/config.js';
-import { readDB, writeDB, makePublicId } from '../utils/db.js';
+import { readDB, writeDB, makePublicId, getBucketFileCache } from '../utils/db.js';
 import { requireAdmin, ensureEnv } from '../utils/auth.js';
 import { ensureMd5MapFresh } from '../utils/md5-map.js';
 import { logger } from '../utils/logger.js';
@@ -10,7 +10,7 @@ import { readJsonFromB2 } from '../utils/s3-helpers.js';
 import { HeadObjectCommand } from '@aws-sdk/client-s3';
 import { s3Client } from '../utils/s3.js';
 
-import { getBucketFileCache, readDB } from '../utils/db.js';
+
 
 router.get('/database', async (req, res, next) => {
     if (!requireAdmin(req, res)) return;
