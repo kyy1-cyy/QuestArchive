@@ -103,6 +103,19 @@ app.use((req, res, next) => {
 
 app.use(errorHandler);
 
-app.listen(config.PORT, () => {
+app.listen(config.PORT, async () => {
     logger.info(`🚀 Quest Archive running on http://localhost:${config.PORT}`);
+    
+    // Initialize B2 Bucket Cache
+    try {
+        const { getBucketFileCache, refreshBucketFileCache } = await import('./src/utils/db.js');
+        await getBucketFileCache();
+        
+        // Refresh every 24 hours
+        setInterval(() => {
+            refreshBucketFileCache().catch(err => logger.error('Cache refresh failed', err));
+        }, 24 * 60 * 60 * 1000);
+    } catch (err) {
+        logger.error('Failed to initialize B2 cache', err);
+    }
 });

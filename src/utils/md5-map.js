@@ -1,6 +1,6 @@
 import { config } from './config.js';
 import { s3Client } from './s3.js';
-import { hashId, readJsonFromR2, writeJsonToR2, deleteObjectFromR2 } from './s3-helpers.js';
+import { hashId, readJsonFromB2, writeJsonToB2 } from './s3-helpers.js';
 
 const md5MapState = {
     lastSyncAt: 0,
@@ -25,7 +25,7 @@ async function doSyncMd5Map() {
 
         while (true) {
             const objectsRes = await s3Client.send(new ListObjectsV2Command({
-                Bucket: config.R2.BUCKET_NAME,
+                Bucket: config.B2.BUCKET_NAME,
                 Delimiter: '/',
                 ContinuationToken: token
             }));
@@ -50,20 +50,9 @@ async function doSyncMd5Map() {
             newMap[hash] = key;
         }
 
-        const legacyKey = config.R2.LEGACY_MD5_MAP_KEY;
-        const primary = await readJsonFromR2(config.R2.MD5_MAP_KEY, null);
-        const legacy = legacyKey && legacyKey !== config.R2.MD5_MAP_KEY
-            ? await readJsonFromR2(legacyKey, null)
-            : null;
-
-        if (primary === null && legacy && typeof legacy === 'object') {
-            await writeJsonToR2(config.R2.MD5_MAP_KEY, legacy);
-            await deleteObjectFromR2(legacyKey);
-        }
-
-        const remote = await readJsonFromR2(config.R2.MD5_MAP_KEY, {});
+        const remote = await readJsonFromB2(config.B2.MD5_MAP_KEY, {});
         if (!shallowEqualObject(newMap, remote)) {
-            await writeJsonToR2(config.R2.MD5_MAP_KEY, newMap);
+            await writeJsonToB2(config.B2.MD5_MAP_KEY, newMap);
         }
 
         md5MapState.map = newMap;
@@ -71,7 +60,7 @@ async function doSyncMd5Map() {
     } catch (err) {
         console.error('Error syncing MD5 map:', err);
         if (!md5MapState.map) {
-            md5MapState.map = await readJsonFromR2(config.R2.MD5_MAP_KEY, {});
+            md5MapState.map = await readJsonFromB2(config.B2.MD5_MAP_KEY, {});
         }
     } finally {
         md5MapState.syncing = null;
@@ -90,17 +79,8 @@ export async function ensureMd5MapFresh({ force = false } = {}) {
     if (force) await md5MapState.syncing;
     if (md5MapState.map) return md5MapState.map;
 
-    const legacyKey = config.R2.LEGACY_MD5_MAP_KEY;
-    const primary = await readJsonFromR2(config.R2.MD5_MAP_KEY, null);
+    const primary = await readJsonFromB2(config.B2.MD5_MAP_KEY, null);
     if (primary !== null) return primary || {};
-    if (legacyKey && legacyKey !== config.R2.MD5_MAP_KEY) {
-        const legacy = await readJsonFromR2(legacyKey, null);
-        if (legacy !== null) {
-            await writeJsonToR2(config.R2.MD5_MAP_KEY, legacy);
-            await deleteObjectFromR2(legacyKey);
-            return legacy || {};
-        }
-    }
     return {};
 }
 

@@ -8,16 +8,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.join(__dirname, '..', '..');
 
-const legacyDbKey = process.env.R2_DB_KEY || '';
-const legacyMapKey = process.env.R2_MD5_MAP_KEY || 'map_md5.json';
-
-const insecureDbKey = !legacyDbKey || legacyDbKey === 'database.json';
-const insecureMapKey = !legacyMapKey || legacyMapKey === 'map_md5.json';
-
-const effectiveDbKey = insecureDbKey ? 'private/database.json' : legacyDbKey;
-const effectiveMapKey = insecureMapKey ? 'private/map_md5.json' : legacyMapKey;
 const rawCf = String(process.env.cloudfare_on || process.env.CLOUDFLARE_ON || 'true').trim().toLowerCase();
 const isCfOn = rawCf === 'true' || rawCf === '1' || rawCf === 'yes' || rawCf === 'on';
+
 function loadUserRoles() {
     const users = {};
     for (const key in process.env) {
@@ -41,23 +34,23 @@ export const config = {
     CLOUDFLARE_ON: isCfOn,
     PORT: process.env.PORT || 3000,
     JWT_SECRET: process.env.JWT_SECRET || 'quest-archive-fallback-secret',
-    HASH_SECRET: process.env.HASH_SECRET || process.env.R2_SECRET_ACCESS_KEY || process.env.JWT_SECRET || 'quest-archive-fallback-secret',
+    HASH_SECRET: process.env.HASH_SECRET || process.env.B2_APP_KEY || process.env.JWT_SECRET || 'quest-archive-fallback-secret',
     USERS: loadUserRoles(),
-    R2: {
-        ENDPOINT: process.env.R2_ENDPOINT || '',
-        ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID || '',
-        SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY || '',
-        BUCKET_NAME: process.env.R2_BUCKET_NAME || 'quest-archive',
-        PUBLIC_DOMAIN: process.env.R2_PUBLIC_DOMAIN || '',
-        DB_KEY: effectiveDbKey,
-        MD5_MAP_KEY: effectiveMapKey,
+    B2: {
+        ENDPOINT: process.env.B2_ENDPOINT || '',
+        KEY_ID: process.env.B2_KEY_ID || '',
+        APP_KEY: process.env.B2_APP_KEY || '',
+        BUCKET_NAME: process.env.B2_BUCKET_NAME || 'quest-archive',
+        DB_KEY: 'private/database.json',
+        MD5_MAP_KEY: 'private/map_md5.json',
         SILENT_LOGS_KEY: 'private/silent_logs.json',
-        LEGACY_DB_KEY: insecureDbKey ? 'database.json' : '',
-        LEGACY_MD5_MAP_KEY: insecureMapKey ? 'map_md5.json' : ''
+        GAME_CACHE_KEY: 'private/game_cache.json'
     },
     DONATIONS: {
-        BUCKET_NAME: process.env.DONATIONS_R2_BUCKET_NAME || 'quest-archive-donations',
-        PUBLIC_DOMAIN: process.env.DONATIONS_PUBLIC_DOMAIN || ''
+        ENDPOINT: process.env.B2_ENDPOINT || '',
+        KEY_ID: process.env.B2_DONATIONS_KEY_ID || '',
+        APP_KEY: process.env.B2_DONATIONS_APP_KEY || '',
+        BUCKET_NAME: process.env.B2_DONATIONS_BUCKET_NAME || 'quest-archive-donos'
     },
     GITHUB: {
         OWNER: process.env.GITHUB_OWNER || 'kyy1-cyy',
@@ -74,24 +67,12 @@ export const config = {
     }
 };
 
-export function getR2EndpointBase(rawEndpoint) {
-    if (!rawEndpoint) return undefined;
-    try {
-        const u = new URL(rawEndpoint);
-        return `${u.protocol}//${u.host}`;
-    } catch {
-        return rawEndpoint;
-    }
-}
-
 export function validateEnv() {
     const warnings = [];
-    if (!config.ADMIN_PASSWORD) warnings.push('ADMIN_PASSWORD is not set — admin panel will be inaccessible');
-    if (!process.env.HASH_SECRET) warnings.push('HASH_SECRET is not set — hashing will fall back to R2_SECRET_ACCESS_KEY (set HASH_SECRET for dedicated stable IDs)');
-    if (!config.R2.ENDPOINT) warnings.push('R2_ENDPOINT is not set — uploads and downloads will fail');
-    if (!config.R2.ACCESS_KEY_ID) warnings.push('R2_ACCESS_KEY_ID is not set');
-    if (!config.R2.SECRET_ACCESS_KEY) warnings.push('R2_SECRET_ACCESS_KEY is not set');
-    if (!config.R2.BUCKET_NAME) warnings.push('R2_BUCKET_NAME is not set');
+    if (!config.B2.ENDPOINT) warnings.push('B2_ENDPOINT is not set — uploads and downloads will fail');
+    if (!config.B2.KEY_ID) warnings.push('B2_KEY_ID is not set');
+    if (!config.B2.APP_KEY) warnings.push('B2_APP_KEY is not set');
+    if (!config.B2.BUCKET_NAME) warnings.push('B2_BUCKET_NAME is not set');
 
     if (warnings.length) {
         console.warn('\n⚠️  Environment warnings:');

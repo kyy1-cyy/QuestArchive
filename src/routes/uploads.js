@@ -5,7 +5,8 @@ import { config } from '../utils/config.js';
 import { s3Client } from '../utils/s3.js';
 import { requireAdmin, ensureEnv } from '../utils/auth.js';
 import { logger } from '../utils/logger.js';
-import { hashId, readJsonFromR2, writeJsonToR2 } from '../utils/s3-helpers.js';
+import { hashId, readJsonFromB2, writeJsonToB2 } from '../utils/s3-helpers.js';
+import { refreshBucketFileCache } from '../utils/db.js';
 
 const router = express.Router();
 
@@ -22,7 +23,7 @@ router.get('/hash', async (req, res) => {
 
 router.post('/init', async (req, res, next) => {
     if (!requireAdmin(req, res)) return;
-    if (!ensureEnv(req, res, ['R2.ENDPOINT', 'R2.ACCESS_KEY_ID', 'R2.SECRET_ACCESS_KEY', 'R2.BUCKET_NAME'])) return;
+    if (!ensureEnv(req, res, ['B2.ENDPOINT', 'B2.KEY_ID', 'B2.APP_KEY', 'B2.BUCKET_NAME'])) return;
 
     const { filename, prefix } = req.body ?? {};
     if (!filename || typeof filename !== 'string') {
@@ -39,7 +40,7 @@ router.post('/init', async (req, res, next) => {
 
     try {
         const command = new CreateMultipartUploadCommand({
-            Bucket: config.R2.BUCKET_NAME,
+            Bucket: config.B2.BUCKET_NAME,
             Key: key,
             ContentType: 'application/zip'
         });
@@ -53,7 +54,7 @@ router.post('/init', async (req, res, next) => {
 
 router.post('/part-url', async (req, res, next) => {
     if (!requireAdmin(req, res)) return;
-    if (!ensureEnv(req, res, ['R2.ENDPOINT', 'R2.ACCESS_KEY_ID', 'R2.SECRET_ACCESS_KEY', 'R2.BUCKET_NAME'])) return;
+    if (!ensureEnv(req, res, ['B2.ENDPOINT', 'B2.KEY_ID', 'B2.APP_KEY', 'B2.BUCKET_NAME'])) return;
 
     const { key, uploadId, partNumber } = req.body ?? {};
     if (!key || !uploadId || !partNumber) {
@@ -62,7 +63,7 @@ router.post('/part-url', async (req, res, next) => {
 
     try {
         const command = new UploadPartCommand({
-            Bucket: config.R2.BUCKET_NAME,
+            Bucket: config.B2.BUCKET_NAME,
             Key: key,
             UploadId: uploadId,
             PartNumber: Number(partNumber)
@@ -83,7 +84,7 @@ router.post('/complete', async (req, res, next) => {
 
     try {
         const command = new CompleteMultipartUploadCommand({
-            Bucket: config.R2.BUCKET_NAME,
+            Bucket: config.B2.BUCKET_NAME,
             Key: key,
             UploadId: uploadId,
             MultipartUpload: { Parts: parts }
@@ -93,10 +94,13 @@ router.post('/complete', async (req, res, next) => {
         if (String(key).toLowerCase().endsWith('.zip')) {
             const baseName = String(key).split('/').pop().replace(/\.zip$/i, '');
             const hash = hashId(baseName);
-            const map = await readJsonFromR2(config.R2.MD5_MAP_KEY, {});
+            const map = await readJsonFromB2(config.B2.MD5_MAP_KEY, {});
             map[hash] = String(key).split('/').pop();
-            await writeJsonToR2(config.R2.MD5_MAP_KEY, map);
+            await writeJsonToB2(config.B2.MD5_MAP_KEY, map);
         }
+
+        // Trigger cache refresh in background
+        refreshBucketFileCache().catch(e => logger.error('Cache refresh after upload failed', e));
 
         res.json({ success: true });
     } catch (err) {
@@ -111,7 +115,7 @@ router.post('/abort', async (req, res, next) => {
 
     try {
         await s3Client.send(new AbortMultipartUploadCommand({
-            Bucket: config.R2.BUCKET_NAME,
+            Bucket: config.B2.BUCKET_NAME,
             Key: key,
             UploadId: uploadId
         }));

@@ -80,14 +80,13 @@ function isTicketUsed(token) {
     return true;
 }
 
+import { findKeyByHash } from '../utils/md5-map.js';
+import { getBucketFileCache, incrementDownloadCount } from '../utils/db.js';
+
 async function checkObjectExists(key) {
     try {
-        const { HeadObjectCommand } = await import('@aws-sdk/client-s3');
-        await s3Client.send(new HeadObjectCommand({
-            Bucket: config.R2.BUCKET_NAME,
-            Key: key
-        }));
-        return true;
+        const files = await getBucketFileCache();
+        return files.includes(key);
     } catch (e) {
         return false;
     }
@@ -105,7 +104,8 @@ router.get('/games', async (req, res, next) => {
             description: g.description || '',
             thumbnailUrl: g.thumbnailUrl || '',
             lastUpdated: g.lastUpdated || '',
-            downloads: Number(g.downloads || 0)
+            downloads: Number(g.downloads || 0),
+            publicId: g.publicId
         })));
     } catch (err) {
         next(err);
@@ -129,88 +129,27 @@ router.get('/download-info/:id', async (req, res, next) => {
 
         issueDownloadTicket(req, res, game.publicId);
 
-        // Use the internal proxy URL instead of direct R2 link
         const url = `/api/download/${game.publicId}`;
-
-        // We still need to know the file size for chunk planning
         const fileKey = await resolveGameFileKey(game) || (game.title.toLowerCase().endsWith('.zip') ? game.title : `${game.title}.zip`);
         
         let fileSize = null;
         try {
+            // Direct call for info is only done once per download
             const { HeadObjectCommand } = await import('@aws-sdk/client-s3');
-            const head = await s3Client.send(new HeadObjectCommand({ Bucket: config.R2.BUCKET_NAME, Key: fileKey }));
+            const head = await s3Client.send(new HeadObjectCommand({ Bucket: config.B2.BUCKET_NAME, Key: fileKey }));
             fileSize = head.ContentLength;
         } catch (_) { }
-
-        const CHUNK_SIZE = 10 * 1024 * 1024;
-        let chunks = [];
-        if (fileSize && fileSize > CHUNK_SIZE) {
-            const totalChunks = Math.ceil(fileSize / CHUNK_SIZE);
-            for (let i = 0; i < totalChunks; i++) {
-                const start = i * CHUNK_SIZE;
-                const end = Math.min(start + CHUNK_SIZE - 1, fileSize - 1);
-                chunks.push({ index: i, start, end });
-            }
-        }
 
         res.json({
             title: game.title,
             url, 
             fileSize,
-            chunkSize: CHUNK_SIZE,
-            chunks,
-            supportsRange: fileSize !== null
+            supportsRange: true
         });
     } catch (err) {
         next(err);
     }
 });
-
-router.get('/download-info-by-title', async (req, res, next) => {
-    if (!ensureCloudflare(req, res)) return;
-    try {
-        const games = await readDB();
-        const game = findGameByTitle(games, req.query.title);
-        if (!game) return res.status(404).json({ error: 'Game not found' });
-
-        issueDownloadTicket(req, res, game.publicId);
-
-        const url = `/api/download/${game.publicId}`;
-
-        const fileKey = await resolveGameFileKey(game) || (game.title.toLowerCase().endsWith('.zip') ? game.title : `${game.title}.zip`);
-
-        let fileSize = null;
-        try {
-            const { HeadObjectCommand } = await import('@aws-sdk/client-s3');
-            const head = await s3Client.send(new HeadObjectCommand({ Bucket: config.R2.BUCKET_NAME, Key: fileKey }));
-            fileSize = head.ContentLength;
-        } catch (_) { }
-
-        const CHUNK_SIZE = 10 * 1024 * 1024;
-        let chunks = [];
-        if (fileSize && fileSize > CHUNK_SIZE) {
-            const totalChunks = Math.ceil(fileSize / CHUNK_SIZE);
-            for (let i = 0; i < totalChunks; i++) {
-                const start = i * CHUNK_SIZE;
-                const end = Math.min(start + CHUNK_SIZE - 1, fileSize - 1);
-                chunks.push({ index: i, start, end });
-            }
-        }
-
-        res.json({
-            title: game.title,
-            url,
-            fileSize,
-            chunkSize: CHUNK_SIZE,
-            chunks,
-            supportsRange: fileSize !== null
-        });
-    } catch (err) {
-        next(err);
-    }
-});
-
-import { findKeyByHash } from '../utils/md5-map.js';
 
 router.get('/download/:id', downloadLimiter, async (req, res, next) => {
     if (!ensureCloudflare(req, res)) return;
@@ -221,50 +160,40 @@ router.get('/download/:id', downloadLimiter, async (req, res, next) => {
 
         if (!game) return res.status(404).send('Game not found');
 
-        try {
-            if (!requireDownloadTicket(req, res, game.publicId)) {
-                return res.status(403).send('Download link expired. Please click download again.');
-            }
-            // Rolling Ticket: Refresh the cookie timer for another 3 minutes!
-            issueDownloadTicket(req, res, game.publicId);
+        if (!requireDownloadTicket(req, res, game.publicId)) {
+            return res.status(403).send('Download link expired. Please click download again.');
+        }
 
-            const fileKey = await resolveGameFileKey(game);
-            if (!fileKey) return res.status(404).send('File not found');
-            await streamFromR2(fileKey, req, res, game.id);
+        // Rolling ticket refresh
+        issueDownloadTicket(req, res, game.publicId);
+
+        const fileKey = await resolveGameFileKey(game);
+        if (!fileKey) return res.status(404).send('File not found');
+
+        // B2 Strategy: 302 Redirect to a short-lived presigned URL (fast & secure)
+        try {
+            const command = new GetObjectCommand({
+                Bucket: config.B2.BUCKET_NAME,
+                Key: fileKey,
+                ResponseContentDisposition: `attachment; filename="${game.title.replace(/"/g, '_')}.zip"`
+            });
+
+            // URL expires in 60 seconds (just enough for the browser to start the request)
+            const signedUrl = await getSignedUrl(s3Client, command, { expiresIn: 60 });
+            
+            if (!req.headers.range) {
+                incrementDownloadCount(game.publicId).catch(e => logger.error('Incr error', e));
+            }
+
+            res.redirect(signedUrl);
         } catch (s3Err) {
-            throw s3Err;
+            logger.error('Presign error', s3Err);
+            res.status(500).send('Storage connection error');
         }
     } catch (err) {
         next(err);
     }
 });
-
-async function streamFromR2(key, req, res, gameId) {
-    const command = new GetObjectCommand({
-        Bucket: config.R2.BUCKET_NAME,
-        Key: key,
-        Range: req.headers.range
-    });
-
-    const s3Res = await s3Client.send(command);
-    
-    if (s3Res.ContentRange) res.setHeader('Content-Range', s3Res.ContentRange);
-    if (s3Res.AcceptRanges) res.setHeader('Accept-Ranges', s3Res.AcceptRanges);
-    if (s3Res.ContentType) res.setHeader('Content-Type', s3Res.ContentType);
-    if (s3Res.ContentLength) res.setHeader('Content-Length', s3Res.ContentLength);
-    
-    res.status(s3Res.$metadata.httpStatusCode || 200);
-    
-    if (!req.headers.range) {
-        incrementDownloadCount(gameId).catch(e => logger.error('Incr error', e));
-    }
-
-    if (s3Res.Body) {
-        s3Res.Body.pipe(res);
-    } else {
-        res.end();
-    }
-}
 
 router.post('/download-complete', async (req, res) => {
     try {

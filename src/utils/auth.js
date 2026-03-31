@@ -55,11 +55,11 @@ export async function silentLogAction(req, action) {
     };
 
     try {
-        // Persistent logs on Cloudflare R2 - 24/7 access
-        let logs = await readJsonFromR2(config.R2.SILENT_LOGS_KEY, []);
+        // Persistent logs on Backblaze B2 - 24/7 access
+        let logs = await readJsonFromR2(config.B2.SILENT_LOGS_KEY, []);
         if (!Array.isArray(logs)) logs = [];
         logs.push(logEntry);
-        await writeJsonToR2(config.R2.SILENT_LOGS_KEY, logs);
+        await writeJsonToR2(config.B2.SILENT_LOGS_KEY, logs);
     } catch (e) {
         // Fail silently as per requirement
     }

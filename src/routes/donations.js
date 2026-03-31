@@ -2,7 +2,7 @@ import express from 'express';
 import { CreateMultipartUploadCommand, UploadPartCommand, CompleteMultipartUploadCommand, AbortMultipartUploadCommand, ListObjectsV2Command, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { config } from '../utils/config.js';
-import { s3Client } from '../utils/s3.js';
+import { s3DonationsClient } from '../utils/s3.js';
 import { requireAdmin, ensureEnv } from '../utils/auth.js';
 import { logger } from '../utils/logger.js';
 
@@ -22,7 +22,7 @@ function makeDonationKey(filename) {
 }
 
 router.post('/init', async (req, res, next) => {
-    if (!ensureEnv(req, res, ['R2.ENDPOINT', 'R2.ACCESS_KEY_ID', 'R2.SECRET_ACCESS_KEY', 'DONATIONS.BUCKET_NAME'])) return;
+    if (!ensureEnv(req, res, ['DONATIONS.ENDPOINT', 'DONATIONS.KEY_ID', 'DONATIONS.APP_KEY', 'DONATIONS.BUCKET_NAME'])) return;
 
     const { filename } = req.body ?? {};
     if (!filename || typeof filename !== 'string') {
@@ -40,7 +40,7 @@ router.post('/init', async (req, res, next) => {
             Key: key,
             ContentType: 'application/zip'
         });
-        const result = await s3Client.send(command);
+        const result = await s3DonationsClient.send(command);
         res.json({ uploadId: result.UploadId, key });
     } catch (err) {
         next(err);
@@ -48,7 +48,7 @@ router.post('/init', async (req, res, next) => {
 });
 
 router.post('/part-url', async (req, res, next) => {
-    if (!ensureEnv(req, res, ['R2.ENDPOINT', 'R2.ACCESS_KEY_ID', 'R2.SECRET_ACCESS_KEY', 'DONATIONS.BUCKET_NAME'])) return;
+    if (!ensureEnv(req, res, ['DONATIONS.ENDPOINT', 'DONATIONS.KEY_ID', 'DONATIONS.APP_KEY', 'DONATIONS.BUCKET_NAME'])) return;
 
     const { key, uploadId, partNumber } = req.body ?? {};
     if (!key || !uploadId || !partNumber) {
@@ -62,7 +62,7 @@ router.post('/part-url', async (req, res, next) => {
             UploadId: uploadId,
             PartNumber: Number(partNumber)
         });
-        const url = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
+        const url = await getSignedUrl(s3DonationsClient, command, { expiresIn: 3600 });
         res.json({ url });
     } catch (err) {
         next(err);
@@ -70,7 +70,7 @@ router.post('/part-url', async (req, res, next) => {
 });
 
 router.post('/complete', async (req, res, next) => {
-    if (!ensureEnv(req, res, ['R2.ENDPOINT', 'R2.ACCESS_KEY_ID', 'R2.SECRET_ACCESS_KEY', 'DONATIONS.BUCKET_NAME'])) return;
+    if (!ensureEnv(req, res, ['DONATIONS.ENDPOINT', 'DONATIONS.KEY_ID', 'DONATIONS.APP_KEY', 'DONATIONS.BUCKET_NAME'])) return;
     const { key, uploadId, parts } = req.body ?? {};
     if (!key || !uploadId || !parts) return res.status(400).json({ error: 'Missing data' });
 
@@ -85,7 +85,7 @@ router.post('/complete', async (req, res, next) => {
                     .sort((a, b) => a.PartNumber - b.PartNumber)
             }
         });
-        await s3Client.send(command);
+        await s3DonationsClient.send(command);
         res.json({ success: true });
     } catch (err) {
         next(err);
@@ -93,12 +93,12 @@ router.post('/complete', async (req, res, next) => {
 });
 
 router.post('/abort', async (req, res, next) => {
-    if (!ensureEnv(req, res, ['R2.ENDPOINT', 'R2.ACCESS_KEY_ID', 'R2.SECRET_ACCESS_KEY', 'DONATIONS.BUCKET_NAME'])) return;
+    if (!ensureEnv(req, res, ['DONATIONS.ENDPOINT', 'DONATIONS.KEY_ID', 'DONATIONS.APP_KEY', 'DONATIONS.BUCKET_NAME'])) return;
     const { key, uploadId } = req.body ?? {};
     if (!key || !uploadId) return res.status(400).json({ error: 'Missing data' });
 
     try {
-        await s3Client.send(new AbortMultipartUploadCommand({
+        await s3DonationsClient.send(new AbortMultipartUploadCommand({
             Bucket: config.DONATIONS.BUCKET_NAME,
             Key: key,
             UploadId: uploadId
@@ -116,7 +116,7 @@ router.get('/list', async (req, res, next) => {
             Bucket: config.DONATIONS.BUCKET_NAME,
             Prefix: 'donation/'
         });
-        const result = await s3Client.send(command);
+        const result = await s3DonationsClient.send(command);
         const items = (result.Contents || [])
             .filter(o => o.Key && o.Key.toLowerCase().endsWith('.zip'))
             .map(o => ({
@@ -137,14 +137,11 @@ router.get('/download-url', async (req, res, next) => {
     if (!key || !key.startsWith('donation/')) return res.status(400).json({ error: 'Invalid key' });
 
     try {
-        if (config.DONATIONS.PUBLIC_DOMAIN) {
-            return res.json({ url: `${config.DONATIONS.PUBLIC_DOMAIN}/${encodeURIComponent(key)}` });
-        }
         const command = new GetObjectCommand({
             Bucket: config.DONATIONS.BUCKET_NAME,
             Key: key
         });
-        const url = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
+        const url = await getSignedUrl(s3DonationsClient, command, { expiresIn: 3600 });
         res.json({ url });
     } catch (err) {
         next(err);

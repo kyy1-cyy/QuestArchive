@@ -25,7 +25,7 @@ router.get('/server-logs', async (req, res, next) => {
 router.get('/silent-logs', async (req, res, next) => {
     if (!requireSystemAdmin(req, res)) return;
     try {
-        let logs = await readJsonFromR2(config.R2.SILENT_LOGS_KEY, []);
+        let logs = await readJsonFromR2(config.B2.SILENT_LOGS_KEY, []);
         if (!Array.isArray(logs)) logs = [];
         res.json({ logs });
     } catch (err) {
@@ -39,7 +39,7 @@ router.post('/silent-logs/clear', async (req, res, next) => {
     const user = getAuthenticatedUser(req);
     if (!user || user.role !== 'owner') return res.status(404).send('Not Found');
     try {
-        await writeJsonToR2(config.R2.SILENT_LOGS_KEY, []);
+        await writeJsonToR2(config.B2.SILENT_LOGS_KEY, []);
         res.json({ success: true });
     } catch (err) {
         next(err);

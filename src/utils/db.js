@@ -1,6 +1,6 @@
 import fs from 'fs/promises';
 import crypto from 'crypto';
-import { GetObjectCommand, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import { config } from './config.js';
 import { s3Client } from './s3.js';
 
@@ -14,7 +14,6 @@ export function normalizeGames(games) {
     if (!Array.isArray(games)) return { games: [], changed: false };
     let changed = false;
 
-    // Track original order via publicId (if they exist)
     const originalIds = games.map(g => String(g.publicId || '')).join('|');
 
     const normalized = games.map(g => {
@@ -41,7 +40,6 @@ export function normalizeGames(games) {
         return obj;
     });
 
-    // Custom sort: "_" first, then numbers, then a-z (using natural locale compare)
     normalized.sort((a, b) => {
         const titleA = String(a.title || '').toLowerCase();
         const titleB = String(b.title || '').toLowerCase();
@@ -55,7 +53,6 @@ export function normalizeGames(games) {
         return titleA.localeCompare(titleB, undefined, { numeric: true, sensitivity: 'base' });
     });
 
-    // Check if sorting actually moved things
     const currentIds = normalized.map(g => g.publicId).join('|');
     if (originalIds !== currentIds) {
         changed = true;
@@ -72,64 +69,57 @@ async function streamToString(stream) {
     return Buffer.concat(chunks).toString('utf-8');
 }
 
-async function readDBFromR2() {
+let cachedDB = null;
+let lastDBFetch = 0;
+const DB_CACHE_TTL = 10 * 60 * 1000; // 10 minutes memory cache for database.json
+
+async function readDBFromB2() {
+    const now = Date.now();
+    if (cachedDB && (now - lastDBFetch < DB_CACHE_TTL)) {
+        return cachedDB;
+    }
+
     try {
         const command = new GetObjectCommand({
-            Bucket: config.R2.BUCKET_NAME,
-            Key: config.R2.DB_KEY
+            Bucket: config.B2.BUCKET_NAME,
+            Key: config.B2.DB_KEY
         });
         const res = await s3Client.send(command);
         if (!res.Body) return [];
         const str = await streamToString(res.Body);
-        return str ? JSON.parse(str) : [];
+        const data = str ? JSON.parse(str) : [];
+        cachedDB = data;
+        lastDBFetch = now;
+        return data;
     } catch (err) {
-        if (err.name === 'NoSuchKey') {
-            const legacyKey = config.R2.LEGACY_DB_KEY;
-            if (legacyKey && legacyKey !== config.R2.DB_KEY) {
-                try {
-                    const legacyRes = await s3Client.send(new GetObjectCommand({
-                        Bucket: config.R2.BUCKET_NAME,
-                        Key: legacyKey
-                    }));
-                    if (!legacyRes.Body) return [];
-                    const legacyStr = await streamToString(legacyRes.Body);
-                    const data = legacyStr ? JSON.parse(legacyStr) : [];
-                    await writeDBToR2(data);
-                    await s3Client.send(new DeleteObjectCommand({
-                        Bucket: config.R2.BUCKET_NAME,
-                        Key: legacyKey
-                    }));
-                    return data;
-                } catch (legacyErr) {
-                    if (legacyErr.name === 'NoSuchKey') return [];
-                    console.error('Error reading legacy DB from R2:', legacyErr);
-                    return [];
-                }
-            }
+        if (err.name === 'NoSuchKey' || err.$metadata?.httpStatusCode === 404) {
             return [];
         }
-        console.error('Error reading DB from R2:', err);
-        return [];
+        console.error('Error reading DB from B2:', err);
+        return cachedDB || [];
     }
 }
 
-async function writeDBToR2(data) {
+async function writeDBToB2(data) {
     try {
         await s3Client.send(new PutObjectCommand({
-            Bucket: config.R2.BUCKET_NAME,
-            Key: config.R2.DB_KEY,
+            Bucket: config.B2.BUCKET_NAME,
+            Key: config.B2.DB_KEY,
             Body: JSON.stringify(data, null, 2),
             ContentType: 'application/json'
         }));
+        // Update local cache immediately
+        cachedDB = data;
+        lastDBFetch = Date.now();
     } catch (err) {
-        console.error('Error writing DB to R2:', err);
+        console.error('Error writing DB to B2:', err);
     }
 }
 
 export async function readDB() {
     let games;
-    if (config.R2.DB_KEY) {
-        games = await readDBFromR2();
+    if (config.B2.DB_KEY) {
+        games = await readDBFromB2();
     } else {
         try {
             const data = await fs.readFile(config.PATHS.DB, 'utf-8');
@@ -154,7 +144,7 @@ export async function readDB() {
 }
 
 export async function writeDB(data) {
-    if (config.R2.DB_KEY) return writeDBToR2(data);
+    if (config.B2.DB_KEY) return writeDBToB2(data);
     await fs.writeFile(config.PATHS.DB, JSON.stringify(data, null, 2));
 }
 
@@ -164,5 +154,56 @@ export async function incrementDownloadCount(id) {
     if (game) {
         game.downloads = (game.downloads || 0) + 1;
         await writeDB(games);
+    }
+}
+
+// === Bucket File List Cache (24h) ===
+let bucketFileCache = null;
+let lastBucketListFetch = 0;
+const BUCKET_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+
+export async function getBucketFileCache() {
+    const now = Date.now();
+    
+    // 1. Try memory cache
+    if (bucketFileCache && (now - lastBucketListFetch < BUCKET_CACHE_TTL)) {
+        return bucketFileCache;
+    }
+
+    // 2. Try persistent file cache on B2
+    const { readJsonFromB2 } = await import('./s3-helpers.js');
+    const persistent = await readJsonFromB2(config.B2.GAME_CACHE_KEY, null);
+    
+    if (persistent && persistent.timestamp && (now - persistent.timestamp < BUCKET_CACHE_TTL)) {
+        bucketFileCache = persistent.files;
+        lastBucketListFetch = persistent.timestamp;
+        return bucketFileCache;
+    }
+
+    // 3. Last resort: List from B2 (Class C request)
+    return refreshBucketFileCache();
+}
+
+export async function refreshBucketFileCache() {
+    console.log('[B2] Refreshing bucket file cache...');
+    const { listAllObjects, writeJsonToB2 } = await import('./s3-helpers.js');
+    try {
+        const allObjects = await listAllObjects('');
+        const files = allObjects.map(obj => obj.Key);
+        
+        const now = Date.now();
+        bucketFileCache = files;
+        lastBucketListFetch = now;
+
+        await writeJsonToB2(config.B2.GAME_CACHE_KEY, {
+            timestamp: now,
+            files: files
+        });
+
+        console.log(`[B2] Cache updated with ${files.length} files.`);
+        return files;
+    } catch (err) {
+        console.error('[B2] Failed to refresh bucket cache:', err);
+        return bucketFileCache || [];
     }
 }

@@ -50,7 +50,7 @@ async function zipAndUploadFolder(folderName) {
     const upload = new Upload({
         client: s3Client,
         params: {
-            Bucket: config.R2.BUCKET_NAME,
+            Bucket: config.B2.BUCKET_NAME,
             Key: targetKey,
             Body: passThrough,
             ContentType: 'application/zip'
@@ -64,7 +64,7 @@ async function zipAndUploadFolder(folderName) {
         const relativePath = fileKey.slice(prefix.length);
 
         const getCommand = new GetObjectCommand({
-            Bucket: config.R2.BUCKET_NAME,
+            Bucket: config.B2.BUCKET_NAME,
             Key: fileKey
         });
 

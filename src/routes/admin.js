@@ -6,7 +6,7 @@ import { ensureMd5MapFresh } from '../utils/md5-map.js';
 import { logger } from '../utils/logger.js';
 import { runMigration, getMigrationStatus } from '../utils/migration.js';
 import { getPackageNameFromList } from '../utils/game-list.js';
-import { readJsonFromR2 } from '../utils/s3-helpers.js';
+import { readJsonFromB2 } from '../utils/s3-helpers.js';
 import { HeadObjectCommand } from '@aws-sdk/client-s3';
 import { s3Client } from '../utils/s3.js';
 
@@ -78,7 +78,7 @@ router.get('/inspect-zip/:hash', async (req, res, next) => {
     const { hash } = req.params;
     console.log(`List Inspect requested for hash: ${hash}`);
     try {
-        const map = await readJsonFromR2(config.R2.MD5_MAP_KEY, {});
+        const map = await readJsonFromB2(config.B2.MD5_MAP_KEY, {});
         const key = map[hash];
         if (!key) return res.status(404).json({ error: 'Hash not found in map' });
         
@@ -95,7 +95,7 @@ router.get('/find-thumbnail/:packageName', async (req, res, next) => {
     const key = `.meta/thumbnails/${packageName}.jpg`;
     try {
         await s3Client.send(new HeadObjectCommand({
-            Bucket: config.R2.BUCKET_NAME,
+            Bucket: config.B2.BUCKET_NAME,
             Key: key
         }));
         // If it succeeds, it exists
@@ -127,7 +127,7 @@ router.get('/game-notes/:filename', async (req, res, next) => {
     try {
         const { GetObjectCommand } = await import('@aws-sdk/client-s3');
         const command = new GetObjectCommand({
-            Bucket: config.R2.BUCKET_NAME,
+            Bucket: config.B2.BUCKET_NAME,
             Key: key
         });
         const response = await s3Client.send(command);

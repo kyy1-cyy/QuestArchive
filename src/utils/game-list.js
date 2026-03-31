@@ -20,9 +20,9 @@ async function fetchGameList() {
         return listCache;
     }
     try {
-        console.log('[GameList] Fetching VRP-GameList.txt from R2...');
+        console.log('[GameList] Fetching VRP-GameList.txt from B2...');
         const command = new GetObjectCommand({
-            Bucket: config.R2.BUCKET_NAME,
+            Bucket: config.B2.BUCKET_NAME,
             Key: 'VRP-GameList.txt'
         });
         const response = await s3Client.send(command);
@@ -34,7 +34,7 @@ async function fetchGameList() {
         console.log(`[GameList] successfully loaded and cached (${text.length} bytes)`);
         return listCache;
     } catch (err) {
-        console.error('[GameList] Failed to fetch VRP-GameList.txt from R2:', err.message);
+        console.error('[GameList] Failed to fetch VRP-GameList.txt from B2:', err.message);
         return null; // keep old cache if exists, or return null
     }
 }

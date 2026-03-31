@@ -20,16 +20,14 @@ export function md5Plain(value) {
 }
 
 export function hashId(value) {
-    // HMAC-SHA256 truncated to 32 hex chars (128-bit) for MD5-like size, but secret-based.
-    // Deterministic for the same input as long as HASH_SECRET stays the same.
     const secret = config.HASH_SECRET || config.JWT_SECRET || 'quest-archive-fallback-secret';
     return crypto.createHmac('sha256', secret).update(String(value ?? ''), 'utf8').digest('hex').slice(0, 32);
 }
 
-export async function readJsonFromR2(key, fallbackValue) {
+export async function readJsonFromB2(key, fallbackValue) {
     try {
         const command = new GetObjectCommand({
-            Bucket: config.R2.BUCKET_NAME,
+            Bucket: config.B2.BUCKET_NAME,
             Key: key
         });
         const result = await s3Client.send(command);
@@ -37,17 +35,17 @@ export async function readJsonFromR2(key, fallbackValue) {
         const bodyString = await streamToString(result.Body);
         return bodyString ? JSON.parse(bodyString) : fallbackValue;
     } catch (err) {
-        if (err.name === 'NoSuchKey') return fallbackValue;
-        console.error(`Error reading ${key} from R2:`, err);
+        if (err.name === 'NoSuchKey' || err.$metadata?.httpStatusCode === 404) return fallbackValue;
+        console.error(`Error reading ${key} from B2:`, err);
         return fallbackValue;
     }
 }
 
-export async function writeJsonToR2(key, value) {
+export async function writeJsonToB2(key, value) {
     try {
         const body = JSON.stringify(value ?? {}, null, 2);
         const command = new PutObjectCommand({
-            Bucket: config.R2.BUCKET_NAME,
+            Bucket: config.B2.BUCKET_NAME,
             Key: key,
             Body: body,
             ContentType: 'application/json',
@@ -55,22 +53,22 @@ export async function writeJsonToR2(key, value) {
         });
         await s3Client.send(command);
     } catch (err) {
-        console.error(`Error writing ${key} to R2:`, err);
+        console.error(`Error writing ${key} to B2:`, err);
     }
 }
 
-export async function deleteObjectFromR2(key) {
+export async function deleteObjectFromB2(key) {
     try {
         await s3Client.send(new DeleteObjectCommand({
-            Bucket: config.R2.BUCKET_NAME,
+            Bucket: config.B2.BUCKET_NAME,
             Key: key
         }));
     } catch (err) {
-        console.error(`Error deleting ${key} from R2:`, err);
+        console.error(`Error deleting ${key} from B2:`, err);
     }
 }
 
-export async function listAllObjects(prefix, bucket = config.R2.BUCKET_NAME) {
+export async function listAllObjects(prefix, bucket = config.B2.BUCKET_NAME) {
     let token = undefined;
     const out = [];
     while (true) {
@@ -89,7 +87,7 @@ export async function listAllObjects(prefix, bucket = config.R2.BUCKET_NAME) {
     return out;
 }
 
-export async function listTopLevelFolders(bucket = config.R2.BUCKET_NAME) {
+export async function listTopLevelFolders(bucket = config.B2.BUCKET_NAME) {
     let token = undefined;
     const folders = [];
     const seen = new Set();
@@ -118,3 +116,8 @@ export async function listTopLevelFolders(bucket = config.R2.BUCKET_NAME) {
 
     return folders;
 }
+
+// Backward-compatible aliases
+export const readJsonFromR2 = readJsonFromB2;
+export const writeJsonToR2 = writeJsonToB2;
+export const deleteObjectFromR2 = deleteObjectFromB2;

@@ -9,7 +9,7 @@ const router = express.Router();
 
 router.get('/md5-map', async (req, res, next) => {
     if (!requireAdmin(req, res)) return;
-    if (!ensureEnv(req, res, ['R2.ENDPOINT', 'R2.ACCESS_KEY_ID', 'R2.SECRET_ACCESS_KEY'])) return;
+    if (!ensureEnv(req, res, ['B2.ENDPOINT', 'B2.KEY_ID', 'B2.APP_KEY'])) return;
 
     try {
         const force = String(req.query.force || '') === '1';
@@ -18,7 +18,7 @@ router.get('/md5-map', async (req, res, next) => {
             .map(([hash, folder]) => ({ hash, folder }))
             .sort((a, b) => a.folder.localeCompare(b.folder));
 
-        res.json({ items, key: config.R2.MD5_MAP_KEY });
+        res.json({ items, key: config.B2.MD5_MAP_KEY });
     } catch (err) {
         next(err);
     }

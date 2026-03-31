@@ -6,6 +6,7 @@ import { s3Client } from '../utils/s3.js';
 import { requireOwner, ensureEnv } from '../utils/auth.js';
 import { logger } from '../utils/logger.js';
 import { ensureMd5MapFresh } from '../utils/md5-map.js';
+import { refreshBucketFileCache } from '../utils/db.js';
 
 const router = express.Router();
 
@@ -25,7 +26,7 @@ router.get('/list', async (req, res, next) => {
 
         while (true) {
             const command = new ListObjectsV2Command({
-                Bucket: config.R2.BUCKET_NAME,
+                Bucket: config.B2.BUCKET_NAME,
                 Prefix: prefix || undefined,
                 Delimiter: '/',
                 ContinuationToken: token
@@ -69,11 +70,8 @@ router.get('/download-url', async (req, res, next) => {
     if (!key) return res.status(400).json({ error: 'Key required' });
 
     try {
-        if (config.R2.PUBLIC_DOMAIN) {
-            return res.json({ url: `${config.R2.PUBLIC_DOMAIN}/${encodeKeyForPublicUrl(key)}` });
-        }
         const command = new GetObjectCommand({
-            Bucket: config.R2.BUCKET_NAME,
+            Bucket: config.B2.BUCKET_NAME,
             Key: key
         });
         const url = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
@@ -89,8 +87,8 @@ router.post('/delete', async (req, res, next) => {
 
     try {
         if (key) {
-            await s3Client.send(new DeleteObjectCommand({ Bucket: config.R2.BUCKET_NAME, Key: key }));
-            if (config.R2.MD5_MAP_KEY) {
+            await s3Client.send(new DeleteObjectCommand({ Bucket: config.B2.BUCKET_NAME, Key: key }));
+            if (config.B2.MD5_MAP_KEY) {
                 await ensureMd5MapFresh({ force: true });
             }
             return res.json({ success: true });
@@ -100,14 +98,14 @@ router.post('/delete', async (req, res, next) => {
             let token = undefined;
             while (true) {
                 const list = await s3Client.send(new ListObjectsV2Command({
-                    Bucket: config.R2.BUCKET_NAME,
+                    Bucket: config.B2.BUCKET_NAME,
                     Prefix: prefix,
                     ContinuationToken: token
                 }));
                 const keys = (list.Contents || []).map(o => ({ Key: o.Key }));
                 if (keys.length > 0) {
                     await s3Client.send(new DeleteObjectsCommand({
-                        Bucket: config.R2.BUCKET_NAME,
+                        Bucket: config.B2.BUCKET_NAME,
                         Delete: { Objects: keys }
                     }));
                     deleted += keys.length;
@@ -115,9 +113,10 @@ router.post('/delete', async (req, res, next) => {
                 if (!list.IsTruncated) break;
                 token = list.NextContinuationToken;
             }
-            if (config.R2.MD5_MAP_KEY) {
+            if (config.B2.MD5_MAP_KEY) {
                 await ensureMd5MapFresh({ force: true });
             }
+            refreshBucketFileCache().catch(e => logger.error('Cache refresh after deletion failed', e));
             return res.json({ success: true, deleted });
         }
         res.status(400).json({ error: 'Key or prefix required' });
@@ -140,7 +139,7 @@ router.post('/bulk-delete', async (req, res, next) => {
             for (let i = 0; i < keyList.length; i += 1000) {
                 const slice = keyList.slice(i, i + 1000).map(k => ({ Key: k }));
                 await s3Client.send(new DeleteObjectsCommand({
-                    Bucket: config.R2.BUCKET_NAME,
+                    Bucket: config.B2.BUCKET_NAME,
                     Delete: { Objects: slice }
                 }));
                 deletedKeys += slice.length;
@@ -152,7 +151,7 @@ router.post('/bulk-delete', async (req, res, next) => {
                 let token = undefined;
                 while (true) {
                     const list = await s3Client.send(new ListObjectsV2Command({
-                        Bucket: config.R2.BUCKET_NAME,
+                        Bucket: config.B2.BUCKET_NAME,
                         Prefix: prefix,
                         ContinuationToken: token
                     }));
@@ -161,7 +160,7 @@ router.post('/bulk-delete', async (req, res, next) => {
                         for (let i = 0; i < objs.length; i += 1000) {
                             const slice = objs.slice(i, i + 1000);
                             await s3Client.send(new DeleteObjectsCommand({
-                                Bucket: config.R2.BUCKET_NAME,
+                                Bucket: config.B2.BUCKET_NAME,
                                 Delete: { Objects: slice }
                             }));
                             deletedFromPrefixes += slice.length;
@@ -173,8 +172,8 @@ router.post('/bulk-delete', async (req, res, next) => {
             }
         }
 
-        if (config.R2.MD5_MAP_KEY && (deletedKeys > 0 || deletedFromPrefixes > 0)) {
-            await ensureMd5MapFresh({ force: true });
+        if (deletedKeys > 0 || deletedFromPrefixes > 0) {
+            refreshBucketFileCache().catch(e => logger.error('Cache refresh after deletion failed', e));
         }
 
         res.json({ success: true, deletedKeys, deletedFromPrefixes });
