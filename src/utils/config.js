@@ -44,7 +44,8 @@ export const config = {
         DB_KEY: 'private/database.json',
         MD5_MAP_KEY: 'private/map_md5.json',
         SILENT_LOGS_KEY: 'private/silent_logs.json',
-        GAME_CACHE_KEY: 'private/game_cache.json'
+        GAME_CACHE_KEY: 'private/game_cache.json',
+        DOWNLOAD_BASE_URL: process.env.DOWNLOAD_BASE_URL || ''
     },
     DONATIONS: {
         ENDPOINT: process.env.B2_ENDPOINT || '',

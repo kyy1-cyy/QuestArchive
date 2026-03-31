@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { config } from '../utils/config.js';
-import { s3Client } from '../utils/s3.js';
+import { s3Client, s3DownloadClient } from '../utils/s3.js';
 import { readDB, incrementDownloadCount } from '../utils/db.js';
 import { ensureCloudflare } from '../utils/auth.js';
 import { logger } from '../utils/logger.js';
@@ -179,7 +179,7 @@ router.get('/download/:id', downloadLimiter, async (req, res, next) => {
             });
 
             // URL expires in 60 seconds (just enough for the browser to start the request)
-            const signedUrl = await getSignedUrl(s3Client, command, { expiresIn: 60 });
+            const signedUrl = await getSignedUrl(s3DownloadClient, command, { expiresIn: 60 });
             
             if (!req.headers.range) {
                 incrementDownloadCount(game.publicId).catch(e => logger.error('Incr error', e));
