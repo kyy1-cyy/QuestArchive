@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { config } from '../utils/config.js';
-import { s3Client, s3DownloadClient } from '../utils/s3.js';
+import { s3Client } from '../utils/s3.js';
 import { getBucketFileCache, readDB, incrementDownloadCount } from '../utils/db.js';
 import { ensureCloudflare } from '../utils/auth.js';
 import { logger } from '../utils/logger.js';
@@ -132,18 +132,31 @@ router.get('/download-info/:id', async (req, res, next) => {
         const fileKey = await resolveGameFileKey(game) || (game.title.toLowerCase().endsWith('.zip') ? game.title : `${game.title}.zip`);
         
         let fileSize = null;
+        let chunks = [];
         try {
             // Direct call for info is only done once per download
             const { HeadObjectCommand } = await import('@aws-sdk/client-s3');
             const head = await s3Client.send(new HeadObjectCommand({ Bucket: config.B2.BUCKET_NAME, Key: fileKey }));
             fileSize = head.ContentLength;
+            
+            // Add chunks information for the multi-part downloader on the frontend
+            if (fileSize) {
+                const chunkSize = 25 * 1024 * 1024; // 25MB
+                for (let i = 0; i < fileSize; i += chunkSize) {
+                    chunks.push({
+                        start: i,
+                        end: Math.min(i + chunkSize - 1, fileSize - 1)
+                    });
+                }
+            }
         } catch (_) { }
 
         res.json({
             title: game.title,
             url, 
             fileSize,
-            supportsRange: true
+            supportsRange: true,
+            chunks
         });
     } catch (err) {
         next(err);
@@ -177,8 +190,17 @@ router.get('/download/:id', downloadLimiter, async (req, res, next) => {
                 ResponseContentDisposition: `attachment; filename="${game.title.replace(/"/g, '_')}.zip"`
             });
 
-            // URL expires in 60 seconds
-            const signedUrl = await getSignedUrl(s3DownloadClient, command, { expiresIn: 60 });
+            // Generate signature using the true B2 endpoint so the signature is valid when Cloudflare proxies it
+            let signedUrl = await getSignedUrl(s3Client, command, { expiresIn: 60 });
+            
+            // If a CDN URL is configured, swap the domain so it goes through Cloudflare
+            if (config.B2.DOWNLOAD_BASE_URL) {
+                const b2Endpoint = config.B2.ENDPOINT.replace(/\/$/, '');
+                const cdnEndpoint = config.B2.DOWNLOAD_BASE_URL.replace(/\/$/, '');
+                if (b2Endpoint && signedUrl.startsWith(b2Endpoint)) {
+                    signedUrl = signedUrl.replace(b2Endpoint, cdnEndpoint);
+                }
+            }
             
             // Use the signed URL directly for stability
             if (!req.headers.range) {

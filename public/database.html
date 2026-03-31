@@ -762,7 +762,10 @@
                                 </thead>
                                 <tbody>
                                     <tr v-for="pg in pendingGames" :key="pg.filename">
-                                        <td style="color:#ce9178; font-size: 12px;">{{ pg.filename }}</td>
+                                        <td style="color:#ce9178; font-size: 12px;">
+                                            <div>{{ pg.filename }}</div>
+                                            <div style="font-family: Consolas, monospace; color: #9cdcfe; font-size: 10px; margin-top: 2px;" v-if="pg.hashId">Hash: {{ pg.hashId }}</div>
+                                        </td>
                                         <td style="text-align:right;">
                                             <button class="btn" @click="selectPending(pg)">Pick</button>
                                         </td>
@@ -775,9 +778,8 @@
                         </div>
                     </div>
 
-                    <template v-if="newGame.hashId || manualMode">
-                        <div class="form-group">
-                            <label>R2 Hash ID (Zip)</label>
+                    <div class="form-group">
+                        <label>R2 Hash ID (Zip)</label>
                             <div style="display:flex; gap:8px; align-items: center;">
                                 <div class="form-control" style="flex: 1; min-width: 0; display:flex; align-items:center; gap:10px;">
                                     <span v-if="newGame.hashId" style="color:#9cdcfe; font-family: Consolas, monospace; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;">{{ newGame.hashId }}</span>
@@ -826,7 +828,6 @@
                             <div class="muted" style="margin-top: 8px; color: #b5cea8;" v-else-if="newGame.thumbnailUrl && !imageState.error">Success: Game info auto-filled</div>
                             <div style="margin-top: 8px; color:#ff9999; font-size: 11px;" v-if="imageState.error">Error: {{ imageState.error }} - Manual override enabled</div>
                         </div>
-                    </template>
 
                     <div class="modal-actions" style="display:flex; gap:10px; align-items:center;">
                         <button class="btn btn-tab" style="border:none;" @click="showAddModal = false">Cancel</button>
@@ -834,7 +835,7 @@
                         <button class="btn btn-tab" style="border:1px solid #333; font-size: 12px; padding: 6px 12px;" @click="manualMode = !manualMode">
                             {{ manualMode ? 'Disable Manual' : 'Enable Manual Editing' }}
                         </button>
-                        <button class="btn" style="min-width: 100px; justify-content: center; background:#007acc; border-color:#008be1;" @click="addGame" v-if="(newGame.hashId || manualMode) && !imageState.inProgress">Save to DB</button>
+                        <button class="btn" style="min-width: 100px; justify-content: center; background:#007acc; border-color:#008be1;" @click="addGame" :disabled="!(newGame.hashId || manualMode) || imageState.inProgress">Save to DB</button>
                     </div>
                 </div>
             </div>
@@ -2033,7 +2034,7 @@
                 async fetchPendingGames() {
                     this.pendingLoading = true;
                     try {
-                        const res = await fetch('/api/admin/pending-games');
+                        const res = await fetch('/api/pending-games');
                         this.pendingGames = await res.json();
                     } catch (e) {
                         this.showToast('Failed to fetch pending games', 'error');
@@ -2047,6 +2048,10 @@
                     this.showPendingModal = false;
                     this.manualMode = true; // Allow editing the newly filled info
                     this.showToast('Pre-filled from bucket', 'success');
+                    
+                    if (this.newGame.hashId && this.newGame.title) {
+                        this.autoProcessGame(this.newGame.hashId, this.newGame.title);
+                    }
                 },
                 async fetchGames() {
                     const res = await fetch('/api/database');
