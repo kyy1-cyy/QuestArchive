@@ -5,7 +5,7 @@ import { GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { config } from '../utils/config.js';
 import { s3Client, s3DownloadClient } from '../utils/s3.js';
-import { readDB, incrementDownloadCount } from '../utils/db.js';
+import { readDB, incrementDownloadCount, getBucketFileCache } from '../utils/db.js';
 import { ensureCloudflare } from '../utils/auth.js';
 import { logger } from '../utils/logger.js';
 
@@ -81,7 +81,6 @@ function isTicketUsed(token) {
 }
 
 import { findKeyByHash } from '../utils/md5-map.js';
-import { getBucketFileCache, incrementDownloadCount } from '../utils/db.js';
 
 async function checkObjectExists(key) {
     try {
