@@ -743,7 +743,6 @@
                         <button class="btn" style="width: 100%; justify-content: center; padding: 14px; font-size: 15px;" @click="openPendingPicker" :disabled="pendingLoading">
                             {{ pendingLoading ? 'Scanning Bucket...' : 'Pick from B2 Bucket' }}
                         </button>
-                        <button class="btn btn-tab" @click="manualMode = true" style="font-size: 11px;">Manual Mode</button>
                     </div>
 
                     <div v-if="showPendingModal" class="overlay" @click.self="showPendingModal = false">
@@ -829,11 +828,13 @@
                         </div>
                     </template>
 
-                    <div class="modal-actions" style="display:flex; gap:10px;">
+                    <div class="modal-actions" style="display:flex; gap:10px; align-items:center;">
                         <button class="btn btn-tab" style="border:none;" @click="showAddModal = false">Cancel</button>
                         <div style="flex: 1;"></div>
-                        <button class="btn btn-tab" style="border:1px solid #333; opacity:0.7; font-size: 12px; padding: 4px 10px;" @click="manualMode = true" v-if="newGame.hashId && !manualMode && !imageState.error">Manual Add</button>
-                        <button class="btn" style="min-width: 100px; justify-content: center;" @click="addGame" v-if="(newGame.hashId || manualMode) && !imageState.inProgress" :disabled="imageState.inProgress">Save to DB</button>
+                        <button class="btn btn-tab" style="border:1px solid #333; font-size: 12px; padding: 6px 12px;" @click="manualMode = !manualMode">
+                            {{ manualMode ? 'Disable Manual' : 'Enable Manual Editing' }}
+                        </button>
+                        <button class="btn" style="min-width: 100px; justify-content: center; background:#007acc; border-color:#008be1;" @click="addGame" v-if="(newGame.hashId || manualMode) && !imageState.inProgress">Save to DB</button>
                     </div>
                 </div>
             </div>
@@ -1084,6 +1085,9 @@
                         description: '',
                         thumbnailUrl: ''
                     },
+                    showPendingModal: false,
+                    pendingGames: [],
+                    pendingLoading: false,
                     imageDragOver: false,
                     imageState: {
                         inProgress: false,
