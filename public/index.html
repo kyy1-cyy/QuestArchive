@@ -932,8 +932,6 @@
                         if (this.dlState.active) return;
                         this.resetDlState();
 
-                        console.log(`[DOWNLOAD] Starting download for: ${game.title}`);
-
                         if (!window.showSaveFilePicker) {
                             this.showToast('This browser cannot save chunked downloads directly to disk.', 'error');
                             return;
@@ -954,25 +952,22 @@
                             this.dlInternals.activeWritable = writable;
                             this.dlInternals.currentFileName = `${game.title}.zip`;
                         } catch (_) {
-                            console.log('[DOWNLOAD] File picker cancelled');
                             return;
                         }
 
                         this.dlState.active = true;
-                        this.dlState.message = 'Getting file info...';
+                        this.dlState.message = 'Connecting...';
 
+                        // Get download info for file size
                         let info;
                         try {
-                            console.log('[DOWNLOAD] Fetching download-info...');
                             const res = await fetch(`/api/download-info-by-title?title=${encodeURIComponent(game.title)}`, {
                                 cache: 'no-store',
                                 headers: { 'Cache-Control': 'no-store', Pragma: 'no-cache' }
                             });
                             info = await res.json();
-                            console.log('[DOWNLOAD] download-info response:', JSON.stringify(info).slice(0, 500));
                             if (!res.ok) throw new Error(info.error || 'Failed');
                         } catch (e) {
-                            console.error('[DOWNLOAD] download-info FAILED:', e);
                             try { await writable.abort(); } catch (_) { }
                             this.dlState.active = false;
                             this.dlState.error = String(e.message || e);
@@ -980,114 +975,80 @@
                             return;
                         }
 
-                        if (!info.supportsRange || !info.chunks || info.chunks.length === 0) {
-                            console.error('[DOWNLOAD] No chunks available:', { supportsRange: info.supportsRange, chunksCount: info.chunks?.length });
-                            try { await writable.abort(); } catch (_) { }
-                            this.dlState.active = false;
-                            this.dlState.error = 'Chunked download info unavailable';
-                            this.showToast('Chunked download info unavailable', 'error');
-                            return;
-                        }
-
-                        // Always use the server proxy URL — hides the Cloudflare URL from the user
-                        // The server streams from Cloudflare internally (free bandwidth)
                         const downloadUrl = info.url;
-                        console.log(`[DOWNLOAD] Downloading via server proxy (Cloudflare-backed)`);
-                        console.log(`[DOWNLOAD] File size: ${info.fileSize} bytes (${(info.fileSize/1024/1024).toFixed(1)}MB), ${info.chunks.length} chunks`);
+                        const totalBytes = info.fileSize || 0;
 
                         this.dlState.message = 'Downloading...';
                         this.dlInternals.startedAt = Date.now();
-                        this.dlInternals.totalBytes = info.fileSize;
+                        this.dlInternals.totalBytes = totalBytes;
 
-                        const queue = [...info.chunks];
-                        const concurrency = 1;
-                        let writePromise = Promise.resolve();
-
-                        const writeToDisk = async (offset, buffer) => {
-                            if (!writable || this.dlInternals.cancelled) return;
-                            const p = writePromise.then(() => {
-                                if (this.dlInternals.cancelled) return;
-                                return writable.write({ type: 'write', position: offset, data: buffer });
-                            });
-                            writePromise = p.catch(() => { });
-                            await p;
-                        };
-
-                        const worker = async () => {
-                            while (queue.length && !this.dlInternals.cancelled) {
-                                const chunk = queue.shift();
-                                if (!chunk) return;
-
-                                console.log(`[DOWNLOAD] Chunk ${chunk.index}: bytes ${chunk.start}-${chunk.end} (${((chunk.end-chunk.start+1)/1024/1024).toFixed(1)}MB)`);
-
-                                let retries = 4;
-                                while (retries > 0 && !this.dlInternals.cancelled) {
-                                    const ac = new AbortController();
-                                    this.dlInternals.abortControllers.push(ac);
-
-                                    try {
-                                        const fetchStart = Date.now();
-                                        const response = await fetch(downloadUrl, {
-                                            headers: { Range: `bytes=${chunk.start}-${chunk.end}` },
-                                            signal: ac.signal,
-                                            cache: 'no-store'
-                                        });
-                                        console.log(`[DOWNLOAD] Chunk ${chunk.index} response: status=${response.status}, type=${response.headers.get('content-type')}, length=${response.headers.get('content-length')}`);
-
-                                        if (response.status !== 206 && response.status !== 200) {
-                                            const bodyText = await response.text().catch(() => '');
-                                            console.error(`[DOWNLOAD] Chunk ${chunk.index} WRONG STATUS: ${response.status}, body: ${bodyText.slice(0, 300)}`);
-                                            throw new Error(`Chunk ${chunk.index} failed (status ${response.status})`);
-                                        }
-
-                                        const reader = response.body.getReader();
-                                        let currentOffset = chunk.start;
-                                        let totalChunkBytes = 0;
-
-                                        while (true) {
-                                            const { done, value } = await reader.read();
-                                            if (done) break;
-                                            await writeToDisk(currentOffset, value);
-                                            currentOffset += value.byteLength;
-                                            totalChunkBytes += value.byteLength;
-                                            this.dlInternals.perChunkLoaded[chunk.index] = (this.dlInternals.perChunkLoaded[chunk.index] || 0) + value.byteLength;
-                                            this.updateDlProgress();
-                                        }
-
-                                        const elapsed = ((Date.now() - fetchStart) / 1000).toFixed(1);
-                                        const expectedSize = chunk.end - chunk.start + 1;
-                                        console.log(`[DOWNLOAD] Chunk ${chunk.index} DONE: ${totalChunkBytes} bytes in ${elapsed}s (expected ${expectedSize})`);
-                                        if (totalChunkBytes !== expectedSize) {
-                                            console.warn(`[DOWNLOAD] Chunk ${chunk.index} SIZE MISMATCH: got ${totalChunkBytes}, expected ${expectedSize}`);
-                                        }
-
-                                        break; // exit retry loop, continue to next chunk
-                                    } catch (err) {
-                                        console.error(`[DOWNLOAD] Chunk ${chunk.index} ERROR (retry ${4-retries+1}/4):`, err.message);
-                                        retries -= 1;
-                                        this.dlInternals.perChunkLoaded[chunk.index] = 0;
-                                        if (retries <= 0) throw err;
-                                        await new Promise(r => setTimeout(r, 700));
-                                    }
-                                }
-                            }
-                        };
+                        // Single continuous stream — no chunks, no pauses
+                        const ac = new AbortController();
+                        this.dlInternals.abortControllers.push(ac);
 
                         try {
-                            await Promise.all(Array.from({ length: concurrency }, () => worker()));
-                            await writePromise;
+                            const response = await fetch(downloadUrl, {
+                                signal: ac.signal,
+                                cache: 'no-store'
+                            });
+
+                            if (!response.ok) {
+                                throw new Error(`Download failed (${response.status})`);
+                            }
+
+                            const reader = response.body.getReader();
+                            let bytesReceived = 0;
+
+                            while (true) {
+                                if (this.dlInternals.cancelled) break;
+                                const { done, value } = await reader.read();
+                                if (done) break;
+
+                                await writable.write(value);
+                                bytesReceived += value.byteLength;
+
+                                // Update progress
+                                if (totalBytes > 0) {
+                                    this.dlState.percent = Math.min(99, (bytesReceived / totalBytes) * 100);
+                                }
+
+                                // Speed / ETA calculation
+                                const now = Date.now();
+                                const lastTime = this.dlInternals.lastCalcTime || this.dlInternals.startedAt;
+                                const lastLoaded = this.dlInternals.lastUploadedBytes || 0;
+                                const timeDiff = (now - lastTime) / 1000;
+                                if (timeDiff >= 0.5) {
+                                    const bytesDiff = bytesReceived - lastLoaded;
+                                    const currentBps = bytesDiff / timeDiff;
+                                    if (this.dlInternals.rollingBps === undefined) {
+                                        this.dlInternals.rollingBps = currentBps;
+                                    } else {
+                                        this.dlInternals.rollingBps = this.dlInternals.rollingBps * 0.7 + currentBps * 0.3;
+                                    }
+                                    this.dlState.mbps = this.dlInternals.rollingBps / (1024 * 1024);
+                                    if (totalBytes > 0) {
+                                        const remaining = Math.max(totalBytes - bytesReceived, 0);
+                                        const eta = this.dlInternals.rollingBps > 0 ? remaining / this.dlInternals.rollingBps : Infinity;
+                                        const mins = Math.floor(eta / 60);
+                                        const secs = Math.floor(eta % 60);
+                                        this.dlState.eta = eta > 3600 ? '> 1hr' : `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+                                    }
+                                    this.dlInternals.lastCalcTime = now;
+                                    this.dlInternals.lastUploadedBytes = bytesReceived;
+                                }
+                            }
+
                             await writable.close();
                         } catch (e) {
-                            console.error('[DOWNLOAD] FATAL ERROR:', e);
                             try { await writable.abort(); } catch (_) { }
-                            this.dlState.active = false;
-                            this.dlState.error = String(e.message || e);
-                            this.showToast(String(e.message || e), 'error');
+                            if (!this.dlInternals.cancelled) {
+                                this.dlState.active = false;
+                                this.dlState.error = String(e.message || e);
+                                this.showToast(String(e.message || e), 'error');
+                            }
                             return;
                         }
 
-                        const totalTime = ((Date.now() - this.dlInternals.startedAt) / 1000).toFixed(1);
-                        console.log(`[DOWNLOAD] COMPLETE! ${(info.fileSize/1024/1024).toFixed(1)}MB in ${totalTime}s`);
                         this.dlState.percent = 100;
                         this.dlState.mbps = 0;
                         this.dlState.eta = '00:00';

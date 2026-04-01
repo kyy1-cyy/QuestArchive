@@ -1853,8 +1853,6 @@
                     this.uploadInternals.rollingBps = undefined;
                     this.uploadState.message = 'Uploading...';
 
-                    console.log(`[UPLOAD] Starting: ${file.name} (${(file.size/1024/1024).toFixed(1)}MB)`);
-
                     // Compute hash for the file
                     const baseName = file.name.replace(/\.zip$/i, '');
                     try {
@@ -1900,6 +1898,11 @@
                                     this.uploadInternals.lastCalcTime = now;
                                     this.uploadInternals.lastUploadedBytes = e.loaded;
                                 }
+                                if (e.loaded >= e.total) {
+                                    this.uploadState.message = 'Saving to storage...';
+                                    this.uploadState.mbps = 0;
+                                    this.uploadState.eta = '';
+                                }
                             };
 
                             xhr.onload = () => {
@@ -1917,7 +1920,6 @@
                             xhr.send(file);
                         });
 
-                        console.log(`[UPLOAD] Server response:`, result);
                         if (result.hash) this.hashState.hash = String(result.hash);
                     } catch (e) {
                         this.uploadState.inProgress = false;
@@ -1926,8 +1928,6 @@
                         return;
                     }
 
-                    const totalTime = ((Date.now() - this.uploadInternals.startedAt) / 1000).toFixed(1);
-                    console.log(`[UPLOAD] COMPLETE! ${totalTime}s`);
                     this.uploadState.percent = 100;
                     this.uploadState.message = 'Done';
                     this.uploadState.mbps = 0;

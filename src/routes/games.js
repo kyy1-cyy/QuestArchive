@@ -162,7 +162,6 @@ async function sendDownloadInfo(req, res, game) {
     issueDownloadTicket(req, res, game.publicId);
 
     const fileKey = await resolveGameFileKey(game) || (game.title.toLowerCase().endsWith('.zip') ? game.title : `${game.title}.zip`);
-    console.log(`[DOWNLOAD] sendDownloadInfo: title=${game.title}, fileKey=${fileKey}`);
     
     let fileSize = null;
     let chunks = [];
@@ -172,7 +171,6 @@ async function sendDownloadInfo(req, res, game) {
         const headStart = Date.now();
         const head = await s3Client.send(new HeadObjectCommand({ Bucket: config.B2.BUCKET_NAME, Key: fileKey }));
         fileSize = head.ContentLength;
-        console.log(`[DOWNLOAD] HeadObject: size=${fileSize} bytes (${(fileSize/1024/1024).toFixed(1)}MB), took ${Date.now()-headStart}ms`);
         
         if (fileSize) {
             const chunkSize = 25 * 1024 * 1024;
@@ -186,13 +184,10 @@ async function sendDownloadInfo(req, res, game) {
                 index += 1;
             }
         }
-    } catch (e) {
-        console.error(`[DOWNLOAD] HeadObject FAILED for key=${fileKey}:`, e.message);
-    }
+    } catch (e) {}
 
-    // Build the Cloudflare-proxied public URL for free bandwidth
     const directUrl = buildPublicDownloadUrl(fileKey);
-    console.log(`[DOWNLOAD] DOWNLOAD_BASE_URL="${config.B2.DOWNLOAD_BASE_URL}", directUrl="${directUrl}", fileKey="${fileKey}", chunks=${chunks.length}`);
+
 
     res.json({
         title: game.title,
@@ -207,7 +202,6 @@ async function sendDownloadInfo(req, res, game) {
 
 async function serveGameDownload(req, res, game, { requireTicket = true } = {}) {
     if (requireTicket && !requireDownloadTicket(req, res, game.publicId)) {
-        console.log(`[DOWNLOAD] Ticket expired for game: ${game.title}`);
         res.status(403).send('Download link expired. Please click download again.');
         return;
     }
@@ -216,7 +210,6 @@ async function serveGameDownload(req, res, game, { requireTicket = true } = {}) 
 
     const fileKey = await resolveGameFileKey(game);
     if (!fileKey) {
-        console.error(`[DOWNLOAD] File not found for: ${game.title}`);
         res.status(404).send('File not found');
         return;
     }
@@ -237,7 +230,6 @@ async function serveGameDownload(req, res, game, { requireTicket = true } = {}) 
             });
             upstreamUrl = await getSignedUrl(s3Client, command, { expiresIn: 300 });
         } catch (s3Err) {
-            console.error('[DOWNLOAD] Presign FAILED:', s3Err.message);
             res.status(500).send('Storage connection error');
             return;
         }
@@ -249,8 +241,6 @@ async function serveGameDownload(req, res, game, { requireTicket = true } = {}) 
     if (req.headers.range) {
         fetchHeaders.Range = req.headers.range;
     }
-
-    console.log(`[DOWNLOAD] Streaming: ${fileKey}, range=${req.headers.range || 'full'}`);
 
     try {
         const upstream = await fetch(upstreamUrl, { headers: fetchHeaders });
@@ -267,7 +257,6 @@ async function serveGameDownload(req, res, game, { requireTicket = true } = {}) 
         // Pipe the stream — minimal memory usage
         Readable.fromWeb(upstream.body).pipe(res);
     } catch (fetchErr) {
-        console.error('[DOWNLOAD] Stream FAILED:', fetchErr.message);
         if (!res.headersSent) {
             res.status(500).json({ error: 'fetch failed' });
         }
