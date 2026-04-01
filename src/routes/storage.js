@@ -16,7 +16,7 @@ function encodeKeyForPublicUrl(key) {
 
 router.get('/list', async (req, res, next) => {
     if (!requireOwner(req, res)) return;
-    if (!ensureEnv(req, res, ['R2.BUCKET_NAME'])) return;
+    if (!ensureEnv(req, res, ['B2.BUCKET_NAME'])) return;
 
     const prefix = String(req.query.prefix || '');
     try {
