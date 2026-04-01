@@ -27,7 +27,7 @@ router.get('/list', async (req, res, next) => {
         while (true) {
             const command = new ListObjectsV2Command({
                 Bucket: config.B2.BUCKET_NAME,
-                Prefix: prefix || undefined,
+                Prefix: prefix ? (prefix.endsWith('/') ? prefix : prefix + '/') : undefined,
                 Delimiter: '/',
                 ContinuationToken: token
             });
@@ -40,7 +40,7 @@ router.get('/list', async (req, res, next) => {
 
             if (result.Contents) {
                 const objects = result.Contents
-                    .filter(o => o.Key && o.Key !== prefix && !o.Key.endsWith('/'))
+                    .filter(o => o.Key && o.Key !== prefix && o.Key !== (prefix + '/') && !o.Key.endsWith('/'))
                     .map(o => ({
                         key: o.Key,
                         lastModified: o.LastModified,
@@ -52,6 +52,8 @@ router.get('/list', async (req, res, next) => {
             if (!result.IsTruncated) break;
             token = result.NextContinuationToken;
         }
+
+        console.log(`[STORAGE] Listing prefix "${prefix}" found ${allFolders.length} folders, ${allObjects.length} objects`);
 
         res.json({
             prefix,
