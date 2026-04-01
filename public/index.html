@@ -989,20 +989,10 @@
                             return;
                         }
 
-                        // Build Cloudflare-proxied URL: dl.questarchive.xyz -> B2 (free bandwidth)
-                        // Use directUrl from server, or build from fileKey, NEVER use the server /api/download URL
-                        let downloadUrl = info.directUrl;
-                        if (!downloadUrl && info.fileKey) {
-                            const encodedKey = info.fileKey.split('/').map(p => encodeURIComponent(p)).join('/');
-                            downloadUrl = `https://dl.questarchive.xyz/quest-archive/${encodedKey}`;
-                            console.log(`[DOWNLOAD] Built Cloudflare URL from fileKey: ${downloadUrl}`);
-                        }
-                        if (!downloadUrl) {
-                            // Absolute last resort
-                            downloadUrl = info.url;
-                            console.warn('[DOWNLOAD] WARNING: No directUrl or fileKey, falling back to server URL!');
-                        }
-                        console.log(`[DOWNLOAD] Download URL: ${downloadUrl}`);
+                        // Always use the server proxy URL — hides the Cloudflare URL from the user
+                        // The server streams from Cloudflare internally (free bandwidth)
+                        const downloadUrl = info.url;
+                        console.log(`[DOWNLOAD] Downloading via server proxy (Cloudflare-backed)`);
                         console.log(`[DOWNLOAD] File size: ${info.fileSize} bytes (${(info.fileSize/1024/1024).toFixed(1)}MB), ${info.chunks.length} chunks`);
 
                         this.dlState.message = 'Downloading...';

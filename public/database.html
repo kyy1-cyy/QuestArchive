@@ -1853,22 +1853,18 @@
                     this.uploadInternals.rollingBps = undefined;
                     this.uploadState.message = 'Initializing...';
 
-                    console.log(`[UPLOAD] Starting upload: ${file.name} (${(file.size/1024/1024).toFixed(1)}MB)`);
+                    console.log(`[UPLOAD] Starting: ${file.name} (${(file.size/1024/1024).toFixed(1)}MB)`);
 
-                    // Step 1: Init multipart on B2
                     let initData;
                     try {
-                        console.log('[UPLOAD] Calling /api/uploads/init...');
                         const initRes = await fetch('/api/uploads/init', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ filename: file.name })
                         });
                         initData = await initRes.json();
-                        console.log('[UPLOAD] Init response:', initData);
                         if (!initRes.ok) throw new Error(initData.error || 'Init failed');
                     } catch (e) {
-                        console.error('[UPLOAD] Init FAILED:', e);
                         this.uploadState.inProgress = false;
                         this.uploadState.error = String(e.message || e);
                         this.showToast('Upload init failed: ' + this.uploadState.error, 'error');
@@ -1878,105 +1874,101 @@
                     const { uploadId, key, hash } = initData;
                     if (hash) this.hashState.hash = String(hash);
 
-                    // Step 2: Upload each part through server proxy
-                    const PART_SIZE = 10 * 1024 * 1024; // 10MB parts
+                    const PART_SIZE = 10 * 1024 * 1024;
                     const totalParts = Math.ceil(file.size / PART_SIZE);
+                    const CONCURRENCY = 3;
                     const completedParts = [];
                     let uploadError = null;
+                    let nextPartNum = 1;
+                    const partBytesLoaded = {};
 
-                    console.log(`[UPLOAD] Will upload ${totalParts} parts of ${(PART_SIZE/1024/1024)}MB each`);
+                    console.log(`[UPLOAD] ${totalParts} parts, ${CONCURRENCY} concurrent`);
                     this.uploadState.message = `Uploading (0/${totalParts})...`;
 
-                    for (let partNum = 1; partNum <= totalParts; partNum++) {
-                        if (uploadError) break;
-
+                    const uploadOnePart = (partNum) => {
                         const start = (partNum - 1) * PART_SIZE;
                         const end = Math.min(start + PART_SIZE, file.size);
                         const blob = file.slice(start, end);
-                        const partSizeMB = ((end - start) / 1024 / 1024).toFixed(1);
+                        partBytesLoaded[partNum] = 0;
 
-                        console.log(`[UPLOAD] Part ${partNum}/${totalParts}: ${partSizeMB}MB (bytes ${start}-${end})`);
-                        this.uploadState.message = `Uploading part ${partNum}/${totalParts}...`;
+                        return new Promise((resolve, reject) => {
+                            const xhr = new XMLHttpRequest();
+                            this.uploadInternals.activeRequests.push(xhr);
+                            const url = `/api/uploads/put-part?key=${encodeURIComponent(key)}&uploadId=${encodeURIComponent(uploadId)}&partNumber=${partNum}`;
+                            xhr.open('PUT', url, true);
 
-                        // Upload part through server proxy (avoids CORS)
-                        try {
-                            const partStartTime = Date.now();
-                            const etag = await new Promise((resolve, reject) => {
-                                const xhr = new XMLHttpRequest();
-                                this.uploadInternals.activeRequests.push(xhr);
-                                const url = `/api/uploads/put-part?key=${encodeURIComponent(key)}&uploadId=${encodeURIComponent(uploadId)}&partNumber=${partNum}`;
-                                xhr.open('PUT', url, true);
+                            xhr.upload.onprogress = (e) => {
+                                partBytesLoaded[partNum] = e.loaded;
+                                const totalLoaded = Object.values(partBytesLoaded).reduce((a, b) => a + b, 0);
+                                this.uploadInternals.uploadedBytes = totalLoaded;
+                                this.uploadState.percent = file.size ? Math.min(99, (totalLoaded / file.size) * 100) : 0;
 
-                                xhr.upload.onprogress = (e) => {
-                                    const partLoaded = e.loaded;
-                                    const totalLoaded = start + partLoaded;
-                                    this.uploadInternals.uploadedBytes = totalLoaded;
-                                    this.uploadState.percent = file.size ? Math.min(99, (totalLoaded / file.size) * 100) : 0;
-
-                                    // Speed calculation
-                                    const now = Date.now();
-                                    const lastTime = this.uploadInternals.lastCalcTime || this.uploadInternals.startedAt;
-                                    const lastLoaded = this.uploadInternals.lastUploadedBytes || 0;
-                                    const timeDiff = (now - lastTime) / 1000;
-                                    if (timeDiff >= 0.5) {
-                                        const bytesDiff = totalLoaded - lastLoaded;
-                                        const currentBps = bytesDiff / timeDiff;
-                                        if (this.uploadInternals.rollingBps === undefined) {
-                                            this.uploadInternals.rollingBps = currentBps;
-                                        } else {
-                                            this.uploadInternals.rollingBps = this.uploadInternals.rollingBps * 0.7 + currentBps * 0.3;
-                                        }
-                                        this.uploadState.mbps = this.uploadInternals.rollingBps / (1024 * 1024);
-                                        const remaining = Math.max(file.size - totalLoaded, 0);
-                                        const eta = this.uploadInternals.rollingBps > 0 ? remaining / this.uploadInternals.rollingBps : Infinity;
-                                        const mins = Math.floor(eta / 60);
-                                        const secs = Math.floor(eta % 60);
-                                        this.uploadState.eta = eta > 3600 ? '> 1hr' : `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-                                        this.uploadInternals.lastCalcTime = now;
-                                        this.uploadInternals.lastUploadedBytes = totalLoaded;
+                                const now = Date.now();
+                                const lastTime = this.uploadInternals.lastCalcTime || this.uploadInternals.startedAt;
+                                const lastLoaded = this.uploadInternals.lastUploadedBytes || 0;
+                                const timeDiff = (now - lastTime) / 1000;
+                                if (timeDiff >= 0.5) {
+                                    const bytesDiff = totalLoaded - lastLoaded;
+                                    const currentBps = bytesDiff / timeDiff;
+                                    if (this.uploadInternals.rollingBps === undefined) {
+                                        this.uploadInternals.rollingBps = currentBps;
+                                    } else {
+                                        this.uploadInternals.rollingBps = this.uploadInternals.rollingBps * 0.7 + currentBps * 0.3;
                                     }
-                                };
+                                    this.uploadState.mbps = this.uploadInternals.rollingBps / (1024 * 1024);
+                                    const remaining = Math.max(file.size - totalLoaded, 0);
+                                    const eta = this.uploadInternals.rollingBps > 0 ? remaining / this.uploadInternals.rollingBps : Infinity;
+                                    const mins = Math.floor(eta / 60);
+                                    const secs = Math.floor(eta % 60);
+                                    this.uploadState.eta = eta > 3600 ? '> 1hr' : `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+                                    this.uploadInternals.lastCalcTime = now;
+                                    this.uploadInternals.lastUploadedBytes = totalLoaded;
 
-                                xhr.onload = () => {
-                                    const elapsed = ((Date.now() - partStartTime) / 1000).toFixed(1);
-                                    console.log(`[UPLOAD] Part ${partNum} response: status=${xhr.status}, time=${elapsed}s, body=${xhr.responseText.slice(0, 200)}`);
-                                    if (xhr.status < 200 || xhr.status >= 300) {
-                                        return reject(new Error(`Part ${partNum} failed (HTTP ${xhr.status}): ${xhr.responseText.slice(0, 100)}`));
-                                    }
-                                    try {
-                                        const json = JSON.parse(xhr.responseText);
-                                        if (!json.ETag) {
-                                            console.warn(`[UPLOAD] Part ${partNum}: no ETag in response!`, json);
-                                        }
-                                        resolve(json.ETag || '');
-                                    } catch (parseErr) {
-                                        console.error(`[UPLOAD] Part ${partNum}: failed to parse response`, xhr.responseText);
-                                        reject(new Error(`Part ${partNum}: invalid response`));
-                                    }
-                                };
+                                    const doneParts = completedParts.length;
+                                    this.uploadState.message = `Uploading (${doneParts}/${totalParts})...`;
+                                }
+                            };
 
-                                xhr.onerror = (ev) => {
-                                    console.error(`[UPLOAD] Part ${partNum} NETWORK ERROR`, ev);
-                                    reject(new Error(`Part ${partNum} network error`));
-                                };
-                                xhr.onabort = () => reject(new Error('Cancelled'));
-                                xhr.send(blob);
-                            });
+                            xhr.onload = () => {
+                                partBytesLoaded[partNum] = end - start;
+                                if (xhr.status < 200 || xhr.status >= 300) {
+                                    return reject(new Error(`Part ${partNum} failed (HTTP ${xhr.status}): ${xhr.responseText.slice(0, 100)}`));
+                                }
+                                try {
+                                    const json = JSON.parse(xhr.responseText);
+                                    resolve({ PartNumber: partNum, ETag: json.ETag || '' });
+                                } catch (e) {
+                                    reject(new Error(`Part ${partNum}: invalid response`));
+                                }
+                            };
+                            xhr.onerror = () => reject(new Error(`Part ${partNum} network error`));
+                            xhr.onabort = () => reject(new Error('Cancelled'));
+                            xhr.send(blob);
+                        });
+                    };
 
-                            console.log(`[UPLOAD] Part ${partNum} DONE: ETag=${etag}`);
-                            completedParts.push({ PartNumber: partNum, ETag: etag });
-                        } catch (e) {
-                            console.error(`[UPLOAD] Part ${partNum} FAILED:`, e);
-                            uploadError = e;
-                            break;
+                    // Run uploads in parallel with CONCURRENCY limit
+                    const worker = async () => {
+                        while (!uploadError) {
+                            const partNum = nextPartNum++;
+                            if (partNum > totalParts) return;
+                            try {
+                                const part = await uploadOnePart(partNum);
+                                completedParts.push(part);
+                                console.log(`[UPLOAD] Part ${partNum}/${totalParts} done`);
+                            } catch (e) {
+                                if (!uploadError) uploadError = e;
+                                return;
+                            }
                         }
-                    }
+                    };
+
+                    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, totalParts) }, () => worker()));
 
                     if (uploadError) {
                         this.uploadState.inProgress = false;
                         this.uploadState.error = String(uploadError.message || uploadError);
                         this.showToast('Upload failed: ' + this.uploadState.error, 'error');
-                        console.log('[UPLOAD] Aborting multipart...');
                         fetch('/api/uploads/abort', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
@@ -1985,21 +1977,19 @@
                         return;
                     }
 
-                    // Step 3: Complete the multipart upload
+                    // Sort parts by PartNumber for CompleteMultipartUpload
+                    completedParts.sort((a, b) => a.PartNumber - b.PartNumber);
+
                     this.uploadState.message = 'Finalizing...';
-                    console.log(`[UPLOAD] Completing multipart: ${completedParts.length} parts`);
                     try {
-                        const completeStart = Date.now();
                         const completeRes = await fetch('/api/uploads/complete', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ key, uploadId, parts: completedParts })
                         });
                         const completeData = await completeRes.json();
-                        console.log(`[UPLOAD] Complete response (${Date.now() - completeStart}ms):`, completeData);
                         if (!completeRes.ok) throw new Error(completeData.error || 'Complete failed');
                     } catch (e) {
-                        console.error('[UPLOAD] Complete FAILED:', e);
                         this.uploadState.inProgress = false;
                         this.uploadState.error = 'Finalize failed: ' + String(e.message || e);
                         this.showToast(this.uploadState.error, 'error');
@@ -2007,7 +1997,7 @@
                     }
 
                     const totalTime = ((Date.now() - this.uploadInternals.startedAt) / 1000).toFixed(1);
-                    console.log(`[UPLOAD] COMPLETE! Total time: ${totalTime}s`);
+                    console.log(`[UPLOAD] COMPLETE! ${totalTime}s`);
                     this.uploadState.percent = 100;
                     this.uploadState.message = 'Done';
                     this.uploadState.mbps = 0;

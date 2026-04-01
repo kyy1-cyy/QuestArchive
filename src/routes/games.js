@@ -221,35 +221,56 @@ async function serveGameDownload(req, res, game, { requireTicket = true } = {}) 
         return;
     }
 
-    console.log(`[DOWNLOAD] serveGameDownload: title=${game.title}, key=${fileKey}, range=${req.headers.range || 'none'}`);
-
     if (!req.headers.range) {
         incrementDownloadCount(game.publicId).catch(e => logger.error('Incr error', e));
     }
 
-    // Redirect to Cloudflare-proxied URL for free bandwidth
-    const publicUrl = buildPublicDownloadUrl(fileKey);
-    if (publicUrl) {
-        console.log(`[DOWNLOAD] Redirecting to Cloudflare URL: ${publicUrl}`);
-        res.redirect(publicUrl);
-        return;
+    // Build the upstream URL (Cloudflare proxy or direct B2 presigned)
+    let upstreamUrl = buildPublicDownloadUrl(fileKey);
+    if (!upstreamUrl) {
+        // Fallback: presigned URL directly to B2
+        try {
+            const command = new GetObjectCommand({
+                Bucket: config.B2.BUCKET_NAME,
+                Key: fileKey,
+                ResponseContentDisposition: `attachment; filename="${game.title.replace(/"/g, '_')}.zip"`
+            });
+            upstreamUrl = await getSignedUrl(s3Client, command, { expiresIn: 300 });
+        } catch (s3Err) {
+            console.error('[DOWNLOAD] Presign FAILED:', s3Err.message);
+            res.status(500).send('Storage connection error');
+            return;
+        }
     }
 
-    // Fallback: presigned URL directly to B2
-    console.log('[DOWNLOAD] No DOWNLOAD_BASE_URL, falling back to presigned URL');
+    // Stream from Cloudflare/B2 to browser (pipe, no buffering)
+    // This hides the real URL from the user — they only see /api/download
+    const fetchHeaders = {};
+    if (req.headers.range) {
+        fetchHeaders.Range = req.headers.range;
+    }
+
+    console.log(`[DOWNLOAD] Streaming: ${fileKey}, range=${req.headers.range || 'full'}`);
+
     try {
-        const command = new GetObjectCommand({
-            Bucket: config.B2.BUCKET_NAME,
-            Key: fileKey,
-            ResponseContentDisposition: `attachment; filename="${game.title.replace(/"/g, '_')}.zip"`
-        });
-        const signedUrl = await getSignedUrl(s3Client, command, { expiresIn: 300 });
-        console.log(`[DOWNLOAD] Redirecting to presigned URL: ${signedUrl.slice(0, 100)}...`);
-        res.redirect(signedUrl);
-    } catch (s3Err) {
-        console.error('[DOWNLOAD] Presign FAILED:', s3Err.message);
-        logger.error('Presign error', s3Err);
-        res.status(500).send('Storage connection error');
+        const upstream = await fetch(upstreamUrl, { headers: fetchHeaders });
+
+        // Forward status and key headers
+        res.status(upstream.status);
+        const headersToForward = ['content-type', 'content-length', 'content-range', 'accept-ranges', 'etag'];
+        for (const h of headersToForward) {
+            const val = upstream.headers.get(h);
+            if (val) res.setHeader(h, val);
+        }
+        res.setHeader('content-disposition', `attachment; filename="${game.title.replace(/"/g, '_')}.zip"`);
+
+        // Pipe the stream — minimal memory usage
+        Readable.fromWeb(upstream.body).pipe(res);
+    } catch (fetchErr) {
+        console.error('[DOWNLOAD] Stream FAILED:', fetchErr.message);
+        if (!res.headersSent) {
+            res.status(500).json({ error: 'fetch failed' });
+        }
     }
 }
 

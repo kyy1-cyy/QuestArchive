@@ -71,31 +71,22 @@ router.put('/put-part', async (req, res, next) => {
         return res.status(400).json({ error: 'key, uploadId, partNumber query params required' });
     }
 
-    console.log(`[UPLOAD] put-part START: part=${partNumber}, key=${key}`);
+    const contentLength = parseInt(req.headers['content-length'], 10);
+    console.log(`[UPLOAD] put-part: part=${partNumber}, size=${(contentLength/1024/1024).toFixed(1)}MB, key=${key}`);
     const startTime = Date.now();
 
     try {
-        // Collect the incoming data
-        const chunks = [];
-        for await (const chunk of req) {
-            chunks.push(chunk);
-        }
-        const body = Buffer.concat(chunks);
-        const recvMs = Date.now() - startTime;
-        console.log(`[UPLOAD] part ${partNumber}: received ${(body.length / 1024 / 1024).toFixed(1)}MB from browser in ${recvMs}ms`);
-
-        // Forward to B2
-        const b2Start = Date.now();
+        // Stream directly to B2 — no buffering in memory
         const command = new UploadPartCommand({
             Bucket: config.B2.BUCKET_NAME,
             Key: key,
             UploadId: uploadId,
             PartNumber: partNumber,
-            Body: body
+            Body: req,
+            ContentLength: contentLength
         });
         const result = await s3Client.send(command);
-        const b2Ms = Date.now() - b2Start;
-        console.log(`[UPLOAD] part ${partNumber}: forwarded to B2 in ${b2Ms}ms, ETag=${result.ETag}`);
+        console.log(`[UPLOAD] part ${partNumber}: done in ${Date.now() - startTime}ms, ETag=${result.ETag}`);
 
         res.json({ ETag: result.ETag });
     } catch (err) {
