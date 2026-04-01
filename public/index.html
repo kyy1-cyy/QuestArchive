@@ -931,6 +931,30 @@
                     async startChunkedDownload(game) {
                         if (this.dlState.active) return;
                         this.resetDlState();
+
+                        if (!window.showSaveFilePicker) {
+                            this.showToast('This browser cannot save chunked downloads directly to disk.', 'error');
+                            return;
+                        }
+
+                        let writable = null;
+                        try {
+                            let fileHandle;
+                            if (this.dlDirectory) {
+                                fileHandle = await this.dlDirectory.getFileHandle(`${game.title}.zip`, { create: true });
+                            } else {
+                                fileHandle = await window.showSaveFilePicker({
+                                    suggestedName: `${game.title}.zip`,
+                                    types: [{ description: 'Zip Archive', accept: { 'application/zip': ['.zip'] } }]
+                                });
+                            }
+                            writable = await fileHandle.createWritable();
+                            this.dlInternals.activeWritable = writable;
+                            this.dlInternals.currentFileName = `${game.title}.zip`;
+                        } catch (_) {
+                            return;
+                        }
+
                         this.dlState.active = true;
                         this.dlState.message = 'Getting file info...';
 
@@ -943,6 +967,7 @@
                             info = await res.json();
                             if (!res.ok) throw new Error(info.error || 'Failed');
                         } catch (e) {
+                            try { await writable.abort(); } catch (_) { }
                             this.dlState.active = false;
                             this.dlState.error = String(e.message || e);
                             this.showToast(String(e.message || e), 'error');
@@ -950,46 +975,24 @@
                         }
 
                         if (!info.supportsRange || !info.chunks || info.chunks.length === 0) {
-                            this.dlState.message = 'Redirecting...';
+                            try { await writable.abort(); } catch (_) { }
                             this.dlState.active = false;
-                            window.location.href = info.url;
+                            this.dlState.error = 'Chunked download info unavailable';
+                            this.showToast('Chunked download info unavailable', 'error');
                             return;
                         }
+
+                        // Use presigned B2 URL for direct download (fast), fall back to server URL
+                        const downloadUrl = info.directUrl || info.url;
 
                         this.dlState.message = 'Downloading...';
                         this.dlInternals.startedAt = Date.now();
                         this.dlInternals.totalBytes = info.fileSize;
 
-                        const hasFSA = !!window.showSaveFilePicker;
-                        let fileHandle = null;
-                        let writable = null;
-
-                        if (hasFSA) {
-                            try {
-                                if (this.dlDirectory) {
-                                    fileHandle = await this.dlDirectory.getFileHandle(`${game.title}.zip`, { create: true });
-                                    writable = await fileHandle.createWritable();
-                                } else {
-                                    fileHandle = await window.showSaveFilePicker({
-                                        suggestedName: `${game.title}.zip`,
-                                        types: [{ description: 'Zip Archive', accept: { 'application/zip': ['.zip'] } }]
-                                    });
-                                    writable = await fileHandle.createWritable();
-                                }
-                                this.dlInternals.activeWritable = writable;
-                                this.dlInternals.currentFileName = `${game.title}.zip`;
-                            } catch (e) {
-                                this.dlState.active = false;
-                                return; // User cancelled
-                            }
-                        }
-
-                        const chunks = info.chunks;
-                        const results = hasFSA ? null : new Array(chunks.length);
-                        const queue = [...chunks];
-                        const concurrency = Math.min(6, Math.max(2, Math.floor((navigator.hardwareConcurrency || 4) / 2)));
-
+                        const queue = [...info.chunks];
+                        const concurrency = 1;
                         let writePromise = Promise.resolve();
+
                         const writeToDisk = async (offset, buffer) => {
                             if (!writable || this.dlInternals.cancelled) return;
                             const p = writePromise.then(() => {
@@ -1005,51 +1008,39 @@
                                 const chunk = queue.shift();
                                 if (!chunk) return;
 
-                                let chunkSuccess = false;
-                                let retries = 5;
-
-                                while (!chunkSuccess && retries > 0 && !this.dlInternals.cancelled) {
+                                let retries = 4;
+                                while (retries > 0 && !this.dlInternals.cancelled) {
                                     const ac = new AbortController();
                                     this.dlInternals.abortControllers.push(ac);
 
                                     try {
-                                        const response = await fetch(info.url, {
-                                            headers: { 'Range': `bytes=${chunk.start}-${chunk.end}` },
-                                            signal: ac.signal
+                                        const response = await fetch(downloadUrl, {
+                                            headers: { Range: `bytes=${chunk.start}-${chunk.end}` },
+                                            signal: ac.signal,
+                                            cache: 'no-store'
                                         });
-                                        if (!response.ok && response.status !== 206) {
+                                        if (response.status !== 206) {
                                             throw new Error(`Chunk ${chunk.index} failed (${response.status})`);
                                         }
 
                                         const reader = response.body.getReader();
-                                        const buffers = hasFSA ? null : [];
                                         let currentOffset = chunk.start;
 
                                         while (true) {
                                             const { done, value } = await reader.read();
                                             if (done) break;
-
-                                            if (hasFSA) {
-                                                await writeToDisk(currentOffset, value);
-                                                currentOffset += value.byteLength;
-                                            } else {
-                                                buffers.push(value);
-                                            }
-
+                                            await writeToDisk(currentOffset, value);
+                                            currentOffset += value.byteLength;
                                             this.dlInternals.perChunkLoaded[chunk.index] = (this.dlInternals.perChunkLoaded[chunk.index] || 0) + value.byteLength;
                                             this.updateDlProgress();
                                         }
-                                        if (!hasFSA) results[chunk.index] = new Blob(buffers);
-                                        chunkSuccess = true;
+
+                                        return;
                                     } catch (err) {
-                                        retries--;
-                                        this.dlInternals.perChunkLoaded[chunk.index] = 0; // Reset corrupted tracked bytes
-                                        if (retries <= 0) {
-                                            if (!this.dlInternals.cancelled) throw err;
-                                        } else {
-                                            // Handle rate limits or stutters invisible to user via exponentially increasing wait
-                                            await new Promise(r => setTimeout(r, (6 - retries) * 1500));
-                                        }
+                                        retries -= 1;
+                                        this.dlInternals.perChunkLoaded[chunk.index] = 0;
+                                        if (retries <= 0) throw err;
+                                        await new Promise(r => setTimeout(r, 700));
                                     }
                                 }
                             }
@@ -1057,49 +1048,21 @@
 
                         try {
                             await Promise.all(Array.from({ length: concurrency }, () => worker()));
+                            await writePromise;
+                            await writable.close();
                         } catch (e) {
-                            if (this.dlInternals.cancelled) return;
+                            try { await writable.abort(); } catch (_) { }
                             this.dlState.active = false;
                             this.dlState.error = String(e.message || e);
                             this.showToast(String(e.message || e), 'error');
                             return;
                         }
 
-                        if (this.dlInternals.cancelled) return;
-
-                        if (hasFSA) {
-                            this.dlState.message = 'Finalizing file...';
-                            await writePromise; // Ensure all writes finished
-                            await writable.close();
-                        } else {
-                            this.dlState.message = 'Assembling file...';
-                            const blob = new Blob(results, { type: 'application/zip' });
-                            const url = URL.createObjectURL(blob);
-                            const a = document.createElement('a');
-                            a.href = url;
-                            a.download = `${game.title}.zip`;
-                            document.body.appendChild(a);
-                            a.click();
-                            document.body.removeChild(a);
-                            setTimeout(() => URL.revokeObjectURL(url), 60000);
-                        }
-
-                        try {
-                            const m = String(info.url || '').match(/\/api\/download\/([^/?#]+)/);
-                            const publicId = m ? m[1] : '';
-                            if (publicId) {
-                                await fetch('/api/download-complete', {
-                                    method: 'POST',
-                                    cache: 'no-store',
-                                    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', Pragma: 'no-cache' },
-                                    body: JSON.stringify({ publicId })
-                                });
-                            }
-                        } catch (_) { }
-
                         this.dlState.percent = 100;
+                        this.dlState.mbps = 0;
+                        this.dlState.eta = '00:00';
                         this.dlState.active = false;
-                        this.dlState.message = 'Download complete';
+                        this.dlState.message = `Saved: ${this.dlInternals.currentFileName}`;
                         this.showToast('Download complete!', 'success');
                     },
                     handleImageError(e) {

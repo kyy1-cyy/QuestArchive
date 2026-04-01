@@ -3,6 +3,7 @@ import rateLimit from 'express-rate-limit';
 import jwt from 'jsonwebtoken';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { Readable } from 'stream';
 import { config } from '../utils/config.js';
 import { s3Client } from '../utils/s3.js';
 import { getBucketFileCache, readDB, incrementDownloadCount } from '../utils/db.js';
@@ -103,8 +104,7 @@ router.get('/games', async (req, res, next) => {
             description: g.description || '',
             thumbnailUrl: g.thumbnailUrl || '',
             lastUpdated: g.lastUpdated || '',
-            downloads: Number(g.downloads || 0),
-            publicId: g.publicId
+            downloads: Number(g.downloads || 0)
         })));
     } catch (err) {
         next(err);
@@ -114,8 +114,154 @@ router.get('/games', async (req, res, next) => {
 function findGameByTitle(games, title) {
     const t = String(title || '').trim();
     if (!t) return null;
-    return games.find(g => String(g.title || '').trim() === t) || null;
+    return games.find(g => String(g.title || '').trim() === t)
+        || games.find(g => String(g.title || '').trim().toLowerCase() === t.toLowerCase())
+        || null;
 }
+
+function encodeObjectKeyForUrl(key) {
+    return String(key || '')
+        .split('/')
+        .filter(Boolean)
+        .map(part => encodeURIComponent(part))
+        .join('/');
+}
+
+function buildPublicDownloadUrl(fileKey) {
+    const base = String(config.B2.DOWNLOAD_BASE_URL || '').replace(/\/$/, '');
+    if (!base) return '';
+    const bucket = encodeURIComponent(String(config.B2.BUCKET_NAME || '').trim());
+    const keyPath = encodeObjectKeyForUrl(fileKey);
+    if (!bucket || !keyPath) return '';
+    return `${base}/${bucket}/${keyPath}`;
+}
+
+async function pipeUpstreamToResponse(upstream, res) {
+    const headersToCopy = [
+        'content-type',
+        'content-length',
+        'content-range',
+        'accept-ranges',
+        'etag',
+        'last-modified'
+    ];
+    for (const h of headersToCopy) {
+        const v = upstream.headers.get(h);
+        if (v) res.setHeader(h, v);
+    }
+
+    if (!upstream.body) {
+        res.end();
+        return;
+    }
+
+    Readable.fromWeb(upstream.body).pipe(res);
+}
+
+async function sendDownloadInfo(req, res, game) {
+    issueDownloadTicket(req, res, game.publicId);
+
+    const fileKey = await resolveGameFileKey(game) || (game.title.toLowerCase().endsWith('.zip') ? game.title : `${game.title}.zip`);
+    
+    let fileSize = null;
+    let chunks = [];
+    let directUrl = '';
+
+    try {
+        const { HeadObjectCommand } = await import('@aws-sdk/client-s3');
+        const head = await s3Client.send(new HeadObjectCommand({ Bucket: config.B2.BUCKET_NAME, Key: fileKey }));
+        fileSize = head.ContentLength;
+        
+        if (fileSize) {
+            const chunkSize = 25 * 1024 * 1024;
+            let index = 0;
+            for (let i = 0; i < fileSize; i += chunkSize) {
+                chunks.push({
+                    index,
+                    start: i,
+                    end: Math.min(i + chunkSize - 1, fileSize - 1)
+                });
+                index += 1;
+            }
+        }
+    } catch (_) { }
+
+    // Generate a presigned URL the frontend can use directly (5 min expiry)
+    try {
+        const command = new GetObjectCommand({
+            Bucket: config.B2.BUCKET_NAME,
+            Key: fileKey,
+            ResponseContentDisposition: `attachment; filename="${game.title.replace(/"/g, '_')}.zip"`
+        });
+        directUrl = await getSignedUrl(s3Client, command, { expiresIn: 300 });
+    } catch (_) { }
+
+    res.json({
+        title: game.title,
+        url: `/api/download/${game.publicId}`,
+        directUrl,
+        fileSize,
+        supportsRange: true,
+        chunks
+    });
+}
+
+async function serveGameDownload(req, res, game, { requireTicket = true } = {}) {
+    if (requireTicket && !requireDownloadTicket(req, res, game.publicId)) {
+        res.status(403).send('Download link expired. Please click download again.');
+        return;
+    }
+
+    issueDownloadTicket(req, res, game.publicId);
+
+    const fileKey = await resolveGameFileKey(game);
+    if (!fileKey) {
+        res.status(404).send('File not found');
+        return;
+    }
+
+    const rangeHeader = String(req.headers.range || '').trim();
+
+    // For range requests (chunked downloads), generate a presigned URL and 302 redirect
+    // The browser/frontend fetches each chunk directly from B2 at full speed
+    try {
+        const commandOpts = {
+            Bucket: config.B2.BUCKET_NAME,
+            Key: fileKey,
+            ResponseContentDisposition: `attachment; filename="${game.title.replace(/"/g, '_')}.zip"`
+        };
+        if (rangeHeader) {
+            commandOpts.Range = rangeHeader;
+        }
+
+        const command = new GetObjectCommand(commandOpts);
+        const signedUrl = await getSignedUrl(s3Client, command, { expiresIn: 300 });
+
+        if (!rangeHeader) {
+            incrementDownloadCount(game.publicId).catch(e => logger.error('Incr error', e));
+        }
+
+        // 302 redirect — browser downloads directly from B2, not through our server
+        res.redirect(signedUrl);
+    } catch (s3Err) {
+        logger.error('Presign error', s3Err);
+        res.status(500).send('Storage connection error');
+    }
+}
+
+router.get('/download-info-by-title', async (req, res, next) => {
+    if (!ensureCloudflare(req, res)) return;
+    try {
+        const games = await readDB();
+        const game = findGameByTitle(games, req.query.title);
+
+        if (!game) return res.status(404).json({ error: 'Game not found' });
+
+        await sendDownloadInfo(req, res, game);
+    } catch (err) {
+        next(err);
+    }
+});
 
 router.get('/download-info/:id', async (req, res, next) => {
     if (!ensureCloudflare(req, res)) return;
@@ -126,38 +272,21 @@ router.get('/download-info/:id', async (req, res, next) => {
 
         if (!game) return res.status(404).json({ error: 'Game not found' });
 
-        issueDownloadTicket(req, res, game.publicId);
+        await sendDownloadInfo(req, res, game);
+    } catch (err) {
+        next(err);
+    }
+});
 
-        const url = `/api/download/${game.publicId}`;
-        const fileKey = await resolveGameFileKey(game) || (game.title.toLowerCase().endsWith('.zip') ? game.title : `${game.title}.zip`);
-        
-        let fileSize = null;
-        let chunks = [];
-        try {
-            // Direct call for info is only done once per download
-            const { HeadObjectCommand } = await import('@aws-sdk/client-s3');
-            const head = await s3Client.send(new HeadObjectCommand({ Bucket: config.B2.BUCKET_NAME, Key: fileKey }));
-            fileSize = head.ContentLength;
-            
-            // Add chunks information for the multi-part downloader on the frontend
-            if (fileSize) {
-                const chunkSize = 25 * 1024 * 1024; // 25MB
-                for (let i = 0; i < fileSize; i += chunkSize) {
-                    chunks.push({
-                        start: i,
-                        end: Math.min(i + chunkSize - 1, fileSize - 1)
-                    });
-                }
-            }
-        } catch (_) { }
+router.get('/download-by-title', downloadLimiter, async (req, res, next) => {
+    if (!ensureCloudflare(req, res)) return;
+    try {
+        const games = await readDB();
+        const game = findGameByTitle(games, req.query.title);
 
-        res.json({
-            title: game.title,
-            url, 
-            fileSize,
-            supportsRange: true,
-            chunks
-        });
+        if (!game) return res.status(404).send('Game not found');
+
+        await serveGameDownload(req, res, game, { requireTicket: false });
     } catch (err) {
         next(err);
     }
@@ -171,47 +300,7 @@ router.get('/download/:id', downloadLimiter, async (req, res, next) => {
         const game = games.find(g => g.publicId === reqId) || games.find(g => g.id === reqId);
 
         if (!game) return res.status(404).send('Game not found');
-
-        if (!requireDownloadTicket(req, res, game.publicId)) {
-            return res.status(403).send('Download link expired. Please click download again.');
-        }
-
-        // Rolling ticket refresh
-        issueDownloadTicket(req, res, game.publicId);
-
-        const fileKey = await resolveGameFileKey(game);
-        if (!fileKey) return res.status(404).send('File not found');
-
-        // B2 Strategy: 302 Redirect to a short-lived presigned URL (fast & secure)
-        try {
-            const command = new GetObjectCommand({
-                Bucket: config.B2.BUCKET_NAME,
-                Key: fileKey,
-                ResponseContentDisposition: `attachment; filename="${game.title.replace(/"/g, '_')}.zip"`
-            });
-
-            // Generate signature using the true B2 endpoint so the signature is valid when Cloudflare proxies it
-            let signedUrl = await getSignedUrl(s3Client, command, { expiresIn: 60 });
-            
-            // If a CDN URL is configured, swap the domain so it goes through Cloudflare
-            if (config.B2.DOWNLOAD_BASE_URL) {
-                const b2Endpoint = config.B2.ENDPOINT.replace(/\/$/, '');
-                const cdnEndpoint = config.B2.DOWNLOAD_BASE_URL.replace(/\/$/, '');
-                if (b2Endpoint && signedUrl.startsWith(b2Endpoint)) {
-                    signedUrl = signedUrl.replace(b2Endpoint, cdnEndpoint);
-                }
-            }
-            
-            // Use the signed URL directly for stability
-            if (!req.headers.range) {
-                incrementDownloadCount(game.publicId).catch(e => logger.error('Incr error', e));
-            }
-
-            res.redirect(signedUrl);
-        } catch (s3Err) {
-            logger.error('Presign error', s3Err);
-            res.status(500).send('Storage connection error');
-        }
+        await serveGameDownload(req, res, game, { requireTicket: true });
     } catch (err) {
         next(err);
     }

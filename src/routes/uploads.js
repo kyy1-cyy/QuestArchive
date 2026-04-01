@@ -1,5 +1,6 @@
 import express from 'express';
 import { CreateMultipartUploadCommand, UploadPartCommand, CompleteMultipartUploadCommand, AbortMultipartUploadCommand } from '@aws-sdk/client-s3';
+import { Upload } from '@aws-sdk/lib-storage';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { config } from '../utils/config.js';
 import { s3Client } from '../utils/s3.js';
@@ -95,7 +96,7 @@ router.post('/complete', async (req, res, next) => {
             const baseName = String(key).split('/').pop().replace(/\.zip$/i, '');
             const hash = hashId(baseName);
             const map = await readJsonFromB2(config.B2.MD5_MAP_KEY, {});
-            map[hash] = String(key).split('/').pop();
+            map[hash] = String(key);
             await writeJsonToB2(config.B2.MD5_MAP_KEY, map);
         }
 
@@ -103,6 +104,56 @@ router.post('/complete', async (req, res, next) => {
         refreshBucketFileCache().catch(e => logger.error('Cache refresh after upload failed', e));
 
         res.json({ success: true });
+    } catch (err) {
+        next(err);
+    }
+});
+
+router.put('/direct', async (req, res, next) => {
+    if (!requireAdmin(req, res)) return;
+    if (!ensureEnv(req, res, ['B2.ENDPOINT', 'B2.KEY_ID', 'B2.APP_KEY', 'B2.BUCKET_NAME'])) return;
+
+    const filename = String(req.query.filename || '').trim();
+    const prefix = String(req.query.prefix || '').trim();
+
+    if (!filename || !filename.toLowerCase().endsWith('.zip')) {
+        return res.status(400).json({ error: 'filename (.zip) is required' });
+    }
+
+    const cleanFilename = filename.replace(/[\\/]/g, '_').trim();
+    const cleanPrefix = prefix.replace(/^\//, '').replace(/\\/g, '/');
+    const finalName = cleanFilename;
+    const key = cleanPrefix ? `${cleanPrefix.replace(/\/+$/, '')}/${finalName}` : finalName;
+
+    try {
+        const uploader = new Upload({
+            client: s3Client,
+            params: {
+                Bucket: config.B2.BUCKET_NAME,
+                Key: key,
+                Body: req,
+                ContentType: 'application/zip'
+            },
+            queueSize: 4,
+            partSize: 64 * 1024 * 1024,
+            leavePartsOnError: false
+        });
+        await uploader.done();
+
+        const baseName = finalName.replace(/\.zip$/i, '');
+        const hash = hashId(baseName);
+        res.json({ success: true, key, hash, fileName: finalName });
+
+        (async () => {
+            try {
+                const map = await readJsonFromB2(config.B2.MD5_MAP_KEY, {});
+                map[hash] = String(key);
+                await writeJsonToB2(config.B2.MD5_MAP_KEY, map);
+            } catch (e) {
+                logger.error('MD5 map update after direct upload failed', e);
+            }
+            refreshBucketFileCache().catch(e => logger.error('Cache refresh after direct upload failed', e));
+        })();
     } catch (err) {
         next(err);
     }

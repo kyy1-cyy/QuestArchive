@@ -1,6 +1,6 @@
 import express from 'express';
 import { config } from '../utils/config.js';
-import { readDB, writeDB, makePublicId, getBucketFileCache } from '../utils/db.js';
+import { readDB, writeDB, makePublicId, refreshBucketFileCache } from '../utils/db.js';
 import { requireAdmin, ensureEnv } from '../utils/auth.js';
 import { ensureMd5MapFresh } from '../utils/md5-map.js';
 import { logger } from '../utils/logger.js';
@@ -147,24 +147,19 @@ router.get('/game-notes/:filename', async (req, res, next) => {
 router.get('/pending-games', async (req, res, next) => {
     if (!requireAdmin(req, res)) return;
     try {
-        const files = await getBucketFileCache();
-        const dbGames = await readDB();
-        
-        // Extract all known titles/filenames from DB
-        const dbFiles = new Set(dbGames.map(g => (g.title.toLowerCase().endsWith('.zip') ? g.title : `${g.title}.zip`).toLowerCase()));
-        const dbHashes = new Set(dbGames.map(g => g.hashId ? g.hashId.toLowerCase() : null).filter(Boolean));
+        const files = await refreshBucketFileCache();
+        const md5Map = await ensureMd5MapFresh({ force: true });
 
         const pending = files
-            .filter(f => f.toLowerCase().endsWith('.zip') && !f.includes('/'))
-            .filter(f => {
-                const name = f.toLowerCase();
-                const hash = f.replace(/\.zip$/i, '').toLowerCase();
-                return !dbFiles.has(name) && !dbHashes.has(hash);
-            })
+            .filter(f => String(f).toLowerCase().endsWith('.zip'))
             .map(f => ({
                 filename: f,
-                hashId: f.replace(/\.zip$/i, '').match(/^[a-f0-9]{32}$/i) ? f.replace(/\.zip$/i, '') : null
-            }));
+                hashId: Object.entries(md5Map).find(([, value]) => String(value || '').toLowerCase() === String(f).toLowerCase())?.[0]
+                    || ((String(f).split('/').pop() || String(f)).replace(/\.zip$/i, '').match(/^[a-f0-9]{32}$/i)
+                        ? (String(f).split('/').pop() || String(f)).replace(/\.zip$/i, '')
+                        : null)
+            }))
+            .sort((a, b) => String(a.filename).localeCompare(String(b.filename), undefined, { numeric: true, sensitivity: 'base' }));
 
         res.json(pending);
     } catch (err) {

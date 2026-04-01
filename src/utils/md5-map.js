@@ -19,33 +19,15 @@ function shallowEqualObject(a, b) {
 
 async function doSyncMd5Map() {
     try {
-        const { ListObjectsV2Command } = await import('@aws-sdk/client-s3');
-        const zipKeys = [];
-        let token = undefined;
-
-        while (true) {
-            const objectsRes = await s3Client.send(new ListObjectsV2Command({
-                Bucket: config.B2.BUCKET_NAME,
-                Delimiter: '/',
-                ContinuationToken: token
-            }));
-
-            for (const obj of objectsRes.Contents || []) {
-                const key = obj?.Key;
-                if (!key) continue;
-                if (key.includes('/')) continue;
-                if (!key.toLowerCase().endsWith('.zip')) continue;
-                zipKeys.push(key);
-            }
-
-            if (!objectsRes.IsTruncated) break;
-            token = objectsRes.NextContinuationToken;
-            if (!token) break;
-        }
+        const { listAllObjects } = await import('./s3-helpers.js');
+        const zipKeys = (await listAllObjects(''))
+            .map(obj => obj?.Key)
+            .filter(key => key && key.toLowerCase().endsWith('.zip'));
 
         const newMap = {};
         for (const key of zipKeys) {
-            const base = key.replace(/\.zip$/i, '');
+            const fileName = String(key).split('/').pop() || String(key);
+            const base = fileName.replace(/\.zip$/i, '');
             const hash = hashId(base);
             newMap[hash] = key;
         }
