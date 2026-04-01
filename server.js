@@ -32,6 +32,8 @@ app.use(express.urlencoded({ limit: '100gb', extended: true }));
 // Ensure direct stream uploads are NOT handled by body-parser so we can pipe 'req' directly to B2
 // The direct route handles its own stream in uploads.js
 app.use('/api/uploads/direct', (req, res, next) => next());
+app.use('/api/uploads/put-part', (req, res, next) => next());
+app.use('/api/donations/put-part', (req, res, next) => next());
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
