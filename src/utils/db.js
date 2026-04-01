@@ -165,31 +165,36 @@ const BUCKET_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 export async function getBucketFileCache() {
     const now = Date.now();
     
-    // 1. Try memory cache
+    // 1. Try memory cache (Fastest)
     if (bucketFileCache && (now - lastBucketListFetch < BUCKET_CACHE_TTL)) {
         return bucketFileCache;
     }
 
-    // 2. Try persistent file cache on B2
-    const { readJsonFromB2 } = await import('./s3-helpers.js');
-    const persistent = await readJsonFromB2(config.B2.GAME_CACHE_KEY, null);
-    
-    if (persistent && persistent.timestamp && (now - persistent.timestamp < BUCKET_CACHE_TTL)) {
-        bucketFileCache = persistent.files;
-        lastBucketListFetch = persistent.timestamp;
-        return bucketFileCache;
+    // 2. Try persistent file cache on B2 (Fast)
+    try {
+        const { readJsonFromB2 } = await import('./s3-helpers.js');
+        const persistent = await readJsonFromB2(config.B2.GAME_CACHE_KEY, null);
+        
+        if (persistent && persistent.timestamp) {
+            bucketFileCache = persistent.files || [];
+            lastBucketListFetch = persistent.timestamp;
+            return bucketFileCache;
+        }
+    } catch (e) {
+        console.error('[CACHE] Error reading persistent cache:', e.message);
     }
 
-    // 3. Last resort: List from B2 (Class C request)
-    return refreshBucketFileCache();
+    // 3. Fallback: return empty but don't block. 
+    // Listing handles itself via background setInterval in server.js or manual refresh.
+    return bucketFileCache || [];
 }
 
 export async function refreshBucketFileCache() {
-    console.log('[B2] Refreshing bucket file cache...');
+    console.log('[B2] Active bucket listing (Class C) starting...');
     const { listAllObjects, writeJsonToB2 } = await import('./s3-helpers.js');
     try {
         const allObjects = await listAllObjects('');
-        const files = allObjects.map(obj => obj.Key);
+        const files = allObjects.map(obj => obj.Key).filter(Boolean);
         
         const now = Date.now();
         bucketFileCache = files;
@@ -200,10 +205,10 @@ export async function refreshBucketFileCache() {
             files: files
         });
 
-        console.log(`[B2] Cache updated with ${files.length} files.`);
+        console.log(`[B2] Cache updated with ${files.length} files. Saved to ${config.B2.GAME_CACHE_KEY}`);
         return files;
     } catch (err) {
-        console.error('[B2] Failed to refresh bucket cache:', err);
+        console.error('[B2] FAILED listing bucket:', err.message);
         return bucketFileCache || [];
     }
 }
