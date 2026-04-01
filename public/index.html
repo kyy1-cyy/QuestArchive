@@ -756,6 +756,7 @@
                 },
                 mounted() {
                     this.fetchGames();
+                    this.restoreDlDirectory();
                 },
                 methods: {
                     toggleSort(key) {
@@ -792,6 +793,59 @@
                         const mm = d.getMonth() + 1;
                         const yy = String(d.getFullYear()).slice(-2);
                         return `${dd}/${mm}/${yy}`;
+                    },
+                    async restoreDlDirectory() {
+                        if (!this.hasDirectorySupport) return;
+                        try {
+                            const handle = await this.dbGet('dlDirectory');
+                            if (handle) {
+                                // Check if we still have permission
+                                const status = await handle.queryPermission({ mode: 'readwrite' });
+                                if (status === 'granted') {
+                                    this.dlDirectory = handle;
+                                } else {
+                                    // We have the handle but need to re-ask for permission on first click
+                                    this.dlDirectory = handle;
+                                    console.log('Restored directory handle, permission needed on next access.');
+                                }
+                            }
+                        } catch (e) {
+                            console.error('Failed to restore directory:', e);
+                        }
+                    },
+                    dbGet(key) {
+                        return new Promise((resolve) => {
+                            const request = indexedDB.open('QuestArchiveDB', 1);
+                            request.onupgradeneeded = (e) => {
+                                e.target.result.createObjectStore('settings');
+                            };
+                            request.onsuccess = (e) => {
+                                const db = e.target.result;
+                                const tx = db.transaction('settings', 'readonly');
+                                const store = tx.objectStore('settings');
+                                const getReq = store.get(key);
+                                getReq.onsuccess = () => resolve(getReq.result);
+                                getReq.onerror = () => resolve(null);
+                            };
+                            request.onerror = () => resolve(null);
+                        });
+                    },
+                    dbSet(key, value) {
+                        return new Promise((resolve) => {
+                            const request = indexedDB.open('QuestArchiveDB', 1);
+                            request.onupgradeneeded = (e) => {
+                                e.target.result.createObjectStore('settings');
+                            };
+                            request.onsuccess = (e) => {
+                                const db = e.target.result;
+                                const tx = db.transaction('settings', 'readwrite');
+                                const store = tx.objectStore('settings');
+                                const putReq = store.put(value, key);
+                                putReq.onsuccess = () => resolve();
+                                putReq.onerror = () => resolve();
+                            };
+                            request.onerror = () => resolve();
+                        });
                     },
                     async fetchGames() {
                         try {
@@ -892,6 +946,7 @@
                         try {
                             const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
                             this.dlDirectory = handle;
+                            await this.dbSet('dlDirectory', handle);
                             this.showToast(`Default directory set to: ${handle.name}`, 'success');
                         } catch (e) {
                             // User cancelled picker
@@ -941,6 +996,12 @@
                         try {
                             let fileHandle;
                             if (this.dlDirectory) {
+                                // Re-verify permission if restored but not granted
+                                const status = await this.dlDirectory.queryPermission({ mode: 'readwrite' });
+                                if (status !== 'granted') {
+                                    const req = await this.dlDirectory.requestPermission({ mode: 'readwrite' });
+                                    if (req !== 'granted') throw new Error('Permission denied');
+                                }
                                 fileHandle = await this.dlDirectory.getFileHandle(`${game.title}.zip`, { create: true });
                             } else {
                                 fileHandle = await window.showSaveFilePicker({
@@ -951,7 +1012,10 @@
                             writable = await fileHandle.createWritable();
                             this.dlInternals.activeWritable = writable;
                             this.dlInternals.currentFileName = `${game.title}.zip`;
-                        } catch (_) {
+                        } catch (e) {
+                            if (e.name !== 'AbortError') {
+                                this.showToast(e.message || 'Access denied', 'error');
+                            }
                             return;
                         }
 
