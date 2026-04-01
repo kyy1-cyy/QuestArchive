@@ -1253,7 +1253,8 @@
                             this.donateState.message = 'Verifying Quest Compatibility...';
                             
                             // Extract Manifest only (20KB - fast)
-                            const apkReader = new zip.ZipReader(new zip.BlobReader(await apkEntry.getData(new zip.Uint8ArrayWriter())));
+                            const apkBlob = await apkEntry.getData(new zip.BlobWriter());
+                            const apkReader = new zip.ZipReader(new zip.BlobReader(apkBlob));
                             const apkEntries = await apkReader.getEntries();
                             const manifestEntry = apkEntries.find(e => e.filename === 'AndroidManifest.xml');
                             
@@ -1283,24 +1284,31 @@
                                 throw new Error('Not a Quest game (No VR signature found)');
                             }
 
-                            // 3. Extract VersionCode (Scanning specifically for the binary pattern)
+                            // 3. Extract VersionCode
                             const vcMatch = text.match(/versionCode[\s\S]{0,10}?(\d+)/i);
                             clientVersion = vcMatch ? parseInt(vcMatch[1], 10) : 0;
 
-                            this.donateState.message = `Checking archive for ${packageName}...`;
-                            const checkRes = await fetch(`/api/donations/check-status?package=${encodeURIComponent(packageName)}&version=${clientVersion}`);
-                            const checkData = await checkRes.json();
-
-                            if (checkData.status === 'exists' || checkData.status === 'older') {
-                                throw new Error(checkData.message);
-                            } else if (checkData.status === 'update') {
-                                this.showToast(checkData.message, 'success');
+                            if (packageName) {
+                                this.donateState.message = `Checking archive for ${packageName}...`;
+                                const checkRes = await fetch(`/api/donations/check-status?package=${encodeURIComponent(packageName)}&version=${clientVersion}`);
+                                if (checkRes.ok) {
+                                    const checkData = await checkRes.json();
+                                    if (checkData.status === 'exists' || checkData.status === 'older') {
+                                        throw new Error(checkData.message);
+                                    } else if (checkData.status === 'update') {
+                                        this.showToast(checkData.message, 'success');
+                                    }
+                                }
                             }
                         } catch (e) {
-                            this.donateState.inProgress = false;
-                            this.donateState.error = e.message;
-                            this.donateState.message = '';
-                            return;
+                            console.error('[APK-VERIFY] Error:', e);
+                            if (e.message.includes('archive') || e.message.includes('version') || e.message.includes('Quest game')) {
+                                this.donateState.inProgress = false;
+                                this.donateState.error = e.message;
+                                this.donateState.message = '';
+                                return;
+                            }
+                            // Silent allow on cryptic errors to avoid blocking legit donors
                         }
 
                         this.donateState.message = 'Initializing upload...';
