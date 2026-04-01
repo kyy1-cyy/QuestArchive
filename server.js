@@ -26,11 +26,12 @@ validateEnv();
 
 app.use(cors());
 app.use(cookieParser());
-app.use(express.json({ limit: '10gb' }));
-app.use(express.urlencoded({ limit: '10gb', extended: true }));
+app.use(express.json({ limit: '100gb' }));
+app.use(express.urlencoded({ limit: '100gb', extended: true }));
 
-// Ensure raw stream uploads are allowed for direct endpoint
-app.use('/api/uploads/direct', express.raw({ type: 'application/zip', limit: '10gb' }));
+// Ensure direct stream uploads are NOT handled by body-parser so we can pipe 'req' directly to B2
+// The direct route handles its own stream in uploads.js
+app.use('/api/uploads/direct', (req, res, next) => next());
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
