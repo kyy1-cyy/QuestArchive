@@ -4,6 +4,8 @@ import jwt from 'jsonwebtoken';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Readable } from 'stream';
+import https from 'https';
+import http from 'http';
 import { config } from '../utils/config.js';
 import { s3Client } from '../utils/s3.js';
 import { getBucketFileCache, readDB, incrementDownloadCount } from '../utils/db.js';
@@ -235,32 +237,37 @@ async function serveGameDownload(req, res, game, { requireTicket = true } = {}) 
         }
     }
 
-    // Stream from Cloudflare/B2 to browser (pipe, no buffering)
-    // This hides the real URL from the user — they only see /api/download
-    const fetchHeaders = {};
-    if (req.headers.range) {
-        fetchHeaders.Range = req.headers.range;
-    }
+    // Stream from Cloudflare/B2 to browser via https.get (forces IPv4)
+    const parsedUrl = new URL(upstreamUrl);
+    const reqModule = parsedUrl.protocol === 'https:' ? https : http;
+    const reqOptions = {
+        hostname: parsedUrl.hostname,
+        port: parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
+        path: parsedUrl.pathname + parsedUrl.search,
+        method: 'GET',
+        family: 4,
+        headers: {},
+        timeout: 300000
+    };
+    if (req.headers.range) reqOptions.headers.Range = req.headers.range;
 
-    try {
-        const upstream = await fetch(upstreamUrl, { headers: fetchHeaders });
-
-        // Forward status and key headers
-        res.status(upstream.status);
+    const upstream = reqModule.request(reqOptions, (upstreamRes) => {
+        res.status(upstreamRes.statusCode);
         const headersToForward = ['content-type', 'content-length', 'content-range', 'accept-ranges', 'etag'];
         for (const h of headersToForward) {
-            const val = upstream.headers.get(h);
-            if (val) res.setHeader(h, val);
+            if (upstreamRes.headers[h]) res.setHeader(h, upstreamRes.headers[h]);
         }
         res.setHeader('content-disposition', `attachment; filename="${game.title.replace(/"/g, '_')}.zip"`);
+        upstreamRes.pipe(res);
+    });
 
-        // Pipe the stream — minimal memory usage
-        Readable.fromWeb(upstream.body).pipe(res);
-    } catch (fetchErr) {
+    upstream.on('error', (err) => {
         if (!res.headersSent) {
             res.status(500).json({ error: 'fetch failed' });
         }
-    }
+    });
+
+    upstream.end();
 }
 
 router.get('/download-info-by-title', async (req, res, next) => {
