@@ -9,13 +9,6 @@ function regionForEndpoint(endpoint, fallback = 'us-west-004') {
     return fallback;
 }
 
-function ensureHttps(url) {
-    if (!url) return undefined;
-    const s = String(url).trim();
-    if (s.startsWith('http://') || s.startsWith('https://')) return s;
-    return `https://${s}`;
-}
-
 // Force IPv4 + longer timeouts to avoid B2 IPv6 connection issues
 const httpAgent = new https.Agent({
     family: 4,
@@ -33,7 +26,7 @@ const requestHandler = new NodeHttpHandler({
 // Main B2 client (games, database, logs, storage)
 export const s3Client = new S3Client({
     region: regionForEndpoint(config.B2.ENDPOINT),
-    endpoint: ensureHttps(config.B2.ENDPOINT),
+    endpoint: config.B2.ENDPOINT || undefined,
     credentials: {
         accessKeyId: config.B2.KEY_ID,
         secretAccessKey: config.B2.APP_KEY
@@ -45,7 +38,7 @@ export const s3Client = new S3Client({
 // Donations B2 client (separate bucket + credentials)
 export const s3DonationsClient = new S3Client({
     region: regionForEndpoint(config.DONATIONS.ENDPOINT),
-    endpoint: ensureHttps(config.DONATIONS.ENDPOINT),
+    endpoint: config.DONATIONS.ENDPOINT || undefined,
     credentials: {
         accessKeyId: config.DONATIONS.KEY_ID,
         secretAccessKey: config.DONATIONS.APP_KEY
