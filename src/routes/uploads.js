@@ -1,6 +1,5 @@
 import express from 'express';
-import { CreateMultipartUploadCommand, UploadPartCommand, CompleteMultipartUploadCommand, AbortMultipartUploadCommand } from '@aws-sdk/client-s3';
-import { Upload } from '@aws-sdk/lib-storage';
+import { CreateMultipartUploadCommand, UploadPartCommand, CompleteMultipartUploadCommand, AbortMultipartUploadCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { config } from '../utils/config.js';
 import { s3Client } from '../utils/s3.js';
@@ -179,25 +178,22 @@ router.put('/direct', async (req, res, next) => {
     console.log(`[UPLOAD] Direct upload START: key=${key}`);
 
     try {
-        const uploader = new Upload({
-            client: s3Client,
-            params: {
-                Bucket: config.B2.BUCKET_NAME,
-                Key: key,
-                Body: req,
-                ContentType: 'application/zip'
-            },
-            queueSize: 10,
-            partSize: 100 * 1024 * 1024,
-            leavePartsOnError: false
+        const contentLength = parseInt(req.headers['content-length'], 10);
+        const command = new PutObjectCommand({
+            Bucket: config.B2.BUCKET_NAME,
+            Key: key,
+            Body: req,
+            ContentType: 'application/zip',
+            ContentLength: contentLength
         });
-        await uploader.done();
+        
+        await s3Client.send(command);
 
         const baseName = finalName.replace(/\.zip$/i, '');
         const hash = hashId(baseName);
         res.json({ success: true, key, hash, fileName: finalName });
 
-        // Post-upload updates (don't block the response)
+        // Post-upload updates
         setImmediate(async () => {
             try {
                 const map = await readJsonFromB2(config.B2.MD5_MAP_KEY, {});

@@ -14,13 +14,13 @@ const httpAgent = new https.Agent({
     family: 4,
     keepAlive: true,
     maxSockets: 25,
-    timeout: 300000
+    timeout: 600000
 });
 
 const requestHandler = new NodeHttpHandler({
     httpsAgent: httpAgent,
-    connectionTimeout: 30000,
-    socketTimeout: 300000
+    connectionTimeout: 60000,
+    socketTimeout: 600000
 });
 
 // Main B2 client (games, database, logs, storage)
