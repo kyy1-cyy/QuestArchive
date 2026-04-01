@@ -110,6 +110,25 @@ app.use((req, res, next) => {
 
 app.use(errorHandler);
 
+// Global Crash Guard for ECONNRESET / Aborted Connections
+process.on('uncaughtException', (err) => {
+    if (err.code === 'ECONNRESET' || err.message === 'aborted') {
+        logger.warn('Captured aborted connection Exception:', { code: err.code, message: err.message });
+        return;
+    }
+    logger.error('CRITICAL: Uncaught Exception:', err);
+    // For critical non-network errors, we should still exit to allow process manager to restart
+    if (err.code !== 'ECONNRESET' && err.message !== 'aborted') process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    if (reason && (reason.code === 'ECONNRESET' || reason.message === 'aborted')) {
+        logger.warn('Captured aborted connection Rejection:', reason);
+        return;
+    }
+    logger.error('CRITICAL: Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
 const server = app.listen(config.PORT, async () => {
     logger.info(`🚀 Quest Archive running on http://localhost:${config.PORT}`);
     
