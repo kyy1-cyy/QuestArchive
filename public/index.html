@@ -1276,11 +1276,22 @@
                             packageName = pkgMatch ? pkgMatch[1] : '';
                             
                             // 2. VR Heartbeat Score
-                            const vrIndicators = ['oculus', 'vr_mode', 'handtracking', 'com.oculus.permission'];
+                            // We use a broad range of indicators from your Python validator.
+                            const vrIndicators = [
+                                'oculus', 'vr_mode', 'vr.mode', 'vr_api', 'vr.api', 
+                                'handtracking', 'headtracking', 'vrmode', 'virtual_reality',
+                                'com.oculus.permission', 'com.facebook.permission', 'android.permission.VR_MODE'
+                            ];
                             let score = 0;
-                            vrIndicators.forEach(ind => { if (text.toLowerCase().includes(ind)) score++; });
+                            vrIndicators.forEach(ind => { 
+                                if (text.toLowerCase().includes(ind)) score++; 
+                            });
 
-                            if (score < 1 && !packageName.includes('oculus') && !packageName.includes('vr')) {
+                            // Only block if score is 0 AND package name has zero hint of VR/Oculus
+                            const lowerPkg = packageName.toLowerCase();
+                            const hasVrInName = lowerPkg.includes('vr') || lowerPkg.includes('oculus') || lowerPkg.includes('quest');
+                            
+                            if (score === 0 && !hasVrInName) {
                                 throw new Error('Not a Quest game (No VR signature found)');
                             }
 
