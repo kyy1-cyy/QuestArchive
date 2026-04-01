@@ -1249,9 +1249,14 @@
                                 throw new Error('Not a Quest game (No .apk found in ZIP)');
                             }
 
-                            // Extract package name from filename (e.g. com.rovio.birds.apk -> com.rovio.birds)
-                            const apkName = apkEntry.filename.split('/').pop() || '';
-                            packageName = apkName.replace(/\.apk$/i, '').split('_')[0]; 
+                            // Robust package name extraction
+                            // 1. Get filename part
+                            const fullFilename = apkEntry.filename.split('/').pop() || '';
+                            // 2. Remove .apk extension
+                            let nameOnly = fullFilename.replace(/\.apk$/i, '');
+                            // 3. Take first part if there are underscores or version info
+                            packageName = nameOnly.split('_')[0].split(' ')[0]; 
+
                             await reader.close();
 
                             this.donateState.message = `Checking archive for ${packageName}...`;
