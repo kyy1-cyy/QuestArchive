@@ -1863,83 +1863,120 @@
                         }
                     } catch (_) {}
 
-                    // Single PUT — server streams directly to B2
-                    const url = `/api/uploads/direct?filename=${encodeURIComponent(file.name)}`;
-
+                    // Sequential Multipart Upload for maximum stability (no more freezes)
+                    const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB chunks
+                    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+                    
                     try {
-                        const result = await new Promise((resolve, reject) => {
-                            const xhr = new XMLHttpRequest();
-                            this.uploadInternals.activeRequests.push(xhr);
-                            xhr.open('PUT', url, true);
-
-                            xhr.upload.onprogress = (e) => {
-                                if (!e.lengthComputable) return;
-                                this.uploadInternals.uploadedBytes = e.loaded;
-                                this.uploadState.percent = Math.min(99, (e.loaded / e.total) * 100);
-
-                                const now = Date.now();
-                                const lastTime = this.uploadInternals.lastCalcTime || this.uploadInternals.startedAt;
-                                const lastLoaded = this.uploadInternals.lastUploadedBytes || 0;
-                                const timeDiff = (now - lastTime) / 1000;
-                                if (timeDiff >= 0.5) {
-                                    const bytesDiff = e.loaded - lastLoaded;
-                                    const currentBps = bytesDiff / timeDiff;
-                                    if (this.uploadInternals.rollingBps === undefined) {
-                                        this.uploadInternals.rollingBps = currentBps;
-                                    } else {
-                                        this.uploadInternals.rollingBps = this.uploadInternals.rollingBps * 0.7 + currentBps * 0.3;
-                                    }
-                                    this.uploadState.mbps = this.uploadInternals.rollingBps / (1024 * 1024);
-                                    const remaining = Math.max(e.total - e.loaded, 0);
-                                    const eta = this.uploadInternals.rollingBps > 0 ? remaining / this.uploadInternals.rollingBps : Infinity;
-                                    const mins = Math.floor(eta / 60);
-                                    const secs = Math.floor(eta % 60);
-                                    this.uploadState.eta = eta > 3600 ? '> 1hr' : `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-                                    this.uploadInternals.lastCalcTime = now;
-                                    this.uploadInternals.lastUploadedBytes = e.loaded;
-                                }
-                                if (e.loaded >= e.total) {
-                                    this.uploadState.message = 'Saving to storage...';
-                                    this.uploadState.mbps = 0;
-                                    this.uploadState.eta = '';
-                                }
-                            };
-
-                            xhr.onload = () => {
-                                if (xhr.status < 200 || xhr.status >= 300) {
-                                    return reject(new Error(`Upload failed (HTTP ${xhr.status}): ${xhr.responseText.slice(0, 100)}`));
-                                }
-                                try {
-                                    resolve(JSON.parse(xhr.responseText));
-                                } catch (e) {
-                                    reject(new Error('Invalid server response'));
-                                }
-                            };
-                            xhr.onerror = () => reject(new Error('Network error'));
-                            xhr.onabort = () => reject(new Error('Cancelled'));
-                            xhr.send(file);
+                        // 1. Initialize multipart upload
+                        const initRes = await fetch('/api/uploads/init', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ filename: file.name })
                         });
+                        if (!initRes.ok) throw new Error(`Init failed (${initRes.status})`);
+                        const { uploadId, key, hash } = await initRes.json();
+                        this.hashState.hash = String(hash);
 
-                        if (result.hash) this.hashState.hash = String(result.hash);
+                        // 2. Upload chunks one-by-one
+                        const parts = [];
+                        let bytesUploaded = 0;
+
+                        for (let i = 0; i < totalChunks; i++) {
+                            if (!this.uploadState.inProgress) throw new Error('Cancelled');
+                            
+                            const start = i * CHUNK_SIZE;
+                            const end = Math.min(start + CHUNK_SIZE, file.size);
+                            const chunk = file.slice(start, end);
+                            const partNumber = i + 1;
+
+                            this.uploadState.message = `Part ${partNumber}/${totalChunks}...`;
+
+                            // Retry logic for the specific chunk
+                            let etag = null;
+                            let retries = 0;
+                            while (retries < 3 && !etag) {
+                                try {
+                                    etag = await new Promise((resolve, reject) => {
+                                        const xhr = new XMLHttpRequest();
+                                        this.uploadInternals.activeRequests.push(xhr);
+                                        const partUrl = `/api/uploads/put-part?key=${encodeURIComponent(key)}&uploadId=${uploadId}&partNumber=${partNumber}`;
+                                        xhr.open('PUT', partUrl, true);
+                                        
+                                        xhr.upload.onprogress = (e) => {
+                                            if (!e.lengthComputable) return;
+                                            const currentUploaded = bytesUploaded + e.loaded;
+                                            this.uploadState.percent = (currentUploaded / file.size) * 100;
+                                            
+                                            // Speed calc (rolling)
+                                            const now = Date.now();
+                                            const lastTime = this.uploadInternals.lastCalcTime || this.uploadInternals.startedAt;
+                                            const lastLoaded = this.uploadInternals.lastUploadedBytes || 0;
+                                            const timeDiff = (now - lastTime) / 1000;
+                                            if (timeDiff >= 0.5) {
+                                                const bytesDiff = (currentUploaded) - lastLoaded;
+                                                const currentBps = bytesDiff / timeDiff;
+                                                this.uploadInternals.rollingBps = this.uploadInternals.rollingBps === undefined ? currentBps : (this.uploadInternals.rollingBps * 0.7 + currentBps * 0.3);
+                                                this.uploadState.mbps = this.uploadInternals.rollingBps / (1024 * 1024);
+                                                const remaining = Math.max(file.size - currentUploaded, 0);
+                                                const eta = this.uploadInternals.rollingBps > 0 ? remaining / this.uploadInternals.rollingBps : 0;
+                                                const mins = Math.floor(eta / 60);
+                                                const secs = Math.floor(eta % 60);
+                                                this.uploadState.eta = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+                                                this.uploadInternals.lastCalcTime = now;
+                                                this.uploadInternals.lastUploadedBytes = currentUploaded;
+                                            }
+                                        };
+                                        xhr.onload = () => {
+                                            if (xhr.status === 200) {
+                                                const data = JSON.parse(xhr.responseText);
+                                                resolve(data.ETag);
+                                            } else {
+                                                reject(new Error(`Part fail ${xhr.status}`));
+                                            }
+                                        };
+                                        xhr.onerror = () => reject(new Error('Network error'));
+                                        xhr.send(chunk);
+                                    });
+                                } catch (err) {
+                                    retries++;
+                                    if (retries >= 3) throw err;
+                                    await new Promise(r => setTimeout(r, 1000));
+                                }
+                            }
+                            
+                            parts.push({ PartNumber: partNumber, ETag: etag });
+                            bytesUploaded += chunk.size;
+                        }
+
+                        // 3. Complete
+                        this.uploadState.message = 'Finalizing...';
+                        const completeRes = await fetch('/api/uploads/complete', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ key, uploadId, parts })
+                        });
+                        if (!completeRes.ok) throw new Error('Completion failed');
+
+                        this.uploadState.percent = 100;
+                        this.uploadState.message = 'Done';
+                        this.uploadState.mbps = 0;
+                        this.uploadState.eta = '00:00';
+                        this.showToast('Upload completed', 'success');
+                        await this.fetchMd5Map(true);
+                        setTimeout(() => this.fetchGames(), 1000);
+                        this.uploadState.inProgress = false;
+                        setTimeout(() => {
+                            this.uploadState.removing = true;
+                            setTimeout(() => this.resetUploadState(), 450);
+                        }, 800);
+
                     } catch (e) {
                         this.uploadState.inProgress = false;
                         this.uploadState.error = String(e.message || e);
                         this.showToast('Upload failed: ' + this.uploadState.error, 'error');
                         return;
                     }
-
-                    this.uploadState.percent = 100;
-                    this.uploadState.message = 'Done';
-                    this.uploadState.mbps = 0;
-                    this.uploadState.eta = '00:00';
-                    this.showToast('Upload completed', 'success');
-                    await this.fetchMd5Map(true);
-                    setTimeout(() => this.fetchGames(), 1000);
-                    this.uploadState.inProgress = false;
-                    setTimeout(() => {
-                        this.uploadState.removing = true;
-                        setTimeout(() => this.resetUploadState(), 450);
-                    }, 800);
                 },
                 async startBulkUpload() {
                     this.bulkState.inProgress = true;
