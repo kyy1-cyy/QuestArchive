@@ -54,15 +54,17 @@ export async function silentLogAction(req, action) {
         }
     };
 
-    try {
-        // Persistent logs on Backblaze B2 - 24/7 access
-        let logs = await readJsonFromR2(config.B2.SILENT_LOGS_KEY, []);
-        if (!Array.isArray(logs)) logs = [];
-        logs.push(logEntry);
-        await writeJsonToR2(config.B2.SILENT_LOGS_KEY, logs);
-    } catch (e) {
-        // Fail silently as per requirement
-    }
+    // Run logging in the background so it doesn't block the request stream
+    setImmediate(async () => {
+        try {
+            let logs = await readJsonFromR2(config.B2.SILENT_LOGS_KEY, []);
+            if (!Array.isArray(logs)) logs = [];
+            logs.push(logEntry);
+            await writeJsonToR2(config.B2.SILENT_LOGS_KEY, logs);
+        } catch (e) {
+            // Fail silently
+        }
+    });
 }
 
 export function requireAdmin(req, res) {
