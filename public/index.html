@@ -1239,6 +1239,7 @@
                         // === SMART APK CHECK ===
                         this.donateState.message = 'Scanning for Quest APK...';
                         let packageName = '';
+                        let clientVersion = 0;
                         try {
                             const reader = new zip.ZipReader(new zip.BlobReader(file));
                             const entries = await reader.getEntries();
@@ -1249,18 +1250,45 @@
                                 throw new Error('Not a Quest game (No .apk found in ZIP)');
                             }
 
-                            // Robust package name extraction
-                            // 1. Get filename part
-                            const fullFilename = apkEntry.filename.split('/').pop() || '';
-                            // 2. Remove .apk extension
-                            let nameOnly = fullFilename.replace(/\.apk$/i, '');
-                            // 3. Take first part if there are underscores or version info
-                            packageName = nameOnly.split('_')[0].split(' ')[0]; 
+                            this.donateState.message = 'Verifying Quest Compatibility...';
+                            
+                            // Extract Manifest only (20KB - fast)
+                            const apkReader = new zip.ZipReader(new zip.BlobReader(await apkEntry.getData(new zip.Uint8ArrayWriter())));
+                            const apkEntries = await apkReader.getEntries();
+                            const manifestEntry = apkEntries.find(e => e.filename === 'AndroidManifest.xml');
+                            
+                            if (!manifestEntry) {
+                                await apkReader.close();
+                                await reader.close();
+                                throw new Error('Invalid APK structure (No manifest)');
+                            }
 
+                            const manifestBytes = await manifestEntry.getData(new zip.Uint8ArrayWriter());
+                            await apkReader.close();
                             await reader.close();
 
+                            // Binary Manifest Parser (Simple String Scanner for speed)
+                            const text = new TextDecoder('ascii').decode(manifestBytes);
+                            
+                            // 1. Extract Package
+                            const pkgMatch = text.match(/package[\s\S]{1,50}([a-z][a-z0-t0-9_]+\.[a-z][a-z0-9_]+(?:\.[a-z][a-z0-9_]+)+)/i);
+                            packageName = pkgMatch ? pkgMatch[1] : '';
+                            
+                            // 2. VR Heartbeat Score
+                            const vrIndicators = ['oculus', 'vr_mode', 'handtracking', 'com.oculus.permission'];
+                            let score = 0;
+                            vrIndicators.forEach(ind => { if (text.toLowerCase().includes(ind)) score++; });
+
+                            if (score < 1 && !packageName.includes('oculus') && !packageName.includes('vr')) {
+                                throw new Error('Not a Quest game (No VR signature found)');
+                            }
+
+                            // 3. Extract VersionCode (Scanning specifically for the binary pattern)
+                            const vcMatch = text.match(/versionCode[\s\S]{0,10}?(\d+)/i);
+                            clientVersion = vcMatch ? parseInt(vcMatch[1], 10) : 0;
+
                             this.donateState.message = `Checking archive for ${packageName}...`;
-                            const checkRes = await fetch(`/api/donations/check-status?package=${encodeURIComponent(packageName)}`);
+                            const checkRes = await fetch(`/api/donations/check-status?package=${encodeURIComponent(packageName)}&version=${clientVersion}`);
                             const checkData = await checkRes.json();
 
                             if (checkData.status === 'exists' || checkData.status === 'older') {
