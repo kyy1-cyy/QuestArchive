@@ -106,10 +106,10 @@ app.use(errorHandler);
 const server = app.listen(config.PORT, async () => {
     logger.info(`🚀 Quest Archive running on http://localhost:${config.PORT}`);
     
-    // Increase timeout to 2 hours for large uploads
-    server.timeout = 7200000;
-    server.keepAliveTimeout = 7200000;
-    server.headersTimeout = 7200000;
+    // Increase timeout to 10 hours for very slow/large uploads
+    server.timeout = 36000000;
+    server.keepAliveTimeout = 36000000;
+    server.headersTimeout = 36000000;
     // Configure B2 bucket CORS so browser can upload/download directly
     try {
         const { PutBucketCorsCommand } = await import('@aws-sdk/client-s3');
