@@ -1,5 +1,5 @@
-import express from 'express';
 import { CreateMultipartUploadCommand, UploadPartCommand, CompleteMultipartUploadCommand, AbortMultipartUploadCommand, PutObjectCommand } from '@aws-sdk/client-s3';
+import { Upload } from '@aws-sdk/lib-storage';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { config } from '../utils/config.js';
 import { s3Client } from '../utils/s3.js';
@@ -178,16 +178,20 @@ router.put('/direct', async (req, res, next) => {
     console.log(`[UPLOAD] Direct upload START: key=${key}`);
 
     try {
-        const contentLength = parseInt(req.headers['content-length'], 10);
-        const command = new PutObjectCommand({
-            Bucket: config.B2.BUCKET_NAME,
-            Key: key,
-            Body: req,
-            ContentType: 'application/zip',
-            ContentLength: contentLength
+        const uploader = new Upload({
+            client: s3Client,
+            params: {
+                Bucket: config.B2.BUCKET_NAME,
+                Key: key,
+                Body: req,
+                ContentType: 'application/zip'
+            },
+            partSize: 200 * 1024 * 1024,
+            queueSize: 4,
+            leavePartsOnError: false
         });
         
-        await s3Client.send(command);
+        await uploader.done();
 
         const baseName = finalName.replace(/\.zip$/i, '');
         const hash = hashId(baseName);
