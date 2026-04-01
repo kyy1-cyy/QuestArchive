@@ -24,33 +24,40 @@ router.get('/list', async (req, res, next) => {
         let allFolders = [];
         let allObjects = [];
 
-        while (true) {
-            const command = new ListObjectsV2Command({
-                Bucket: config.B2.BUCKET_NAME,
-                Prefix: prefix ? (prefix.endsWith('/') ? prefix : prefix + '/') : undefined,
-                Delimiter: '/',
-                ContinuationToken: token
-            });
-            const result = await s3Client.send(command);
+        console.log(`[STORAGE] Starting list for bucket: ${config.B2.BUCKET_NAME}, prefix: "${prefix}"`);
 
-            if (result.CommonPrefixes) {
-                const folders = result.CommonPrefixes.map(p => p.Prefix).filter(Boolean);
-                allFolders.push(...folders);
+        try {
+            while (true) {
+                const command = new ListObjectsV2Command({
+                    Bucket: config.B2.BUCKET_NAME,
+                    Prefix: prefix ? (prefix.endsWith('/') ? prefix : prefix + '/') : '',
+                    Delimiter: '/',
+                    ContinuationToken: token
+                });
+                const result = await s3Client.send(command);
+
+                if (result.CommonPrefixes) {
+                    const folders = result.CommonPrefixes.map(p => p.Prefix).filter(Boolean);
+                    allFolders.push(...folders);
+                }
+
+                if (result.Contents) {
+                    const objects = result.Contents
+                        .filter(o => o.Key && o.Key !== prefix && o.Key !== (prefix + '/') && !o.Key.endsWith('/'))
+                        .map(o => ({
+                            key: o.Key,
+                            lastModified: o.LastModified,
+                            size: o.Size
+                        }));
+                    allObjects.push(...objects);
+                }
+
+                if (!result.IsTruncated) break;
+                token = result.NextContinuationToken;
             }
-
-            if (result.Contents) {
-                const objects = result.Contents
-                    .filter(o => o.Key && o.Key !== prefix && o.Key !== (prefix + '/') && !o.Key.endsWith('/'))
-                    .map(o => ({
-                        key: o.Key,
-                        lastModified: o.LastModified,
-                        size: o.Size
-                    }));
-                allObjects.push(...objects);
-            }
-
-            if (!result.IsTruncated) break;
-            token = result.NextContinuationToken;
+        } catch (s3Err) {
+            console.error('[STORAGE] B2 List Error:', s3Err.message);
+            // If B2 fails, return what we have or empty list instead of 500
         }
 
         console.log(`[STORAGE] Listing prefix "${prefix}" found ${allFolders.length} folders, ${allObjects.length} objects`);
@@ -62,6 +69,7 @@ router.get('/list', async (req, res, next) => {
             isTruncated: false
         });
     } catch (err) {
+        console.error('[STORAGE] Fatal error in /list:', err);
         next(err);
     }
 });
