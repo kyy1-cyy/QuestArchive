@@ -87,7 +87,7 @@ export const config = {
         DB_KEY: useR2PrimaryStorage ? envFirst('R2_DB_KEY', 'B2_DB_KEY') || 'database.json' : envFirst('B2_DB_KEY') || 'private/database.json',
         MD5_MAP_KEY: useR2PrimaryStorage ? envFirst('R2_MD5_MAP_KEY', 'B2_MD5_MAP_KEY') || 'map_md5.json' : envFirst('B2_MD5_MAP_KEY') || 'private/map_md5.json',
         SILENT_LOGS_KEY: useR2PrimaryStorage ? envFirst('R2_SILENT_LOGS_KEY', 'B2_SILENT_LOGS_KEY') || 'silent_logs.json' : envFirst('B2_SILENT_LOGS_KEY') || 'private/silent_logs.json',
-        GAME_CACHE_KEY: useR2PrimaryStorage ? envFirst('R2_GAME_CACHE_KEY', 'B2_GAME_CACHE_KEY') || 'game_cache.json' : envFirst('B2_GAME_CACHE_KEY') || 'private/game_cache.json',
+        GAME_CACHE_KEY: useR2PrimaryStorage ? envFirst('R2_GAME_CACHE_KEY', 'B2_GAME_CACHE_KEY') || 'game_cache.json' : envFirst('B2_GAME_CACHE_KEY', 'GAME_CACHE_KEY') || 'game_cache.json',
         DOWNLOAD_BASE_URL: envFirst('DOWNLOAD_BASE_URL', 'B2_DOWNLOAD_BASE_URL', 'BACKBLAZE_DOWNLOAD_BASE_URL')
     },
     DONATIONS: {
