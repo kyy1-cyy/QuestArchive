@@ -187,27 +187,27 @@ router.put('/direct', async (req, res, next) => {
                 Body: req,
                 ContentType: 'application/zip'
             },
-            queueSize: 4,
-            partSize: 64 * 1024 * 1024,
+            queueSize: 10,
+            partSize: 100 * 1024 * 1024,
             leavePartsOnError: false
         });
         await uploader.done();
 
         const baseName = finalName.replace(/\.zip$/i, '');
         const hash = hashId(baseName);
-        console.log(`[UPLOAD] Direct upload done: key=${key}, hash=${hash}`);
         res.json({ success: true, key, hash, fileName: finalName });
 
-        (async () => {
+        // Post-upload updates (don't block the response)
+        setImmediate(async () => {
             try {
                 const map = await readJsonFromB2(config.B2.MD5_MAP_KEY, {});
                 map[hash] = String(key);
                 await writeJsonToB2(config.B2.MD5_MAP_KEY, map);
+                await refreshBucketFileCache();
             } catch (e) {
-                logger.error('MD5 map update after direct upload failed', e);
+                logger.error('Post-upload update failed', e);
             }
-            refreshBucketFileCache().catch(e => logger.error('Cache refresh after direct upload failed', e));
-        })();
+        });
     } catch (err) {
         console.error(`[UPLOAD] Direct upload FAILED:`, err.message);
         next(err);
