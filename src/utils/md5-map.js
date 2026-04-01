@@ -52,21 +52,30 @@ async function doSyncMd5Map() {
 export async function ensureMd5MapFresh({ force = false } = {}) {
     const now = Date.now();
     const age = now - md5MapState.lastSyncAt;
-    const needsSync = force || age > 30 * 60 * 1000;
+    const needsSync = force || (!md5MapState.map) || (age > 30 * 60 * 1000);
 
     if (needsSync && !md5MapState.syncing) {
         md5MapState.syncing = doSyncMd5Map();
     }
 
+    // Never block current request for a background sync unless specifically 'forced'
     if (force) await md5MapState.syncing;
+    
     if (md5MapState.map) return md5MapState.map;
 
+    // Last resort: read from B2 directly if we have nothing in memory
     const primary = await readJsonFromB2(config.B2.MD5_MAP_KEY, null);
-    if (primary !== null) return primary || {};
+    if (primary !== null) {
+        md5MapState.map = primary || {};
+        md5MapState.lastSyncAt = Date.now();
+        return md5MapState.map;
+    }
     return {};
 }
 
 export async function findKeyByHash(hash) {
+    // Note: ensureMd5MapFresh will trigger a background sync, but WON'T wait for it to finish
+    // unless the map is completely null.
     const map = await ensureMd5MapFresh({ force: false });
     const originalName = map[hash];
     if (!originalName) return null;
