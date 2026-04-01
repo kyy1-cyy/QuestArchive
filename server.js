@@ -106,6 +106,27 @@ app.use(errorHandler);
 app.listen(config.PORT, async () => {
     logger.info(`🚀 Quest Archive running on http://localhost:${config.PORT}`);
     
+    // Configure B2 bucket CORS so browser can upload/download directly
+    try {
+        const { PutBucketCorsCommand } = await import('@aws-sdk/client-s3');
+        const { s3Client: s3 } = await import('./src/utils/s3.js');
+        await s3.send(new PutBucketCorsCommand({
+            Bucket: config.B2.BUCKET_NAME,
+            CORSConfiguration: {
+                CORSRules: [{
+                    AllowedHeaders: ['*'],
+                    AllowedMethods: ['GET', 'PUT', 'HEAD'],
+                    AllowedOrigins: ['*'],
+                    ExposeHeaders: ['ETag', 'Content-Length', 'Content-Range', 'Accept-Ranges'],
+                    MaxAgeSeconds: 86400
+                }]
+            }
+        }));
+        logger.info('B2 bucket CORS rules configured');
+    } catch (err) {
+        logger.warn('B2 CORS setup skipped: ' + (err.message || err));
+    }
+
     // Initialize B2 Bucket Cache
     try {
         const { getBucketFileCache, refreshBucketFileCache } = await import('./src/utils/db.js');

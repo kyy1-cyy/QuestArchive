@@ -165,7 +165,6 @@ async function sendDownloadInfo(req, res, game) {
     
     let fileSize = null;
     let chunks = [];
-    let directUrl = '';
 
     try {
         const { HeadObjectCommand } = await import('@aws-sdk/client-s3');
@@ -186,15 +185,8 @@ async function sendDownloadInfo(req, res, game) {
         }
     } catch (_) { }
 
-    // Generate a presigned URL the frontend can use directly (5 min expiry)
-    try {
-        const command = new GetObjectCommand({
-            Bucket: config.B2.BUCKET_NAME,
-            Key: fileKey,
-            ResponseContentDisposition: `attachment; filename="${game.title.replace(/"/g, '_')}.zip"`
-        });
-        directUrl = await getSignedUrl(s3Client, command, { expiresIn: 300 });
-    } catch (_) { }
+    // Build the Cloudflare-proxied public URL for free bandwidth
+    const directUrl = buildPublicDownloadUrl(fileKey);
 
     res.json({
         title: game.title,
@@ -220,28 +212,25 @@ async function serveGameDownload(req, res, game, { requireTicket = true } = {}) 
         return;
     }
 
-    const rangeHeader = String(req.headers.range || '').trim();
+    if (!req.headers.range) {
+        incrementDownloadCount(game.publicId).catch(e => logger.error('Incr error', e));
+    }
 
-    // For range requests (chunked downloads), generate a presigned URL and 302 redirect
-    // The browser/frontend fetches each chunk directly from B2 at full speed
+    // Redirect to Cloudflare-proxied URL for free bandwidth
+    const publicUrl = buildPublicDownloadUrl(fileKey);
+    if (publicUrl) {
+        res.redirect(publicUrl);
+        return;
+    }
+
+    // Fallback: presigned URL directly to B2
     try {
-        const commandOpts = {
+        const command = new GetObjectCommand({
             Bucket: config.B2.BUCKET_NAME,
             Key: fileKey,
             ResponseContentDisposition: `attachment; filename="${game.title.replace(/"/g, '_')}.zip"`
-        };
-        if (rangeHeader) {
-            commandOpts.Range = rangeHeader;
-        }
-
-        const command = new GetObjectCommand(commandOpts);
+        });
         const signedUrl = await getSignedUrl(s3Client, command, { expiresIn: 300 });
-
-        if (!rangeHeader) {
-            incrementDownloadCount(game.publicId).catch(e => logger.error('Incr error', e));
-        }
-
-        // 302 redirect — browser downloads directly from B2, not through our server
         res.redirect(signedUrl);
     } catch (s3Err) {
         logger.error('Presign error', s3Err);
