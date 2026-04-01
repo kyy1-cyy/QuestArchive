@@ -52,11 +52,25 @@ router.get('/check-status', async (req, res) => {
             return res.json({ status: 'exists', message: `This game is already in our archive.`, serverVersion });
         }
 
-        // 2. Check if it's already in the archive but not indexed yet
-        // We check the raw file list from storage (game_cache.json) for the package name
-        const inCache = allFiles.some(f => f.toLowerCase().includes(packageName.toLowerCase()));
-        if (inCache) {
-            return res.json({ status: 'exists', message: `This game is already in our archive (pending indexing).` });
+        // 2. Check if it's in the archive (storage cache) but not indexed yet
+        // We look for filenames containing the package name and try to extract a version
+        const cachedFile = allFiles.find(f => f.toLowerCase().includes(packageName.toLowerCase()));
+        if (cachedFile) {
+            // Try to extract version from filename if possible, e.g. "Game_com.pkg_v123.zip"
+            const vMatch = cachedFile.match(/v(\d+)/i);
+            const cachedVersion = vMatch ? parseInt(vMatch[1], 10) : 0;
+
+            if (clientVersion > 0 && cachedVersion > 0) {
+                if (clientVersion > cachedVersion) {
+                    return res.json({ status: 'update', message: `Update found in storage! You have v${clientVersion}, we have v${cachedVersion} (pending index).` });
+                } else if (clientVersion === cachedVersion) {
+                    return res.json({ status: 'exists', message: `We already have v${cachedVersion} in storage (pending index).` });
+                } else {
+                    return res.json({ status: 'older', message: `You have an older version (v${clientVersion}). We already have v${cachedVersion} in storage.` });
+                }
+            }
+            // If we can't determine version, default to 'exists' to be safe
+            return res.json({ status: 'exists', message: `This game is already in our storage and waiting to be indexed.` });
         }
 
         res.json({ status: 'new', message: 'New game! Feel free to donate.' });
