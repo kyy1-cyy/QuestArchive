@@ -1257,74 +1257,58 @@
                         this.donateState.uploadId = init.uploadId;
                         this.donateState.message = 'Uploading...';
 
-                        const partSize = 64 * 1024 * 1024;
-                        const totalParts = Math.ceil(file.size / partSize);
-                        const concurrency = Math.min(4, Math.max(1, (navigator.hardwareConcurrency || 4) / 2));
-
-                        const queue = [];
-                        for (let i = 0; i < totalParts; i++) {
-                            const partNumber = i + 1;
-                            const start = i * partSize;
-                            const end = Math.min(start + partSize, file.size);
-                            queue.push({ partNumber, blob: file.slice(start, end) });
-                        }
-
-                        const workers = Array.from({ length: Math.floor(concurrency) }, () => (async () => {
-                            while (queue.length && this.donateState.inProgress) {
-                                const job = queue.shift();
-                                if (!job) return;
-
-                                const urlRes = await fetch('/api/donations/part-url', {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({
-                                        key: this.donateState.key,
-                                        uploadId: this.donateState.uploadId,
-                                        partNumber: job.partNumber
-                                    })
-                                });
-                                const urlJson = await urlRes.json();
-                                if (!urlRes.ok) throw new Error(urlJson.error || 'Failed to sign part');
-
-                                await new Promise((resolve, reject) => {
-                                    const xhr = new XMLHttpRequest();
-                                    this.donateInternals.activeRequests.push(xhr);
-                                    xhr.open('PUT', urlJson.url, true);
-                                    xhr.upload.onprogress = (evt) => {
-                                        if (!evt.lengthComputable) return;
-                                        this.donateInternals.perPartLoaded[job.partNumber] = evt.loaded;
-                                        let sum = 0;
-                                        for (const k in this.donateInternals.perPartLoaded) sum += this.donateInternals.perPartLoaded[k] || 0;
-                                        this.donateInternals.uploadedBytes = sum;
-                                        this.updateDonateProgress();
-                                    };
-                                    xhr.onload = () => {
-                                        const etag = xhr.getResponseHeader('ETag');
-                                        if (xhr.status >= 200 && xhr.status < 300) {
-                                            if (!etag) {
-                                                reject(new Error('Upload succeeded but ETag header is not readable. Add R2 CORS: ExposeHeaders = ETag'));
-                                                return;
-                                            }
-                                            this.donateInternals.perPartLoaded[job.partNumber] = job.blob.size;
-                                            let sum = 0;
-                                            for (const k in this.donateInternals.perPartLoaded) sum += this.donateInternals.perPartLoaded[k] || 0;
-                                            this.donateInternals.uploadedBytes = sum;
-                                            this.updateDonateProgress();
-                                            this.donateInternals.parts.push({ ETag: etag, PartNumber: job.partNumber });
-                                            resolve();
-                                        } else {
-                                            reject(new Error(`Part ${job.partNumber} failed (${xhr.status})`));
-                                        }
-                                    };
-                                    xhr.onerror = () => reject(new Error(`Part ${job.partNumber} network error`));
-                                    xhr.onabort = () => reject(new Error('Upload aborted'));
-                                    xhr.send(job.blob);
-                                });
-                            }
-                        })());
-
+                        const chunkSize = 10 * 1024 * 1024; // 10MB 
+                        const totalChunks = Math.ceil(file.size / chunkSize);
+                        
                         try {
-                            await Promise.all(workers);
+                            for (let i = 0; i < totalChunks; i++) {
+                                if (!this.donateState.inProgress) throw new Error('Cancelled');
+                                
+                                const start = i * chunkSize;
+                                const end = Math.min(start + chunkSize, file.size);
+                                const chunk = file.slice(start, end);
+                                const partNumber = i + 1;
+
+                                this.donateState.message = `Part ${partNumber}/${totalChunks}...`;
+
+                                // Retry logic for the specific chunk
+                                let etag = null;
+                                let retries = 0;
+                                while (retries < 3 && !etag) {
+                                    try {
+                                        etag = await new Promise((resolve, reject) => {
+                                            const xhr = new XMLHttpRequest();
+                                            this.donateInternals.activeRequests.push(xhr);
+                                            const partUrl = `/api/donations/put-part?key=${encodeURIComponent(this.donateState.key)}&uploadId=${this.donateState.uploadId}&partNumber=${partNumber}`;
+                                            xhr.open('PUT', partUrl, true);
+                                            
+                                            xhr.upload.onprogress = (evt) => {
+                                                if (!evt.lengthComputable) return;
+                                                this.donateInternals.perPartLoaded[partNumber] = evt.loaded;
+                                                let sum = 0;
+                                                for (const k in this.donateInternals.perPartLoaded) sum += this.donateInternals.perPartLoaded[k] || 0;
+                                                this.donateInternals.uploadedBytes = sum;
+                                                this.updateDonateProgress();
+                                            };
+                                            xhr.onload = () => {
+                                                if (xhr.status === 200) {
+                                                    const data = JSON.parse(xhr.responseText);
+                                                    resolve(data.ETag);
+                                                } else {
+                                                    reject(new Error(`Part failed (${xhr.status})`));
+                                                }
+                                            };
+                                            xhr.onerror = () => reject(new Error('Network error'));
+                                            xhr.send(chunk);
+                                        });
+                                    } catch (err) {
+                                        retries++;
+                                        if (retries >= 3) throw err;
+                                        await new Promise(r => setTimeout(r, 1000));
+                                    }
+                                }
+                                this.donateInternals.parts.push({ PartNumber: partNumber, ETag: etag });
+                            }
                         } catch (e) {
                             this.donateState.inProgress = false;
                             this.donateState.error = String(e.message || e);

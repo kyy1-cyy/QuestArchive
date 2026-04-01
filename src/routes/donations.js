@@ -47,25 +47,31 @@ router.post('/init', async (req, res, next) => {
     }
 });
 
-router.post('/part-url', async (req, res, next) => {
+router.put('/put-part', async (req, res, next) => {
     if (!ensureEnv(req, res, ['DONATIONS.ENDPOINT', 'DONATIONS.KEY_ID', 'DONATIONS.APP_KEY', 'DONATIONS.BUCKET_NAME'])) return;
+    const key = String(req.query.key || '');
+    const uploadId = String(req.query.uploadId || '');
+    const partNumber = Number(req.query.partNumber || 0);
 
-    const { key, uploadId, partNumber } = req.body ?? {};
     if (!key || !uploadId || !partNumber) {
-        return res.status(400).json({ error: 'key, uploadId, partNumber are required' });
+        return res.status(400).json({ error: 'key, uploadId, partNumber required' });
     }
 
+    const contentLength = parseInt(req.headers['content-length'], 10);
     try {
         const command = new UploadPartCommand({
             Bucket: config.DONATIONS.BUCKET_NAME,
             Key: key,
             UploadId: uploadId,
-            PartNumber: Number(partNumber)
+            PartNumber: partNumber,
+            Body: req,
+            ContentLength: contentLength
         });
-        const url = await getSignedUrl(s3DonationsClient, command, { expiresIn: 3600 });
-        res.json({ url });
+        const result = await s3DonationsClient.send(command);
+        res.json({ ETag: result.ETag });
     } catch (err) {
-        next(err);
+        console.error(`[DONO] Part ${partNumber} fail:`, err.message);
+        res.status(500).json({ error: err.message });
     }
 });
 
