@@ -68,7 +68,7 @@ router.get('/check-status', async (req, res) => {
         res.json({ status: 'new', message: 'New game! Feel free to donate.' });
     } catch (err) {
         console.error('[DONO] check-status error:', err);
-        res.json({ status: 'new', message: 'Proceed with upload.' });
+        res.status(500).json({ error: 'Failed to verify archive status. Please try again.' });
     }
 });
 
