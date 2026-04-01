@@ -194,8 +194,6 @@ async function sendDownloadInfo(req, res, game) {
     res.json({
         title: game.title,
         url: `/api/download/${game.publicId}`,
-        directUrl,
-        fileKey,
         fileSize,
         supportsRange: true,
         chunks
