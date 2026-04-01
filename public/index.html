@@ -16,6 +16,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/vue@3.5.13/dist/vue.global.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@zip.js/zip.js@2.7.53/dist/zip.min.js"></script>
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -1232,9 +1233,44 @@
                         this.resetDonateState();
                         this.donateState.lastFileName = file.name;
                         this.donateState.inProgress = true;
-                        this.donateState.message = 'Initializing...';
                         this.donateInternals.startedAt = Date.now();
                         this.donateInternals.totalBytes = file.size;
+
+                        // === SMART APK CHECK ===
+                        this.donateState.message = 'Scanning for Quest APK...';
+                        let packageName = '';
+                        try {
+                            const reader = new zip.ZipReader(new zip.BlobReader(file));
+                            const entries = await reader.getEntries();
+                            const apkEntry = entries.find(e => e.filename.toLowerCase().endsWith('.apk'));
+                            
+                            if (!apkEntry) {
+                                await reader.close();
+                                throw new Error('Not a Quest game (No .apk found in ZIP)');
+                            }
+
+                            // Extract package name from filename (e.g. com.rovio.birds.apk -> com.rovio.birds)
+                            const apkName = apkEntry.filename.split('/').pop() || '';
+                            packageName = apkName.replace(/\.apk$/i, '').split('_')[0]; 
+                            await reader.close();
+
+                            this.donateState.message = `Checking archive for ${packageName}...`;
+                            const checkRes = await fetch(`/api/donations/check-status?package=${encodeURIComponent(packageName)}`);
+                            const checkData = await checkRes.json();
+
+                            if (checkData.status === 'exists' || checkData.status === 'older') {
+                                throw new Error(checkData.message);
+                            } else if (checkData.status === 'update') {
+                                this.showToast(checkData.message, 'success');
+                            }
+                        } catch (e) {
+                            this.donateState.inProgress = false;
+                            this.donateState.error = e.message;
+                            this.donateState.message = '';
+                            return;
+                        }
+
+                        this.donateState.message = 'Initializing upload...';
 
                         let init;
                         try {
@@ -1245,6 +1281,8 @@
                             });
                             init = await res.json();
                             if (!res.ok) throw new Error(init.error || 'Init failed');
+                            this.donateState.key = init.key;
+                            this.donateState.uploadId = init.uploadId;
                         } catch (e) {
                             this.donateState.inProgress = false;
                             this.donateState.error = String(e.message || e);
@@ -1253,8 +1291,6 @@
                             return;
                         }
 
-                        this.donateState.key = init.key;
-                        this.donateState.uploadId = init.uploadId;
                         this.donateState.message = 'Uploading...';
 
                         const chunkSize = 10 * 1024 * 1024; // 10MB 

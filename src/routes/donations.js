@@ -21,6 +21,50 @@ function makeDonationKey(filename) {
     return `donation/${clean}`;
 }
 
+router.get('/check-status', async (req, res) => {
+    const packageName = String(req.query.package || '').trim();
+    const clientVersion = parseInt(req.query.version || '0', 10);
+
+    if (!packageName) return res.status(400).json({ error: 'package is required' });
+
+    try {
+        const { getBucketFileCache, readDB } = await import('../utils/db.js');
+        const [allFiles, games] = await Promise.all([getBucketFileCache(), readDB()]);
+
+        // 1. Try to find the package in our current library
+        const existingGame = games.find(g => 
+            (g.packageName && g.packageName === packageName) || 
+            (g.fileKey && g.fileKey.includes(packageName))
+        );
+
+        if (existingGame) {
+            const serverVersion = parseInt(existingGame.versionCode || existingGame.version || '0', 10);
+            
+            if (clientVersion > 0 && serverVersion > 0) {
+                if (clientVersion > serverVersion) {
+                    return res.json({ status: 'update', message: `Update found! You have v${clientVersion}, we have v${serverVersion}.`, serverVersion });
+                } else if (clientVersion === serverVersion) {
+                    return res.json({ status: 'exists', message: `We already have v${serverVersion} of this game.`, serverVersion });
+                } else {
+                    return res.json({ status: 'older', message: `You have an older version (v${clientVersion}). We already have v${serverVersion}.`, serverVersion });
+                }
+            }
+            return res.json({ status: 'exists', message: `This game is already in our archive.`, serverVersion });
+        }
+
+        // 2. Check if it's already in the archive but not indexed yet (check filenames in cache)
+        const inCache = allFiles.some(f => f.includes(packageName));
+        if (inCache) {
+            return res.json({ status: 'exists', message: `This game was recently uploaded and is waiting to be indexed.` });
+        }
+
+        res.json({ status: 'new', message: 'New game! Feel free to donate.' });
+    } catch (err) {
+        console.error('[DONO] check-status error:', err);
+        res.json({ status: 'new', message: 'Proceed with upload.' });
+    }
+});
+
 router.post('/init', async (req, res, next) => {
     if (!ensureEnv(req, res, ['DONATIONS.ENDPOINT', 'DONATIONS.KEY_ID', 'DONATIONS.APP_KEY', 'DONATIONS.BUCKET_NAME'])) return;
 
