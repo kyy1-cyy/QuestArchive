@@ -192,12 +192,13 @@ async function sendDownloadInfo(req, res, game) {
 
     // Build the Cloudflare-proxied public URL for free bandwidth
     const directUrl = buildPublicDownloadUrl(fileKey);
-    console.log(`[DOWNLOAD] directUrl=${directUrl}, chunks=${chunks.length}`);
+    console.log(`[DOWNLOAD] DOWNLOAD_BASE_URL="${config.B2.DOWNLOAD_BASE_URL}", directUrl="${directUrl}", fileKey="${fileKey}", chunks=${chunks.length}`);
 
     res.json({
         title: game.title,
         url: `/api/download/${game.publicId}`,
         directUrl,
+        fileKey,
         fileSize,
         supportsRange: true,
         chunks

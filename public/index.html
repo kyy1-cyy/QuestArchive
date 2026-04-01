@@ -989,9 +989,20 @@
                             return;
                         }
 
-                        // Use Cloudflare-proxied URL for free bandwidth, fall back to server URL
-                        const downloadUrl = info.directUrl || info.url;
-                        console.log(`[DOWNLOAD] Using URL: ${downloadUrl}`);
+                        // Build Cloudflare-proxied URL: dl.questarchive.xyz -> B2 (free bandwidth)
+                        // Use directUrl from server, or build from fileKey, NEVER use the server /api/download URL
+                        let downloadUrl = info.directUrl;
+                        if (!downloadUrl && info.fileKey) {
+                            const encodedKey = info.fileKey.split('/').map(p => encodeURIComponent(p)).join('/');
+                            downloadUrl = `https://dl.questarchive.xyz/quest-archive/${encodedKey}`;
+                            console.log(`[DOWNLOAD] Built Cloudflare URL from fileKey: ${downloadUrl}`);
+                        }
+                        if (!downloadUrl) {
+                            // Absolute last resort
+                            downloadUrl = info.url;
+                            console.warn('[DOWNLOAD] WARNING: No directUrl or fileKey, falling back to server URL!');
+                        }
+                        console.log(`[DOWNLOAD] Download URL: ${downloadUrl}`);
                         console.log(`[DOWNLOAD] File size: ${info.fileSize} bytes (${(info.fileSize/1024/1024).toFixed(1)}MB), ${info.chunks.length} chunks`);
 
                         this.dlState.message = 'Downloading...';
@@ -1033,7 +1044,7 @@
                                         });
                                         console.log(`[DOWNLOAD] Chunk ${chunk.index} response: status=${response.status}, type=${response.headers.get('content-type')}, length=${response.headers.get('content-length')}`);
 
-                                        if (response.status !== 206) {
+                                        if (response.status !== 206 && response.status !== 200) {
                                             const bodyText = await response.text().catch(() => '');
                                             console.error(`[DOWNLOAD] Chunk ${chunk.index} WRONG STATUS: ${response.status}, body: ${bodyText.slice(0, 300)}`);
                                             throw new Error(`Chunk ${chunk.index} failed (status ${response.status})`);
@@ -1060,7 +1071,7 @@
                                             console.warn(`[DOWNLOAD] Chunk ${chunk.index} SIZE MISMATCH: got ${totalChunkBytes}, expected ${expectedSize}`);
                                         }
 
-                                        return;
+                                        break; // exit retry loop, continue to next chunk
                                     } catch (err) {
                                         console.error(`[DOWNLOAD] Chunk ${chunk.index} ERROR (retry ${4-retries+1}/4):`, err.message);
                                         retries -= 1;
