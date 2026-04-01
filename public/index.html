@@ -1268,36 +1268,38 @@
                             await apkReader.close();
                             await reader.close();
 
-                            // Binary Manifest Parser (Simple String Scanner for speed)
-                            const text = new TextDecoder('ascii').decode(manifestBytes);
-                            
-                            // 1. Extract Package
-                            const pkgMatch = text.match(/package[\s\S]{1,50}([a-z][a-z0-t0-9_]+\.[a-z][a-z0-9_]+(?:\.[a-z][a-z0-9_]+)+)/i);
+                            // === Ported from quest_validator.py: extract_manifest_text ===
+                            let text = "";
+                            let current = [];
+                            for (let i = 0; i < manifestBytes.length; i++) {
+                                let b = manifestBytes[i];
+                                if (b >= 32 && b <= 126) {
+                                    current.push(String.fromCharCode(b));
+                                } else {
+                                    if (current.length >= 3) text += current.join('') + " ";
+                                    current = [];
+                                }
+                            }
+                            if (current.length >= 3) text += current.join('');
+
+                            // === Ported from quest_validator.py: regex extraction ===
+                            const pkgMatch = text.match(/package="([^"]+)"/);
                             packageName = pkgMatch ? pkgMatch[1] : '';
                             
-                            // 2. VR Heartbeat Score
-                            // We use a broad range of indicators from your Python validator.
-                            const vrIndicators = [
-                                'oculus', 'vr_mode', 'vr.mode', 'vr_api', 'vr.api', 
-                                'handtracking', 'headtracking', 'vrmode', 'virtual_reality',
-                                'com.oculus.permission', 'com.facebook.permission', 'android.permission.VR_MODE'
-                            ];
-                            let score = 0;
-                            vrIndicators.forEach(ind => { 
-                                if (text.toLowerCase().includes(ind)) score++; 
-                            });
-
-                            // Only block if score is 0 AND package name has zero hint of VR/Oculus
-                            const lowerPkg = packageName.toLowerCase();
-                            const hasVrInName = lowerPkg.includes('vr') || lowerPkg.includes('oculus') || lowerPkg.includes('quest');
-                            
-                            if (score === 0 && !hasVrInName) {
-                                throw new Error('Not a Quest game (No VR signature found)');
-                            }
-
-                            // 3. Extract VersionCode
-                            const vcMatch = text.match(/versionCode[\s\S]{0,10}?(\d+)/i);
+                            const vcMatch = text.match(/versionCode="(\d+)"/);
                             clientVersion = vcMatch ? parseInt(vcMatch[1], 10) : 0;
+
+                            // VR Indicators (Scoring exactly like Python)
+                            let score = 0;
+                            const vrPerms = ['com.oculus.permission.USE_OCULUS', 'com.oculus.permission.USE_VR_API', 'com.facebook.permission.USE_VR_API', 'android.permission.VR_MODE', 'com.oculus.vr.permission.USE_VR', 'com.oculus.permission.OCULUS'];
+                            const vrFeatures = ['oculus', 'vr', 'virtual_reality', 'headtracking', 'vrmode', 'vr_mode', 'oculusvr', 'oculus_tracking', 'handtracking', 'controller'];
+                            
+                            vrPerms.forEach(p => { if (text.includes(p)) score += 3; });
+                            vrFeatures.forEach(f => { if (text.toLowerCase().includes(f)) score += 2; });
+
+                            if (score < 3) {
+                                throw new Error(`Not a Quest game (score ${score}/3 needed)`);
+                            }
 
                             if (packageName) {
                                 this.donateState.message = `Checking archive for ${packageName}...`;
@@ -1312,14 +1314,11 @@
                                 }
                             }
                         } catch (e) {
-                            console.error('[APK-VERIFY] Error:', e);
-                            if (e.message.includes('archive') || e.message.includes('version') || e.message.includes('Quest game')) {
-                                this.donateState.inProgress = false;
-                                this.donateState.error = e.message;
-                                this.donateState.message = '';
-                                return;
-                            }
-                            // Silent allow on cryptic errors to avoid blocking legit donors
+                            console.error('[VALIDATOR] Fail:', e);
+                            this.donateState.inProgress = false;
+                            this.donateState.error = e.message;
+                            this.donateState.message = '';
+                            return;
                         }
 
                         this.donateState.message = 'Initializing upload...';
