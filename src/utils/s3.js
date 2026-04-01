@@ -13,14 +13,14 @@ function regionForEndpoint(endpoint, fallback = 'us-west-004') {
 const httpAgent = new https.Agent({
     family: 4,
     keepAlive: true,
-    maxSockets: 25,
-    timeout: 600000
+    maxSockets: 50,
+    timeout: 36000000
 });
 
 const requestHandler = new NodeHttpHandler({
     httpsAgent: httpAgent,
-    connectionTimeout: 60000,
-    socketTimeout: 600000
+    connectionTimeout: 600000,
+    socketTimeout: 36000000
 });
 
 // Main B2 client (games, database, logs, storage)
