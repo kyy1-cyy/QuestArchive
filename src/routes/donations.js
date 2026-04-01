@@ -40,7 +40,7 @@ router.get('/check-status', async (req, res) => {
         if (existingGame) {
             const serverVersion = parseInt(existingGame.versionCode || existingGame.version || '0', 10);
             
-            if (clientVersion > 0 && serverVersion > 0) {
+            if (serverVersion > 0 && clientVersion > 0) {
                 if (clientVersion > serverVersion) {
                     return res.json({ status: 'update', message: `Update found! You have v${clientVersion}, we have v${serverVersion}.`, serverVersion });
                 } else if (clientVersion === serverVersion) {

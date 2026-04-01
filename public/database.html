@@ -2113,10 +2113,24 @@
                     const filename = String(pg.filename || '');
                     const baseName = filename.split('/').pop() || filename;
                     this.newGame.hashId = pg.hashId || '';
-                    this.newGame.title = baseName.replace(/\.zip$/i, '');
+                    
+                    // Smart Version & Title Parsing
+                    // Example: "Angry Birds VR v3.1.0-VRP.zip"
+                    // v[number]... ends before -VRP or .zip
+                    const vMatch = baseName.match(/v(\d+[\d.]*)/i);
+                    if (vMatch) {
+                        this.newGame.version = vMatch[1];
+                        // Title is everything before the 'v'
+                        const titlePart = baseName.split(/v\d/i)[0].trim();
+                        this.newGame.title = titlePart.replace(/[._-]$/, '').trim();
+                    } else {
+                        this.newGame.title = baseName.replace(/\.zip$/i, '').trim();
+                        this.newGame.version = '1.0';
+                    }
+
                     this.addModalStep = 'form';
                     this.manualMode = false;
-                    this.showToast('Pre-filled from bucket', 'success');
+                    this.showToast('Smart-filled from bucket', 'success');
                     
                     if (this.newGame.hashId && filename) {
                         this.autoProcessGame(this.newGame.hashId, filename);
