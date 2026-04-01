@@ -1268,13 +1268,14 @@
                             await apkReader.close();
                             await reader.close();
 
-                            // === Ported from quest_validator.py: extract_manifest_text ===
+                            // === Ported from quest_validator.py: extract_manifest_text (Improved) ===
                             let text = "";
                             let current = [];
                             for (let i = 0; i < manifestBytes.length; i++) {
                                 let b = manifestBytes[i];
-                                if (b >= 32 && b <= 126) {
-                                    current.push(String.fromCharCode(b));
+                                // Capture printable ASCII or potential local characters
+                                if ((b >= 32 && b <= 126) || b === 0) {
+                                    if (b !== 0) current.push(String.fromCharCode(b));
                                 } else {
                                     if (current.length >= 3) text += current.join('') + " ";
                                     current = [];
@@ -1282,22 +1283,30 @@
                             }
                             if (current.length >= 3) text += current.join('');
 
-                            // === Ported from quest_validator.py: regex extraction ===
-                            const pkgMatch = text.match(/package="([^"]+)"/);
+                            // === Robust Extraction for Compiled Binary XML ===
+                            // 1. Package Name (Look for standard dots and camelcase patterns)
+                            const pkgMatch = text.match(/([a-z][a-z0-9_]*\.[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+)/i);
                             packageName = pkgMatch ? pkgMatch[1] : '';
                             
-                            const vcMatch = text.match(/versionCode="(\d+)"/);
+                            // 2. Version Code (Look for strings of digits near 'versionCode')
+                            const vcMatch = text.match(/versionCode[\s\S]{0,20}?(\d+)/i);
                             clientVersion = vcMatch ? parseInt(vcMatch[1], 10) : 0;
 
-                            // VR Indicators (Scoring exactly like Python)
+                            // 3. VR Scoring (Broad Matching)
                             let score = 0;
-                            const vrPerms = ['com.oculus.permission.USE_OCULUS', 'com.oculus.permission.USE_VR_API', 'com.facebook.permission.USE_VR_API', 'android.permission.VR_MODE', 'com.oculus.vr.permission.USE_VR', 'com.oculus.permission.OCULUS'];
-                            const vrFeatures = ['oculus', 'vr', 'virtual_reality', 'headtracking', 'vrmode', 'vr_mode', 'oculusvr', 'oculus_tracking', 'handtracking', 'controller'];
+                            const vrSigs = [
+                                'com.oculus.', 'com.facebook.permission', 'android.permission.VR_MODE',
+                                'oculus', 'handtracking', 'headtracking', 'vrmode', 'vr_mode'
+                            ];
                             
-                            vrPerms.forEach(p => { if (text.includes(p)) score += 3; });
-                            vrFeatures.forEach(f => { if (text.toLowerCase().includes(f)) score += 2; });
+                            vrSigs.forEach(sig => {
+                                if (text.toLowerCase().includes(sig.toLowerCase())) {
+                                    score += 3; // Give high weight to any of these
+                                    console.log('[HEARTBEAT] Found sig:', sig);
+                                }
+                            });
 
-                            if (score < 3) {
+                            if (score < 3 && !text.toLowerCase().includes('vr') && !text.toLowerCase().includes('oculus')) {
                                 throw new Error(`Not a Quest game (score ${score}/3 needed)`);
                             }
 
