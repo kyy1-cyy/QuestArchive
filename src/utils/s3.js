@@ -1,4 +1,6 @@
 import { S3Client } from '@aws-sdk/client-s3';
+import { NodeHttpHandler } from '@smithy/node-http-handler';
+import https from 'https';
 import { config } from './config.js';
 
 function regionForEndpoint(endpoint, fallback = 'us-west-004') {
@@ -6,6 +8,20 @@ function regionForEndpoint(endpoint, fallback = 'us-west-004') {
     if (value.includes('cloudflarestorage.com')) return 'auto';
     return fallback;
 }
+
+// Force IPv4 + longer timeouts to avoid B2 IPv6 connection issues
+const httpAgent = new https.Agent({
+    family: 4,
+    keepAlive: true,
+    maxSockets: 25,
+    timeout: 300000
+});
+
+const requestHandler = new NodeHttpHandler({
+    httpsAgent: httpAgent,
+    connectionTimeout: 30000,
+    socketTimeout: 300000
+});
 
 // Main B2 client (games, database, logs, storage)
 export const s3Client = new S3Client({
@@ -15,7 +31,8 @@ export const s3Client = new S3Client({
         accessKeyId: config.B2.KEY_ID,
         secretAccessKey: config.B2.APP_KEY
     },
-    forcePathStyle: true
+    forcePathStyle: true,
+    requestHandler
 });
 
 // Donations B2 client (separate bucket + credentials)
@@ -26,5 +43,6 @@ export const s3DonationsClient = new S3Client({
         accessKeyId: config.DONATIONS.KEY_ID,
         secretAccessKey: config.DONATIONS.APP_KEY
     },
-    forcePathStyle: true
+    forcePathStyle: true,
+    requestHandler
 });

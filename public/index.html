@@ -975,7 +975,13 @@
                             return;
                         }
 
-                        const downloadUrl = info.url;
+                        // Use Cloudflare URL for direct, fast downloads (no server middleman)
+                        let downloadUrl = info.directUrl;
+                        if (!downloadUrl && info.fileKey) {
+                            const encodedKey = info.fileKey.split('/').map(p => encodeURIComponent(p)).join('/');
+                            downloadUrl = `https://dl.questarchive.xyz/quest-archive/${encodedKey}`;
+                        }
+                        if (!downloadUrl) downloadUrl = info.url;
                         const totalBytes = info.fileSize || 0;
 
                         this.dlState.message = 'Downloading...';
