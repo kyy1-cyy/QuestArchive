@@ -2115,15 +2115,16 @@
                     this.newGame.hashId = pg.hashId || '';
                     
                     // Smart Version & Title Parsing
-                    // Example: "Angry Birds VR v3.1.0-VRP.zip"
-                    // v[number]... ends before -VRP or .zip
-                    const vMatch = baseName.match(/v(\d+[\d.]*)/i);
+                    // Logic: Everything from 'v' + [number] up until '-VRP' or '.zip'
+                    // Example: "Angry Birds Vr v48+305_39 -VRP.zip" -> Title: "Angry Birds Vr", Version: "48+305_39"
+                    const vMatch = baseName.match(/v(\d+[^]*(?=-VRP|\.zip))/i);
                     if (vMatch) {
-                        this.newGame.version = vMatch[1];
-                        // Title is everything before the 'v'
+                        this.newGame.version = vMatch[1].trim().replace(/^-/, '').replace(/-VRP$/i, '');
+                        // Title is everything before the 'v[number]'
                         const titlePart = baseName.split(/v\d/i)[0].trim();
                         this.newGame.title = titlePart.replace(/[._-]$/, '').trim();
                     } else {
+                        // Fallback: If 'v' exists but no number after it, check if it's part of the name
                         this.newGame.title = baseName.replace(/\.zip$/i, '').trim();
                         this.newGame.version = '1.0';
                     }

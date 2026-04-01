@@ -52,10 +52,11 @@ router.get('/check-status', async (req, res) => {
             return res.json({ status: 'exists', message: `This game is already in our archive.`, serverVersion });
         }
 
-        // 2. Check if it's already in the archive but not indexed yet (check filenames in cache)
-        const inCache = allFiles.some(f => f.includes(packageName));
+        // 2. Check if it's already in the archive but not indexed yet
+        // We check the raw file list from storage (game_cache.json) for the package name
+        const inCache = allFiles.some(f => f.toLowerCase().includes(packageName.toLowerCase()));
         if (inCache) {
-            return res.json({ status: 'exists', message: `This game was recently uploaded and is waiting to be indexed.` });
+            return res.json({ status: 'exists', message: `This game is already in our archive (pending indexing).` });
         }
 
         res.json({ status: 'new', message: 'New game! Feel free to donate.' });
