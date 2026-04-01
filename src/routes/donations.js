@@ -28,49 +28,41 @@ router.get('/check-status', async (req, res) => {
     if (!packageName) return res.status(400).json({ error: 'package is required' });
 
     try {
-        const { getBucketFileCache, readDB } = await import('../utils/db.js');
-        const [allFiles, games] = await Promise.all([getBucketFileCache(), readDB()]);
+        const { listAllObjects, readDB } = await import('../utils/db.js');
+        // Bypass cache check - perform deep bucket scan (Class C) as requested
+        const { listAllObjects: searchB2 } = await import('../utils/s3-helpers.js');
+        
+        const [allObjects, games] = await Promise.all([
+            searchB2(''), 
+            import('../utils/db.js').then(m => m.readDB())
+        ]);
 
-        // 1. Try to find the package in our current library
+        // 1. Check Library Database
         const existingGame = games.find(g => 
             (g.packageName && g.packageName === packageName) || 
             (g.fileKey && g.fileKey.includes(packageName))
         );
 
+        let serverVersion = 0;
         if (existingGame) {
-            const serverVersion = parseInt(existingGame.versionCode || existingGame.version || '0', 10);
-            
-            if (serverVersion > 0 && clientVersion > 0) {
-                if (clientVersion > serverVersion) {
-                    return res.json({ status: 'update', message: `Update found! You have v${clientVersion}, we have v${serverVersion}.`, serverVersion });
-                } else if (clientVersion === serverVersion) {
-                    return res.json({ status: 'exists', message: `We already have v${serverVersion} of this game.`, serverVersion });
-                } else {
-                    return res.json({ status: 'older', message: `You have an older version (v${clientVersion}). We already have v${serverVersion}.`, serverVersion });
-                }
+            serverVersion = parseInt(existingGame.versionCode || existingGame.version || '0', 10);
+        } else {
+            // 2. Class C Deep Search in raw storage for package sub-string
+            const rawMatch = allObjects.find(obj => obj.Key && obj.Key.toLowerCase().includes(packageName.toLowerCase()));
+            if (rawMatch) {
+                const vMatch = rawMatch.Key.match(/v(\d+)/i);
+                serverVersion = vMatch ? parseInt(vMatch[1], 10) : 1; // Default to 1 if found but no version in name
             }
-            return res.json({ status: 'exists', message: `This game is already in our archive.`, serverVersion });
         }
 
-        // 2. Check if it's in the archive (storage cache) but not indexed yet
-        // We look for filenames containing the package name and try to extract a version
-        const cachedFile = allFiles.find(f => f.toLowerCase().includes(packageName.toLowerCase()));
-        if (cachedFile) {
-            // Try to extract version from filename if possible, e.g. "Game_com.pkg_v123.zip"
-            const vMatch = cachedFile.match(/v(\d+)/i);
-            const cachedVersion = vMatch ? parseInt(vMatch[1], 10) : 0;
-
-            if (clientVersion > 0 && cachedVersion > 0) {
-                if (clientVersion > cachedVersion) {
-                    return res.json({ status: 'update', message: `Update found in storage! You have v${clientVersion}, we have v${cachedVersion} (pending index).` });
-                } else if (clientVersion === cachedVersion) {
-                    return res.json({ status: 'exists', message: `We already have v${cachedVersion} in storage (pending index).` });
-                } else {
-                    return res.json({ status: 'older', message: `You have an older version (v${clientVersion}). We already have v${cachedVersion} in storage.` });
-                }
+        if (serverVersion > 0) {
+            if (clientVersion > serverVersion) {
+                return res.json({ status: 'update', message: `Update found! You have v${clientVersion}, we have v${serverVersion}.`, serverVersion });
+            } else if (clientVersion === serverVersion) {
+                return res.json({ status: 'exists', message: `We already have v${serverVersion} of this game.`, serverVersion });
+            } else {
+                return res.json({ status: 'older', message: `Archive has a newer version (v${serverVersion}). You have v${clientVersion}.`, serverVersion });
             }
-            // If we can't determine version, default to 'exists' to be safe
-            return res.json({ status: 'exists', message: `This game is already in our storage and waiting to be indexed.` });
         }
 
         res.json({ status: 'new', message: 'New game! Feel free to donate.' });
