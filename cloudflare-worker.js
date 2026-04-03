@@ -1,15 +1,5 @@
 /**
- * Cloudflare Worker for dl.questarchive.xyz
  * 
- * Proxies requests to Backblaze B2 S3 endpoint with CORS headers.
- * This enables:
- * - Free bandwidth via Cloudflare-Backblaze Bandwidth Alliance
- * - Browser Range requests for chunked downloads
- * - Direct browser uploads via presigned URLs
- * 
- * DEPLOY: Copy this entire file content into your Cloudflare Worker
- * at Workers & Pages > dl-questarchive > Edit Code
- */
 export default {
     async fetch(request) {
         const url = new URL(request.url);
