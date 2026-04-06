@@ -468,7 +468,7 @@
                             :disabled="uploadState.inProgress || hashState.computing">Choose File</button>
                         <button class="btn" @click="startUploadPrepared"
                             :disabled="!preparedFile || uploadState.inProgress || hashState.computing">Upload</button>
-                        <button v-if="uploadState.inProgress || hashState.computing" class="btn btn-delete"
+                        <button v-if="preparedFile || uploadState.inProgress || hashState.computing" class="btn btn-delete"
                             @click="cancelUpload">Cancel</button>
                         <input ref="fileInput" type="file" accept=".zip" style="display:none" @change="handleFileInput">
                     </div>
@@ -521,7 +521,7 @@
                             Files</button>
                         <button class="btn" @click="startBulkUpload"
                             :disabled="bulkQueue.length === 0 || bulkState.inProgress">Start</button>
-                        <button v-if="bulkState.inProgress" class="btn btn-delete" @click="cancelBulkUpload">Cancel
+                        <button v-if="bulkQueue.length > 0 || bulkState.inProgress" class="btn btn-delete" @click="cancelBulkUpload">Cancel
                             All</button>
                         <input ref="bulkInput" type="file" accept=".zip" multiple style="display:none"
                             @change="handleBulkPick">
