@@ -4,18 +4,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Quest Archive has downloads for almost any Quest game you're looking for ready to download.">
+    <meta name="description"
+        content="Quest Archive has downloads for almost any Quest game you're looking for ready to download.">
     <meta name="theme-color" content="#ffffff">
     <meta property="og:title" content="Quest Archive. One stop place to download any vr game">
-    <meta property="og:description" content="Quest Archive has downloads for almost any Quest game you're looking for ready to download.">
+    <meta property="og:description"
+        content="Quest Archive has downloads for almost any Quest game you're looking for ready to download.">
     <meta property="og:site_name" content="QuestArchive">
     <meta property="og:url" content="https://questarchive.xyz">
     <meta property="og:type" content="website">
-    <meta property="og:image" content="https://i.ibb.co/YFqWrRTX/IMG-0264.webp">
+    <meta property="og:image" content="https://i.ibb.co/Kjqs5mRV/rounded-corners-3.png">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="Quest Archive. One stop place to download any vr game">
-    <meta name="twitter:description" content="Quest Archive has downloads for almost any Quest game you're looking for ready to download.">
-    <meta name="twitter:image" content="https://i.ibb.co/YFqWrRTX/IMG-0264.webp">
+    <meta name="twitter:description"
+        content="Quest Archive has downloads for almost any Quest game you're looking for ready to download.">
+    <meta name="twitter:image" content="https://i.ibb.co/Kjqs5mRV/rounded-corners-3.png">
     <title>Database</title>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <style>
@@ -423,22 +426,30 @@
                     @click="activeTab = 'games'">Games</button>
                 <button class="btn btn-tab" :class="{ active: activeTab === 'donations' }"
                     @click="openDonations">Donations</button>
-                <button v-if="isAdmin" class="btn btn-tab" :class="{ active: activeTab === 'storage' }" @click="openStorage">Server
+                <button v-if="isAdmin" class="btn btn-tab" :class="{ active: activeTab === 'storage' }"
+                    @click="openStorage">Server
                     Storage</button>
-                <button v-if="isAdmin" class="btn btn-tab" style="background: rgba(88, 166, 255, 0.1); border-color: rgba(88, 166, 255, 0.3); color: #58a6ff;" @click="goToSystem">System</button>
+                <button v-if="isAdmin" class="btn btn-tab"
+                    style="background: rgba(88, 166, 255, 0.1); border-color: rgba(88, 166, 255, 0.3); color: #58a6ff;"
+                    @click="goToSystem">System</button>
 
-                <button v-if="isAdmin" class="btn btn-tab" :class="{ active: activeTab === 'logs' }" @click="openLogs">Logs</button>
-                <button v-if="activeTab === 'games'" class="btn" @click="openAddModal" style="background: #007acc; border-color: #008be1;">+ Add Game</button>
-                <button v-if="activeTab === 'games' && selectedIds.length > 0" class="btn btn-delete" @click="bulkRemove">
+                <button v-if="isAdmin" class="btn btn-tab" :class="{ active: activeTab === 'logs' }"
+                    @click="openLogs">Logs</button>
+                <button v-if="activeTab === 'games'" class="btn" @click="openAddModal"
+                    style="background: #007acc; border-color: #008be1;">+ Add Game</button>
+                <button v-if="activeTab === 'games' && selectedIds.length > 0" class="btn btn-delete"
+                    @click="bulkRemove">
                     Remove Selected ({{ selectedIds.length }})
                 </button>
                 <div style="margin-left: auto; display: flex; gap: 12px; align-items: center;">
                     <div style="position: relative;">
-                        <input type="text" v-model="searchQuery" placeholder="Search database..." 
+                        <input type="text" v-model="searchQuery" placeholder="Search database..."
                             style="width: 200px; padding: 6px 12px 6px 30px; font-size: 13px; background: #252526; border: 1px solid #333; border-radius: 6px; color: #eee;">
-                        <span style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #666; font-size: 14px;">🔍</span>
+                        <span
+                            style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #666; font-size: 14px;">🔍</span>
                     </div>
-                    <span style="color: #808080; font-size: 12px;">Total: {{ filteredGames.length }} / {{ games.length }}</span>
+                    <span style="color: #808080; font-size: 12px;">Total: {{ filteredGames.length }} / {{ games.length
+                        }}</span>
                 </div>
             </div>
 
@@ -654,7 +665,8 @@
                 <thead>
                     <tr>
                         <th style="width: 44px;">
-                            <input type="checkbox" :checked="storageRows.length && storageSelectedKeys.length === storageRows.length"
+                            <input type="checkbox"
+                                :checked="storageRows.length && storageSelectedKeys.length === storageRows.length"
                                 @click.prevent.stop="toggleSelectAllStorage">
                         </th>
                         <th>Name</th>
@@ -747,14 +759,20 @@
             <div v-if="showAddModal" class="overlay" @click.self="closeAddModal">
                 <div class="modal">
                     <div class="modal-header" style="margin-bottom: 24px;">
-                        <h3 style="margin:0; font-size: 18px; font-weight: 600; color:#fff;">{{ addModalStep === 'chooser' ? 'Add New Entry' : addModalStep === 'picker' ? 'Auto Pick Game' : 'Add Game Info' }}</h3>
+                        <h3 style="margin:0; font-size: 18px; font-weight: 600; color:#fff;">{{ addModalStep ===
+                            'chooser' ? 'Add New Entry' : addModalStep === 'picker' ? 'Auto Pick Game' : 'Add Game Info'
+                            }}</h3>
                         <button class="close-btn" @click="closeAddModal">✕</button>
                     </div>
 
-                    <div v-if="addModalStep === 'chooser'" class="form-group" style="display:flex; flex-direction:column; gap:14px;">
+                    <div v-if="addModalStep === 'chooser'" class="form-group"
+                        style="display:flex; flex-direction:column; gap:14px;">
                         <div style="color:#fff; font-size: 14px; font-weight: 600;">Auto Pick Game</div>
-                        <div class="muted">Open the B2 bucket, choose a .zip, and auto-fill the entry before changing anything manually.</div>
-                        <button class="btn" style="width: 100%; justify-content: center; padding: 14px; font-size: 15px;" @click="openPendingPicker" :disabled="pendingLoading">
+                        <div class="muted">Open the B2 bucket, choose a .zip, and auto-fill the entry before changing
+                            anything manually.</div>
+                        <button class="btn"
+                            style="width: 100%; justify-content: center; padding: 14px; font-size: 15px;"
+                            @click="openPendingPicker" :disabled="pendingLoading">
                             {{ pendingLoading ? 'Scanning Bucket...' : 'Auto Pick Game' }}
                         </button>
                         <div class="modal-actions" style="display:flex; gap:10px; align-items:center; margin-top: 8px;">
@@ -765,12 +783,18 @@
                     <div v-else-if="addModalStep === 'picker'" style="display:flex; flex-direction:column; gap:14px;">
                         <div style="display:flex; justify-content: space-between; align-items:center; gap:10px;">
                             <div class="muted">Showing every .zip file found in the B2 bucket.</div>
-                            <button class="btn btn-tab" @click="fetchPendingGames" :disabled="pendingLoading">Refresh</button>
+                            <button class="btn btn-tab" @click="fetchPendingGames"
+                                :disabled="pendingLoading">Refresh</button>
                         </div>
-                        <div v-if="pendingLoading" style="padding:40px; text-align:center;" class="muted">Scanning B2 bucket...</div>
-                        <div v-else-if="pendingError" style="padding:24px; text-align:center; color:#ff9999; font-size: 12px;">{{ pendingError }}</div>
-                        <div v-else-if="pendingGames.length === 0" style="padding:40px; text-align:center;" class="muted">No .zip files found in the B2 bucket.</div>
-                        <div v-else style="border: 1px solid #333; border-radius: 8px; overflow: hidden; max-height: 420px; overflow-y: auto;">
+                        <div v-if="pendingLoading" style="padding:40px; text-align:center;" class="muted">Scanning B2
+                            bucket...</div>
+                        <div v-else-if="pendingError"
+                            style="padding:24px; text-align:center; color:#ff9999; font-size: 12px;">{{ pendingError }}
+                        </div>
+                        <div v-else-if="pendingGames.length === 0" style="padding:40px; text-align:center;"
+                            class="muted">No .zip files found in the B2 bucket.</div>
+                        <div v-else
+                            style="border: 1px solid #333; border-radius: 8px; overflow: hidden; max-height: 420px; overflow-y: auto;">
                             <table style="margin: 0;">
                                 <thead>
                                     <tr>
@@ -781,18 +805,23 @@
                                 </thead>
                                 <tbody>
                                     <tr v-for="pg in pendingGames" :key="pg.filename">
-                                        <td style="color:#ce9178; font-size: 12px; word-break: break-word;">{{ pg.filename }}</td>
-                                        <td style="font-family: Consolas, monospace; color:#9cdcfe; font-size: 11px;">{{ pg.hashId || '-' }}</td>
+                                        <td style="color:#ce9178; font-size: 12px; word-break: break-word;">{{
+                                            pg.filename }}</td>
+                                        <td style="font-family: Consolas, monospace; color:#9cdcfe; font-size: 11px;">{{
+                                            pg.hashId || '-' }}</td>
                                         <td style="text-align:right;">
-                                            <button class="btn" @click="selectPending(pg)" :disabled="!pg.hashId">Pick</button>
+                                            <button class="btn" @click="selectPending(pg)"
+                                                :disabled="!pg.hashId">Pick</button>
                                         </td>
                                     </tr>
                                 </tbody>
                             </table>
                         </div>
                         <div class="modal-actions" style="display:flex; gap:10px; align-items:center;">
-                            <button class="btn btn-tab" style="border:none;" @click="addModalStep = 'chooser'">Back</button>
-                            <div class="muted" style="margin-left:auto;" v-if="pendingGames.length">{{ pendingGames.length }} files</div>
+                            <button class="btn btn-tab" style="border:none;"
+                                @click="addModalStep = 'chooser'">Back</button>
+                            <div class="muted" style="margin-left:auto;" v-if="pendingGames.length">{{
+                                pendingGames.length }} files</div>
                         </div>
                     </div>
 
@@ -800,61 +829,88 @@
                         <div class="form-group">
                             <label>R2 Hash ID (Zip)</label>
                             <div style="display:flex; gap:8px; align-items: center;">
-                                <div class="form-control" style="flex: 1; min-width: 0; display:flex; align-items:center; gap:10px;">
-                                    <span v-if="newGame.hashId" style="color:#9cdcfe; font-family: Consolas, monospace; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;">{{ newGame.hashId }}</span>
+                                <div class="form-control"
+                                    style="flex: 1; min-width: 0; display:flex; align-items:center; gap:10px;">
+                                    <span v-if="newGame.hashId"
+                                        style="color:#9cdcfe; font-family: Consolas, monospace; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;">{{
+                                        newGame.hashId }}</span>
                                     <span v-else style="color:#777;">No hash selected</span>
-                                    <span v-if="newGame.hashId" style="margin-left:auto; color:#ce9178; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 240px;">{{ md5FileName(newGame.hashId) }}</span>
+                                    <span v-if="newGame.hashId"
+                                        style="margin-left:auto; color:#ce9178; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 240px;">{{
+                                        md5FileName(newGame.hashId) }}</span>
                                 </div>
-                                <button class="btn" @click="openPendingPicker" :disabled="pendingLoading">Pick Different File</button>
+                                <button class="btn" @click="openPendingPicker" :disabled="pendingLoading">Pick Different
+                                    File</button>
                             </div>
                         </div>
 
                         <div class="form-group">
                             <label>Display Title</label>
-                            <input v-model="newGame.title" type="text" placeholder="e.g. Beat Saber" :readonly="!(imageState.error || manualMode)">
+                            <input v-model="newGame.title" type="text" placeholder="e.g. Beat Saber"
+                                :readonly="!(imageState.error || manualMode)">
                         </div>
 
                         <div class="form-group">
                             <label>Version</label>
-                            <input v-model="newGame.version" type="text" placeholder="e.g. 1.0" :readonly="!(imageState.error || manualMode)">
+                            <input v-model="newGame.version" type="text" placeholder="e.g. 1.0"
+                                :readonly="!(imageState.error || manualMode)">
                         </div>
 
                         <div class="form-group">
                             <label>Notes</label>
-                            <textarea v-model="newGame.description" rows="3" placeholder="Brief game overview..." :readonly="!(imageState.error || manualMode)"></textarea>
+                            <textarea v-model="newGame.description" rows="3" placeholder="Brief game overview..."
+                                :readonly="!(imageState.error || manualMode)"></textarea>
                         </div>
 
                         <div class="form-group" style="margin-bottom: 24px;">
                             <label>Thumbnail Visual</label>
-                            <div class="grid-layout" style="display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: start;">
-                                <input v-model="newGame.thumbnailUrl" type="text" placeholder="Image URL (automatic if uploaded)" :readonly="!(imageState.error || manualMode)">
+                            <div class="grid-layout"
+                                style="display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: start;">
+                                <input v-model="newGame.thumbnailUrl" type="text"
+                                    placeholder="Image URL (automatic if uploaded)"
+                                    :readonly="!(imageState.error || manualMode)">
                                 <div class="dropzone" :class="{ active: imageDragOver }"
                                     @dragenter.prevent="imageDragOver = true" @dragover.prevent="imageDragOver = true"
                                     @dragleave.prevent="imageDragOver = false" @drop.prevent="handleImageDrop"
                                     style="padding: 8px 12px; border-style: solid; min-width: 120px; height: 38px; box-sizing: border-box; justify-content: center;">
-                                    <button class="btn btn-tab" style="border:none; padding:0; font-size: 11px;" @click="openImagePicker"
-                                        :disabled="imageState.inProgress || !(imageState.error || manualMode)">{{ imageState.inProgress ? 'Uploading...' : 'Upload Image' }}</button>
+                                    <button class="btn btn-tab" style="border:none; padding:0; font-size: 11px;"
+                                        @click="openImagePicker"
+                                        :disabled="imageState.inProgress || !(imageState.error || manualMode)">{{
+                                        imageState.inProgress ? 'Uploading...' : 'Upload Image' }}</button>
                                     <input ref="imageInput" type="file" accept=".png,.jpg,.jpeg,image/png,image/jpeg"
-                                        style="display:none" @change="handleImagePick" :disabled="!(imageState.error || manualMode)">
+                                        style="display:none" @change="handleImagePick"
+                                        :disabled="!(imageState.error || manualMode)">
                                 </div>
                             </div>
-                            <div style="margin-top: 10px; display:flex; gap:10px; align-items:center; flex-wrap: wrap;" v-if="newGame.thumbnailUrl">
-                                <span class="muted" style="font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 520px;">
+                            <div style="margin-top: 10px; display:flex; gap:10px; align-items:center; flex-wrap: wrap;"
+                                v-if="newGame.thumbnailUrl">
+                                <span class="muted"
+                                    style="font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 520px;">
                                     {{ thumbDisplayNameFromUrl(newGame.thumbnailUrl) }}
                                 </span>
                             </div>
-                            <div class="muted" style="margin-top: 8px; color: #b5cea8;" v-if="imageState.message">{{ imageState.message }}</div>
-                            <div class="muted" style="margin-top: 8px; color: #b5cea8;" v-else-if="newGame.thumbnailUrl && !imageState.error">Success: Game info auto-filled</div>
-                            <div style="margin-top: 8px; color:#ff9999; font-size: 11px;" v-if="imageState.error">Error: {{ imageState.error }} - Manual override enabled</div>
+                            <div class="muted" style="margin-top: 8px; color: #b5cea8;" v-if="imageState.message">{{
+                                imageState.message }}</div>
+                            <div class="muted" style="margin-top: 8px; color: #b5cea8;"
+                                v-else-if="newGame.thumbnailUrl && !imageState.error">Success: Game info auto-filled
+                            </div>
+                            <div style="margin-top: 8px; color:#ff9999; font-size: 11px;" v-if="imageState.error">Error:
+                                {{ imageState.error }} - Manual override enabled</div>
                         </div>
 
                         <div class="modal-actions" style="display:flex; gap:10px; align-items:center;">
-                            <button class="btn btn-tab" style="border:none;" @click="addModalStep = 'picker'">Back</button>
+                            <button class="btn btn-tab" style="border:none;"
+                                @click="addModalStep = 'picker'">Back</button>
                             <div style="flex: 1;"></div>
-                            <button class="btn btn-tab" style="border:1px solid #333; font-size: 12px; padding: 6px 12px;" @click="manualMode = !manualMode">
+                            <button class="btn btn-tab"
+                                style="border:1px solid #333; font-size: 12px; padding: 6px 12px;"
+                                @click="manualMode = !manualMode">
                                 {{ manualMode ? 'Disable Manual' : 'Enable Manual Editing' }}
                             </button>
-                            <button class="btn" style="min-width: 100px; justify-content: center; background:#007acc; border-color:#008be1;" @click="addGame" :disabled="!newGame.hashId || imageState.inProgress">Save to DB</button>
+                            <button class="btn"
+                                style="min-width: 100px; justify-content: center; background:#007acc; border-color:#008be1;"
+                                @click="addGame" :disabled="!newGame.hashId || imageState.inProgress">Save to
+                                DB</button>
                         </div>
                     </template>
                 </div>
@@ -868,12 +924,15 @@
                     </div>
 
                     <div class="form-group" style="margin-bottom: 14px;">
-                        <input v-model="md5SearchQuery" type="text" placeholder="Search by file name or hash…" style="width: 100%;">
+                        <input v-model="md5SearchQuery" type="text" placeholder="Search by file name or hash…"
+                            style="width: 100%;">
                     </div>
 
-                    <div style="border: 1px solid #333; border-radius: 8px; overflow: hidden; flex: 1; min-height: 220px; display:flex; flex-direction: column;">
+                    <div
+                        style="border: 1px solid #333; border-radius: 8px; overflow: hidden; flex: 1; min-height: 220px; display:flex; flex-direction: column;">
                         <div v-if="md5MapLoading" class="muted" style="padding: 18px;">Loading Hash map…</div>
-                        <div v-else-if="filteredMd5Items.length === 0" class="muted" style="padding: 18px;">No matches.</div>
+                        <div v-else-if="filteredMd5Items.length === 0" class="muted" style="padding: 18px;">No matches.
+                        </div>
                         <div v-else style="overflow: auto; flex: 1; overscroll-behavior: contain;">
                             <table style="margin: 0; width: 100%; border-collapse: separate; border-spacing: 0;">
                                 <thead>
@@ -884,9 +943,14 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <tr v-for="item in filteredMd5Items" :key="item.hash" @click="selectMd5(item)" style="cursor: pointer;">
-                                        <td style="padding: 12px 14px; color:#ce9178; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 320px;">{{ item.folder }}</td>
-                                        <td style="padding: 12px 14px; font-family: Consolas, monospace; color:#9cdcfe; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 420px;">{{ item.hash }}</td>
+                                    <tr v-for="item in filteredMd5Items" :key="item.hash" @click="selectMd5(item)"
+                                        style="cursor: pointer;">
+                                        <td
+                                            style="padding: 12px 14px; color:#ce9178; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 320px;">
+                                            {{ item.folder }}</td>
+                                        <td
+                                            style="padding: 12px 14px; font-family: Consolas, monospace; color:#9cdcfe; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 420px;">
+                                            {{ item.hash }}</td>
                                         <td style="padding: 12px 14px; text-align: right;">
                                             <button class="btn btn-tab" style="padding: 6px 10px;">Pick</button>
                                         </td>
@@ -898,7 +962,8 @@
 
                     <div style="display:flex; justify-content: space-between; align-items:center; margin-top: 14px;">
                         <div class="muted" style="font-size: 11px;">{{ filteredMd5Items.length }} items</div>
-                        <button class="btn btn-tab" @click="fetchMd5Map(true)" :disabled="md5MapLoading">Refresh</button>
+                        <button class="btn btn-tab" @click="fetchMd5Map(true)"
+                            :disabled="md5MapLoading">Refresh</button>
                     </div>
                 </div>
             </div>
@@ -906,18 +971,23 @@
             <div v-if="showThumbPicker" class="overlay" @click.self="showThumbPicker = false" style="z-index: 200;">
                 <div class="modal" style="width: 720px; max-height: 80vh; display:flex; flex-direction: column;">
                     <div class="modal-header" style="margin-bottom: 18px;">
-                        <h3 style="margin:0; font-size: 16px; font-weight: 600; color:#fff;">Select Thumbnail (Search)</h3>
+                        <h3 style="margin:0; font-size: 16px; font-weight: 600; color:#fff;">Select Thumbnail (Search)
+                        </h3>
                         <button class="close-btn" @click="showThumbPicker = false">✕</button>
                     </div>
 
                     <div class="form-group" style="margin-bottom: 14px;">
-                        <input v-model="thumbSearchQuery" type="text" placeholder="Search thumbnails…" style="width: 100%;">
+                        <input v-model="thumbSearchQuery" type="text" placeholder="Search thumbnails…"
+                            style="width: 100%;">
                     </div>
 
-                    <div style="border: 1px solid #333; border-radius: 8px; overflow: hidden; flex: 1; min-height: 220px; display:flex; flex-direction: column;">
+                    <div
+                        style="border: 1px solid #333; border-radius: 8px; overflow: hidden; flex: 1; min-height: 220px; display:flex; flex-direction: column;">
                         <div v-if="thumbLoading" class="muted" style="padding: 18px;">Loading thumbnails…</div>
-                        <div v-else-if="thumbError" class="muted" style="padding: 18px; color:#ff9999;">{{ thumbError }}</div>
-                        <div v-else-if="filteredThumbItems.length === 0" class="muted" style="padding: 18px;">No matches.</div>
+                        <div v-else-if="thumbError" class="muted" style="padding: 18px; color:#ff9999;">{{ thumbError }}
+                        </div>
+                        <div v-else-if="filteredThumbItems.length === 0" class="muted" style="padding: 18px;">No
+                            matches.</div>
                         <div v-else style="overflow: auto; flex: 1; overscroll-behavior: contain;">
                             <table style="margin: 0; width: 100%; border-collapse: separate; border-spacing: 0;">
                                 <thead>
@@ -927,8 +997,11 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <tr v-for="item in filteredThumbItems" :key="item.key" @click="selectThumb(item)" style="cursor: pointer;">
-                                        <td style="padding: 12px 14px; color:#ce9178; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 560px;">{{ item.name }}</td>
+                                    <tr v-for="item in filteredThumbItems" :key="item.key" @click="selectThumb(item)"
+                                        style="cursor: pointer;">
+                                        <td
+                                            style="padding: 12px 14px; color:#ce9178; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 560px;">
+                                            {{ item.name }}</td>
                                         <td style="padding: 12px 14px; text-align: right;">
                                             <button class="btn btn-tab" style="padding: 6px 10px;">Pick</button>
                                         </td>
@@ -1192,7 +1265,7 @@
                     return list.sort((a, b) => {
                         const titleA = String(a.title || '').toLowerCase();
                         const titleB = String(b.title || '').toLowerCase();
-                        
+
                         const aStartsUnderscore = titleA.startsWith('_');
                         const bStartsUnderscore = titleB.startsWith('_');
 
@@ -1241,14 +1314,14 @@
                             this.isOwner = !!j.isOwner;
                             this.fetchGames();
                             this.fetchMd5Map(false);
-                            
+
                             if (j.isAdmin) {
                                 localStorage.setItem('is_admin_session', 'true');
                             }
                         } else {
                             const savedPwd = localStorage.getItem('admin_pwd');
                             const savedOwnerPwd = localStorage.getItem('owner_pwd');
-                            
+
                             if (savedOwnerPwd) {
                                 this.password = savedOwnerPwd;
                                 this.login();
@@ -1276,16 +1349,16 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ password: this.password })
                     });
-                    
+
                     if (checkOwner.ok) {
                         endpoint = '/api/admin/owner/login'; // Success on owner
                         isOwnerAttempt = true;
                     } else {
                         // Fallback to normal admin login if owner failed
                         checkOwner = await fetch('/api/admin/login', {
-                           method: 'POST',
-                           headers: { 'Content-Type': 'application/json' },
-                           body: JSON.stringify({ password: this.password })
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ password: this.password })
                         });
                     }
 
@@ -1294,16 +1367,16 @@
                         this.isAuthenticated = true;
                         this.isAdmin = !!(json.role === 'admin' || json.role === 'owner');
                         this.isOwner = !!(json.role === 'owner');
-                        
+
                         if (this.isOwner) {
-                             localStorage.setItem('owner_pwd', this.password);
-                             localStorage.setItem('is_owner_session', 'true');
-                             localStorage.setItem('is_admin_session', 'true');
+                            localStorage.setItem('owner_pwd', this.password);
+                            localStorage.setItem('is_owner_session', 'true');
+                            localStorage.setItem('is_admin_session', 'true');
                         } else if (this.isAdmin) {
-                             localStorage.setItem('admin_pwd', this.password);
-                             localStorage.setItem('is_admin_session', 'true');
+                            localStorage.setItem('admin_pwd', this.password);
+                            localStorage.setItem('is_admin_session', 'true');
                         } else {
-                             localStorage.setItem('mod_pwd', this.password);
+                            localStorage.setItem('mod_pwd', this.password);
                         }
 
                         this.fetchGames();
@@ -1358,13 +1431,13 @@
                     this.showMd5Picker = false;
                     this.addModalStep = 'form';
                     this.newGame.hashId = item.hash;
-                    
+
                     const filename = String(item.folder || '');
                     const baseName = filename.split('/').pop() || filename;
-                    
+
                     const tMatch = baseName.match(/^(.*?)\s[vV]\d/);
                     this.newGame.title = tMatch ? tMatch[1].trim() : baseName.replace(/\.zip$/i, '');
-                    
+
                     const vMatch = baseName.match(/\s[vV](\d.*?)\s-VRP/i);
                     if (vMatch && vMatch[1]) {
                         this.newGame.version = vMatch[1];
@@ -1376,10 +1449,10 @@
                     this.imageState.error = '';
                     this.imageState.inProgress = true;
                     this.imageState.message = 'Auto-filling details...';
-                    
+
                     let localError = '';
                     const lookupName = String(filename || '').split('/').pop() || String(filename || '');
-                    
+
                     try {
                         const notesRes = await fetch(`/api/game-notes/${encodeURIComponent(lookupName)}`);
                         const notesJson = await notesRes.json();
@@ -1412,12 +1485,12 @@
                             if (!localError) localError = 'Package not found in VRP-GameList.csv';
                         }
                     } catch (e) {
-                         console.error('Auto-process error:', e);
-                         localError = 'Failed to auto-process game.';
+                        console.error('Auto-process error:', e);
+                        localError = 'Failed to auto-process game.';
                     } finally {
-                         this.imageState.inProgress = false;
-                         this.imageState.error = localError; // Only apply reactive error at the exact end!
-                         if (this.imageState.error) this.imageState.message = '';
+                        this.imageState.inProgress = false;
+                        this.imageState.error = localError; // Only apply reactive error at the exact end!
+                        if (this.imageState.error) this.imageState.message = '';
                     }
                 },
                 thumbDisplayNameFromUrl(url) {
@@ -1503,7 +1576,7 @@
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ event, detail })
                         });
-                    } catch (e) {}
+                    } catch (e) { }
                 },
                 async openDonations() {
                     this.activeTab = 'donations';
@@ -1873,12 +1946,12 @@
                             const hashData = await hashRes.json();
                             if (hashData.hash) this.hashState.hash = String(hashData.hash);
                         }
-                    } catch (_) {}
+                    } catch (_) { }
 
                     // Sequential Multipart Upload for maximum stability (no more freezes)
                     const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB chunks
                     const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
-                    
+
                     try {
                         // 1. Initialize multipart upload
                         const initRes = await fetch('/api/uploads/init', {
@@ -1896,7 +1969,7 @@
 
                         for (let i = 0; i < totalChunks; i++) {
                             if (!this.uploadState.inProgress) throw new Error('Cancelled');
-                            
+
                             const start = i * CHUNK_SIZE;
                             const end = Math.min(start + CHUNK_SIZE, file.size);
                             const chunk = file.slice(start, end);
@@ -1914,12 +1987,12 @@
                                         this.uploadInternals.activeRequests.push(xhr);
                                         const partUrl = `/api/uploads/put-part?key=${encodeURIComponent(key)}&uploadId=${uploadId}&partNumber=${partNumber}`;
                                         xhr.open('PUT', partUrl, true);
-                                        
+
                                         xhr.upload.onprogress = (e) => {
                                             if (!e.lengthComputable) return;
                                             const currentUploaded = bytesUploaded + e.loaded;
                                             this.uploadState.percent = (currentUploaded / file.size) * 100;
-                                            
+
                                             // Speed calc (rolling)
                                             const now = Date.now();
                                             const lastTime = this.uploadInternals.lastCalcTime || this.uploadInternals.startedAt;
@@ -1956,7 +2029,7 @@
                                     await new Promise(r => setTimeout(r, 1000));
                                 }
                             }
-                            
+
                             parts.push({ PartNumber: partNumber, ETag: etag });
                             bytesUploaded += chunk.size;
                         }
@@ -2125,7 +2198,7 @@
                     const filename = String(pg.filename || '');
                     const baseName = filename.split('/').pop() || filename;
                     this.newGame.hashId = pg.hashId || '';
-                    
+
                     // Smart Version & Title Parsing
                     // Logic: Everything from 'v' + [number] up until '-VRP' or '.zip'
                     // Example: "Angry Birds Vr v48+305_39 -VRP.zip" -> Title: "Angry Birds Vr", Version: "48+305_39"
@@ -2144,7 +2217,7 @@
                     this.addModalStep = 'form';
                     this.manualMode = false;
                     this.showToast('Smart-filled from bucket', 'success');
-                    
+
                     if (this.newGame.hashId && filename) {
                         this.autoProcessGame(this.newGame.hashId, filename);
                     }
