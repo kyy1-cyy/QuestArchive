@@ -26,7 +26,8 @@ async function getFtpClient() {
         user: process.env.ULTRACC_USER,
         password: process.env.ULTRACC_PASS,
         port: parseInt(process.env.ULTRACC_PORT || '21', 10),
-        secure: false
+        secure: true,
+        secureOptions: { rejectUnauthorized: false }
     });
     return client;
 }
