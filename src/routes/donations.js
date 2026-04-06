@@ -26,6 +26,12 @@ async function getSftpClient() {
     return sftp;
 }
 
+function getDonationsDir() {
+    const raw = process.env.ULTRACC_DONATIONS_DIR || 'Quest Donations';
+    // Strip leading slashes to prevent SFTP from touching the Linux root /
+    return raw.replace(/^\/+/, '');
+}
+
 router.get('/check-status', async (req, res) => {
     const packageName = String(req.query.package || '').trim();
     const clientVersion = parseInt(req.query.version || '0', 10);
@@ -47,7 +53,7 @@ router.get('/check-status', async (req, res) => {
         } else {
             try {
                 const sftp = await getSftpClient();
-                const dir = process.env.ULTRACC_DONATIONS_DIR || '/Quest Donations';
+                const dir = getDonationsDir();
                 const exists = await sftp.exists(dir);
                 if (exists) {
                     const list = await sftp.list(dir);
@@ -92,7 +98,7 @@ router.post('/init', async (req, res, next) => {
 
     try {
         const sftp = await getSftpClient();
-        const dir = process.env.ULTRACC_DONATIONS_DIR || '/Quest Donations';
+        const dir = getDonationsDir();
         const exists = await sftp.exists(dir);
         if (!exists) await sftp.mkdir(dir, true);
         
@@ -115,7 +121,7 @@ router.put('/put-part', async (req, res, next) => {
 
     try {
         const sftp = await getSftpClient();
-        const dir = process.env.ULTRACC_DONATIONS_DIR || '/Quest Donations';
+        const dir = getDonationsDir();
         
         // Append chunk stream directly using SFTP append
         await sftp.append(req, `${dir}/${uploadId}`);
@@ -135,7 +141,7 @@ router.post('/complete', async (req, res, next) => {
 
     try {
         const sftp = await getSftpClient();
-        const dir = process.env.ULTRACC_DONATIONS_DIR || '/Quest Donations';
+        const dir = getDonationsDir();
         
         await sftp.rename(`${dir}/${uploadId}`, `${dir}/${key}`);
         await sftp.end();
@@ -153,7 +159,7 @@ router.post('/abort', async (req, res, next) => {
 
     try {
         const sftp = await getSftpClient();
-        const dir = process.env.ULTRACC_DONATIONS_DIR || '/Quest Donations';
+        const dir = getDonationsDir();
         await sftp.delete(`${dir}/${uploadId}`).catch(() => {});
         await sftp.end();
         res.json({ success: true });
@@ -166,7 +172,7 @@ router.get('/list', async (req, res, next) => {
     if (!requireAdmin(req, res)) return;
     try {
         const sftp = await getSftpClient();
-        const dir = process.env.ULTRACC_DONATIONS_DIR || '/Quest Donations';
+        const dir = getDonationsDir();
         const exists = await sftp.exists(dir);
         if (!exists) await sftp.mkdir(dir, true);
         
@@ -207,7 +213,7 @@ router.get('/download-proxy', async (req, res, next) => {
 
     try {
         const sftp = await getSftpClient();
-        const dir = process.env.ULTRACC_DONATIONS_DIR || '/Quest Donations';
+        const dir = getDonationsDir();
         
         res.setHeader('Content-Disposition', `attachment; filename="${key}"`);
         res.setHeader('Content-Type', 'application/zip');
