@@ -1950,7 +1950,7 @@
                     } catch (_) { }
 
                     // Sequential Multipart Upload for maximum stability (no more freezes)
-                    const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB chunks
+                    const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB chunks
                     const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
 
                     try {
@@ -1988,6 +1988,8 @@
                                         this.uploadInternals.activeRequests.push(xhr);
                                         const partUrl = `/api/uploads/put-part?key=${encodeURIComponent(key)}&uploadId=${uploadId}&partNumber=${partNumber}`;
                                         xhr.open('PUT', partUrl, true);
+                                        xhr.timeout = 120000; // 2 minute timeout
+                                        xhr.ontimeout = () => reject(new Error('Connection timed out'));
 
                                         xhr.upload.onprogress = (e) => {
                                             if (!e.lengthComputable) return;
@@ -2113,7 +2115,7 @@
                     if (!initRes.ok) throw new Error(initData.error || 'Init failed');
                     const { uploadId, key } = initData;
 
-                    const PART_SIZE = 10 * 1024 * 1024;
+                    const PART_SIZE = 5 * 1024 * 1024; // 5MB chunks
                     const totalParts = Math.ceil(file.size / PART_SIZE);
                     const completedParts = [];
 
@@ -2136,6 +2138,8 @@
                             const xhr = new XMLHttpRequest();
                             this.bulkInternals.activeXhrs.push(xhr);
                             xhr.open('PUT', urlData.url, true);
+                            xhr.timeout = 120000; // 2 minute timeout
+                            xhr.ontimeout = () => reject(new Error('Connection timed out'));
                             xhr.upload.onprogress = (e) => {
                                 const loaded = start + e.loaded;
                                 this.bulkState.currentPercent = file.size ? (loaded / file.size) * 100 : 0;
