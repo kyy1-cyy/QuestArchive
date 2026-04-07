@@ -436,6 +436,8 @@
 
                 <button v-if="isAdmin" class="btn btn-tab" :class="{ active: activeTab === 'logs' }"
                     @click="openLogs">Logs</button>
+                <button v-if="activeTab === 'games'" class="btn" @click="openBulkAddModal"
+                    style="background: #2a2d2e; border-color: #444; color: #58a6ff;">Bulk Add</button>
                 <button v-if="activeTab === 'games'" class="btn" @click="openAddModal"
                     style="background: #007acc; border-color: #008be1;">+ Add Game</button>
                 <button v-if="activeTab === 'games' && selectedIds.length > 0" class="btn btn-delete"
@@ -917,6 +919,78 @@
                 </div>
             </div>
 
+            <div v-if="showBulkAddModal" class="overlay" @click.self="closeBulkAddModal">
+                <div class="modal" style="width: 800px; max-height: 90vh; display: flex; flex-direction: column;">
+                    <div class="modal-header">
+                        <h3 v-if="bulkAddStep === 'select'">Bulk Add Games ({{ bulkAddSelected.length }} selected)</h3>
+                        <h3 v-else>Registering Games...</h3>
+                        <button class="close-btn" @click="closeBulkAddModal" :disabled="bulkAddProcessing">✕</button>
+                    </div>
+
+                    <!-- Step 1: Selection -->
+                    <template v-if="bulkAddStep === 'select'">
+                        <div style="margin-bottom: 12px; display: flex; gap: 10px; align-items: center;">
+                            <button class="btn btn-tab" @click="toggleAllBulk">Select All</button>
+                            <button class="btn btn-tab" @click="bulkAddSelected = []">Deselect All</button>
+                            <div class="muted">{{ pendingGames.length }} total .zip files in bucket</div>
+                        </div>
+
+                        <div style="flex: 1; min-height: 400px; overflow-y: auto; border: 1px solid #333; border-radius: 8px; background: #111;">
+                            <table style="margin: 0; width: 100%;">
+                                <thead style="position: sticky; top: 0; z-index: 10; background: #252526;">
+                                    <tr>
+                                        <th style="width: 40px;">Sel</th>
+                                        <th>File Name</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="(pg, idx) in pendingGames" :key="pg.filename" 
+                                        :class="{ active: bulkAddSelected.includes(pg.filename) }"
+                                        @click="handleBulkRowClick(pg, idx, $event)"
+                                        style="cursor: pointer; user-select: none;">
+                                        <td>
+                                            <input type="checkbox" :checked="bulkAddSelected.includes(pg.filename)" @click.stop @change="handleBulkRowClick(pg, idx, $event)">
+                                        </td>
+                                        <td style="color:#ce9178; font-size: 11px;">{{ pg.filename }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="modal-actions">
+                            <button class="btn btn-tab" @click="closeBulkAddModal">Cancel</button>
+                            <button class="btn" style="background:#007acc;" @click="startBulkProcessing" :disabled="!bulkAddSelected.length">
+                                Add Selected ({{ bulkAddSelected.length }})
+                            </button>
+                        </div>
+                    </template>
+
+                    <!-- Step 2: Processing -->
+                    <template v-else>
+                        <div style="padding: 20px 0;">
+                            <div class="progress-wrap" style="height: 20px;">
+                                <div class="progress-bar" :style="{ width: bulkAddProgress + '%' }"></div>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; margin-top: 10px;" class="muted">
+                                <span>Processing {{ bulkAddCurrent }} / {{ bulkAddTotal }}</span>
+                                <span>ETA: {{ bulkAddETA }}</span>
+                            </div>
+                        </div>
+
+                        <div style="flex: 1; min-height: 300px; overflow-y: auto; background: #000; border: 1px solid #333; border-radius: 6px; padding: 10px; font-family: monospace; font-size: 11px;">
+                            <div v-for="log in bulkAddLogs" :key="log.id" :style="{ color: log.type === 'error' ? '#f44336' : (log.type === 'success' ? '#6a9955' : '#888') }">
+                                {{ log.msg }}
+                            </div>
+                        </div>
+
+                        <div class="modal-actions">
+                            <button class="btn btn-delete" @click="cancelBulkProcessing" v-if="bulkAddProcessing">Cancel</button>
+                            <button class="btn" @click="closeBulkAddModal" v-else>Done</button>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
             <div v-if="showMd5Picker" class="overlay" @click.self="showMd5Picker = false" style="z-index: 200;">
                 <div class="modal" style="width: 720px; max-height: 80vh; display:flex; flex-direction: column;">
                     <div class="modal-header" style="margin-bottom: 18px;">
@@ -1248,7 +1322,18 @@
                     },
                     toasts: [],
                     serverLogs: [],
-                    searchQuery: ''
+                    searchQuery: '',
+                    showBulkAddModal: false,
+                    bulkAddStep: 'select',
+                    bulkAddSelected: [],
+                    bulkAddLastIdx: null,
+                    bulkAddProcessing: false,
+                    bulkAddProgress: 0,
+                    bulkAddCurrent: 0,
+                    bulkAddTotal: 0,
+                    bulkAddETA: '--:--',
+                    bulkAddLogs: [],
+                    bulkAddCancelled: false
                 }
             },
             computed: {
@@ -2199,32 +2284,137 @@
                         this.pendingLoading = false;
                     }
                 },
+                async openBulkAddModal() {
+                    this.showBulkAddModal = true;
+                    this.bulkAddStep = 'select';
+                    this.bulkAddSelected = [];
+                    await this.fetchPendingGames();
+                },
+                closeBulkAddModal() {
+                    if (this.bulkAddProcessing) return;
+                    this.showBulkAddModal = false;
+                },
+                toggleAllBulk() {
+                    if (this.bulkAddSelected.length === this.pendingGames.length) {
+                        this.bulkAddSelected = [];
+                    } else {
+                        this.bulkAddSelected = this.pendingGames.map(p => p.filename);
+                    }
+                },
+                handleBulkRowClick(pg, idx, e) {
+                    if (e && e.shiftKey && this.bulkAddLastIdx !== null) {
+                        const start = Math.min(idx, this.bulkAddLastIdx);
+                        const end = Math.max(idx, this.bulkAddLastIdx);
+                        const subset = this.pendingGames.slice(start, end + 1).map(p => p.filename);
+                        
+                        // If current is being selected, select all in range. Else deselect.
+                        const currentlySelected = this.bulkAddSelected.includes(pg.filename);
+                        if (!currentlySelected) {
+                            this.bulkAddSelected = [...new Set([...this.bulkAddSelected, ...subset])];
+                        } else {
+                            this.bulkAddSelected = this.bulkAddSelected.filter(f => !subset.includes(f));
+                        }
+                    } else {
+                        const has = this.bulkAddSelected.includes(pg.filename);
+                        if (has) this.bulkAddSelected = this.bulkAddSelected.filter(f => f !== pg.filename);
+                        else this.bulkAddSelected.push(pg.filename);
+                    }
+                    this.bulkAddLastIdx = idx;
+                },
+                bulkLog(msg, type = 'info') {
+                    this.bulkAddLogs.unshift({ id: Date.now() + Math.random(), msg, type });
+                    if (this.bulkAddLogs.length > 100) this.bulkAddLogs.pop();
+                },
+                async startBulkProcessing() {
+                    this.bulkAddStep = 'process';
+                    this.bulkAddProcessing = true;
+                    this.bulkAddProgress = 0;
+                    this.bulkAddCurrent = 0;
+                    this.bulkAddTotal = this.bulkAddSelected.length;
+                    this.bulkAddLogs = [];
+                    this.bulkAddCancelled = false;
+                    
+                    const startTime = Date.now();
+                    const batchSize = 10;
+                    
+                    for (let i = 0; i < this.bulkAddSelected.length; i += batchSize) {
+                        if (this.bulkAddCancelled) break;
+                        
+                        const batch = this.bulkAddSelected.slice(i, i + batchSize);
+                        const gamesToAdd = batch.map(fileKey => ({ fileKey }));
+                        
+                        this.bulkLog(`Processing batch ${Math.floor(i/batchSize) + 1}...`);
+                        
+                        try {
+                            const res = await fetch('/api/database/bulk-add', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ games: gamesToAdd })
+                            });
+                            const result = await res.json();
+                            
+                            if (res.ok) {
+                                (result.games || []).forEach(g => {
+                                    this.bulkLog(`Added: ${g.title} (${g.version || 'null'})`, 'success');
+                                });
+                            } else {
+                                this.bulkLog(`Batch failed: ${result.error}`, 'error');
+                            }
+                        } catch (e) {
+                            this.bulkLog(`Error: ${e.message}`, 'error');
+                        }
+                        
+                        this.bulkAddCurrent = Math.min(i + batchSize, this.bulkAddTotal);
+                        this.bulkAddProgress = (this.bulkAddCurrent / this.bulkAddTotal) * 100;
+                        
+                        // Simple ETA
+                        const elapsed = Date.now() - startTime;
+                        const perItem = elapsed / this.bulkAddCurrent;
+                        const remaining = (this.bulkAddTotal - this.bulkAddCurrent) * perItem;
+                        this.bulkAddETA = this.formatETA(remaining);
+                    }
+                    
+                    this.bulkAddProcessing = false;
+                    this.bulkLog('Operations complete.');
+                    this.fetchGames();
+                },
+                cancelBulkProcessing() {
+                    this.bulkAddCancelled = true;
+                    this.bulkAddProcessing = false;
+                    this.bulkLog('Cancelled by user.', 'error');
+                },
+                formatETA(ms) {
+                    if (!ms || ms < 0) return '0s';
+                    const sec = Math.floor(ms / 1000);
+                    if (sec < 60) return sec + 's';
+                    const min = Math.floor(sec / 60);
+                    return min + 'm ' + (sec % 60) + 's';
+                },
                 selectPending(pg) {
                     const filename = String(pg.filename || '');
-                    const baseName = filename.split('/').pop() || filename;
+                    this.newGame.fileKey = filename;
                     this.newGame.hashId = pg.hashId || '';
 
-                    // Smart Version & Title Parsing
-                    // Logic: Everything from 'v' + [number] up until '-VRP' or '.zip'
-                    // Example: "Angry Birds Vr v48+305_39 -VRP.zip" -> Title: "Angry Birds Vr", Version: "48+305_39"
-                    const vMatch = baseName.match(/v(\d+[^]*(?=-VRP|\.zip))/i);
+                    // Improved Parsing (Matches Server)
+                    const base = filename.split('/').pop().replace(/\.zip$/i, '');
+                    const vMatch = base.match(/v(\d.*)/);
+                    
                     if (vMatch) {
-                        this.newGame.version = vMatch[1].trim().replace(/^-/, '').replace(/-VRP$/i, '');
-                        // Title is everything before the 'v[number]'
-                        const titlePart = baseName.split(/v\d/i)[0].trim();
-                        this.newGame.title = titlePart.replace(/[._-]$/, '').trim();
+                        const vIndex = vMatch.index;
+                        const afterV = vMatch[0];
+                        this.newGame.title = base.slice(0, vIndex).trim().replace(/[._-]$/, '').trim();
+                        this.newGame.version = afterV.split(/\s-\sVRP|-VRP/i)[0].trim();
                     } else {
-                        // Fallback: If 'v' exists but no number after it, check if it's part of the name
-                        this.newGame.title = baseName.replace(/\.zip$/i, '').trim();
-                        this.newGame.version = '1.0';
+                        this.newGame.title = base;
+                        this.newGame.version = null;
                     }
 
                     this.addModalStep = 'form';
                     this.manualMode = false;
-                    this.showToast('Smart-filled from bucket', 'success');
+                    this.showToast('Details parsed from filename', 'success');
 
-                    if (this.newGame.hashId && filename) {
-                        this.autoProcessGame(this.newGame.hashId, filename);
+                    if (filename) {
+                        this.autoProcessGame(pg.hashId, filename);
                     }
                 },
                 async fetchGames() {

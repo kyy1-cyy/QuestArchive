@@ -25,21 +25,21 @@ router.get('/server-logs', async (req, res, next) => {
 router.get('/silent-logs', async (req, res, next) => {
     if (!requireSystemAdmin(req, res)) return;
     try {
-        let logs = await readJsonFromR2(config.B2.SILENT_LOGS_KEY, []);
-        if (!Array.isArray(logs)) logs = [];
-        res.json({ logs });
+        const logPath = path.join(config.PATHS.DATA, 'silent_logs.json');
+        const data = await fs.readFile(logPath, 'utf8').catch(() => '[]');
+        res.json({ logs: JSON.parse(data || '[]') });
     } catch (err) {
-        next(err);
+        res.json({ logs: [] });
     }
 });
 
 router.post('/silent-logs/clear', async (req, res, next) => {
-    // Owner-only: even admins cannot clear logs
     const { getAuthenticatedUser } = await import('../utils/auth.js');
-    const user = getAuthenticatedUser(req);
-    if (!user || user.role !== 'owner') return res.status(404).send('Not Found');
+    const user = getAuthenticatedUser(req, res);
+    if (!user || user.role !== 'owner') return;
     try {
-        await writeJsonToR2(config.B2.SILENT_LOGS_KEY, []);
+        const logPath = path.join(config.PATHS.DATA, 'silent_logs.json');
+        await fs.writeFile(logPath, '[]');
         res.json({ success: true });
     } catch (err) {
         next(err);

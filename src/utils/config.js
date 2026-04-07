@@ -103,6 +103,7 @@ export const config = {
         IMAGES_PATH: process.env.GITHUB_IMAGES_PATH || 'data',
         TOKEN: process.env.GITHUB_TOKEN || ''
     },
+    API_KEY: process.env.API_KEY || '',
     PATHS: {
         ROOT: rootDir,
         DATA: path.join(rootDir, 'data'),

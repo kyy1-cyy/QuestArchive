@@ -1,6 +1,6 @@
 import express from 'express';
 import { config } from '../utils/config.js';
-import { readDB, writeDB, makePublicId, refreshBucketFileCache, checkFileInCache, getBucketFileCache, addFileToCache } from '../utils/db.js';
+import { readDB, writeDB, makePublicId, refreshBucketFileCache, checkFileInCache, getBucketFileCache, addFileToCache, parseQuestFilename } from '../utils/db.js';
 import { requireAdmin, ensureEnv } from '../utils/auth.js';
 import { ensureMd5MapFresh } from '../utils/md5-map.js';
 import { logger } from '../utils/logger.js';
@@ -25,22 +25,20 @@ router.get('/database', async (req, res, next) => {
 router.post('/database', async (req, res, next) => {
     if (!requireAdmin(req, res)) return;
     
-    const { title, version, description, thumbnailUrl, hashId } = req.body;
-    if (!title || !hashId) {
-        return res.status(400).json({ error: 'Title and Hash ID are required' });
-    }
-    if (hashId && !/^[a-f0-9]{32}$/i.test(String(hashId))) {
-        return res.status(400).json({ error: 'hashId must be a 32-character hex MD5' });
+    const { title, version, description, thumbnailUrl, hashId, fileKey } = req.body;
+    if (!title) {
+        return res.status(400).json({ error: 'Title is required' });
     }
 
     const newGame = {
         id: makePublicId(),
         publicId: makePublicId(),
         title,
-        version: version || '1.0',
+        version: version !== undefined ? version : null,
         description: description || '',
         thumbnailUrl: thumbnailUrl || '',
-        hashId: hashId.trim().toLowerCase(),
+        hashId: hashId ? String(hashId).trim().toLowerCase() : null,
+        fileKey: fileKey || null,
         lastUpdated: new Date().toISOString(),
         downloads: 0
     };
@@ -50,6 +48,54 @@ router.post('/database', async (req, res, next) => {
         games.push(newGame);
         await writeDB(games);
         res.status(201).json(newGame);
+    } catch (err) {
+        next(err);
+    }
+});
+
+router.post('/database/bulk-add', async (req, res, next) => {
+    if (!requireAdmin(req, res)) return;
+
+    const { games: incoming } = req.body;
+    if (!Array.isArray(incoming)) {
+        return res.status(400).json({ error: 'Invalid payload: games array required' });
+    }
+
+    try {
+        const { hashId } = await import('../utils/s3-helpers.js');
+        const db = await readDB();
+        
+        const added = [];
+        for (const item of incoming) {
+            const { fileKey } = item;
+            if (!fileKey) continue;
+
+            const existing = db.find(g => g.fileKey === fileKey);
+            if (existing) continue;
+
+            const { title, version } = parseQuestFilename(fileKey);
+            const fileName = fileKey.split('/').pop();
+
+            const newGame = {
+                id: makePublicId(),
+                publicId: makePublicId(),
+                title: item.title || title,
+                version: item.version !== undefined ? item.version : version,
+                description: item.description || '',
+                thumbnailUrl: item.thumbnailUrl || '',
+                fileKey: fileKey,
+                hashId: item.hashId || hashId(fileName.replace(/\.zip$/i, '')),
+                lastUpdated: new Date().toISOString(),
+                downloads: 0
+            };
+            db.push(newGame);
+            added.push(newGame);
+        }
+
+        if (added.length > 0) {
+            await writeDB(db);
+        }
+        res.json({ success: true, count: added.length, games: added });
     } catch (err) {
         next(err);
     }

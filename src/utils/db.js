@@ -14,14 +14,21 @@ export function normalizeGames(games) {
     if (!Array.isArray(games)) return { games: [], changed: false };
     let changed = false;
 
-    const originalIds = games.map(g => String(g.publicId || '')).join('|');
-
     const normalized = games.map(g => {
         const obj = (g && typeof g === 'object') ? { ...g } : {};
-        if (!obj.publicId) {
-            obj.publicId = makePublicId();
+        
+        // Unify ID: Ensure both id and publicId exist and match
+        if (!obj.id && obj.publicId) {
+            obj.id = obj.publicId;
+            changed = true;
+        } else if (obj.id && !obj.publicId) {
+            obj.publicId = obj.id;
+            changed = true;
+        } else if (!obj.id && !obj.publicId) {
+            obj.id = obj.publicId = makePublicId();
             changed = true;
         }
+
         if (obj.hashId && typeof obj.hashId === 'string') {
             const lower = obj.hashId.toLowerCase();
             if (obj.hashId !== lower) {
@@ -29,10 +36,13 @@ export function normalizeGames(games) {
                 changed = true;
             }
         }
-        if (!obj.version) {
-            obj.version = '1.0';
+
+        // version can be null per user request
+        if (obj.version === undefined) {
+            obj.version = null;
             changed = true;
         }
+
         if (!obj.lastUpdated) {
             obj.lastUpdated = new Date().toISOString();
             changed = true;
@@ -52,11 +62,6 @@ export function normalizeGames(games) {
 
         return titleA.localeCompare(titleB, undefined, { numeric: true, sensitivity: 'base' });
     });
-
-    const currentIds = normalized.map(g => g.publicId).join('|');
-    if (originalIds !== currentIds) {
-        changed = true;
-    }
 
     return { games: normalized, changed };
 }
@@ -125,22 +130,32 @@ export async function readDB() {
             const data = await fs.readFile(config.PATHS.DB, 'utf-8');
             games = data ? JSON.parse(data) : [];
         } catch (err) {
-            if (err.code === 'ENOENT') {
-                await fs.mkdir(config.PATHS.DATA, { recursive: true }).catch(() => {});
-                await fs.writeFile(config.PATHS.DB, '[]');
-                games = [];
-            } else {
-                console.error('Error reading DB:', err);
-                games = [];
-            }
+            games = [];
         }
     }
 
-    const normalized = normalizeGames(games);
-    if (normalized.changed) {
-        await writeDB(normalized.games);
+    const { games: normalized, changed: normChanged } = normalizeGames(games);
+    let changed = normChanged;
+
+    // BACKFILL: If fileKey is missing but hashId exists, get it from the map once.
+    // This allows us eventually kill the map file.
+    for (const g of normalized) {
+        if (!g.fileKey && g.hashId) {
+            try {
+                const { findKeyByHash } = await import('./md5-map.js');
+                const key = await findKeyByHash(g.hashId);
+                if (key) {
+                    g.fileKey = key;
+                    changed = true;
+                }
+            } catch (e) {}
+        }
     }
-    return normalized.games;
+
+    if (changed) {
+        await writeDB(normalized);
+    }
+    return normalized;
 }
 
 export async function writeDB(data) {
@@ -189,26 +204,7 @@ export async function getBucketFileCache() {
 }
 
 /**
- * Checks if a file exists in the bucket without hitting the network.
- * @param {string} key 
- */
-export async function checkFileInCache(key) {
-    const files = await getBucketFileCache();
-    return files.includes(key);
-}
-
-/**
- * REPLACED: No more active bucket scanning to save Class C costs.
- * This now only reads the persistent cache from B2.
- */
-export async function refreshBucketFileCache() {
-    console.log('[B2] Skipping full scan (Class C protection). Reading JSON only.');
-    return getBucketFileCache();
-}
-
-/**
  * Manually adds a single file to the cache and persists it to B2.
- * This is MUCH faster than a full refreshBucketFileCache().
  */
 export async function addFileToCache(key) {
     if (!key) return;
@@ -231,4 +227,109 @@ export async function addFileToCache(key) {
     } catch (err) {
         console.error('[CACHE] Incremental update failed:', err.message);
     }
+}
+
+/**
+ * Parses a Quest game filename to extract Title and Version.
+ * Rule: Find first lowercase 'v' followed by a digit. 
+ * Everything before is Title. Everything after is Version until -VRP or .zip.
+ */
+export function parseQuestFilename(filename) {
+    const base = String(filename || '').split('/').pop().replace(/\.zip$/i, '');
+    
+    // Find the first lowercase 'v' followed by a digit
+    const match = base.match(/v(\d.*)/);
+    
+    if (match) {
+        const vIndex = match.index;
+        const afterV = match[0];
+        
+        const title = base.slice(0, vIndex).trim().replace(/[._-]$/, '').trim();
+        
+        // Version chunk: from 'v' until '-VRP' or ' - VRP'
+        let version = afterV.split(/\s-\sVRP|-VRP/i)[0].trim();
+        
+        return { title, version };
+    }
+    
+    // Fallback: title is everything, version is null per user preference
+    return { title: base, version: null };
+}
+
+/**
+ * Compares game_cache.json vs database.json and auto-registers missing games.
+ * This runs in the background to save Class C costs (as it only reads memory cache).
+ */
+export async function autoAddGamesFromCache() {
+    console.log('[AUTO-ADD] Starting daily sync...');
+    const files = await getBucketFileCache();
+    const db = await readDB();
+    
+    const zipFiles = files.filter(f => f.toLowerCase().endsWith('.zip'));
+    const registeredKeys = new Set(db.map(g => g.fileKey || g.title + '.zip'));
+    
+    let addedCount = 0;
+    const { hashId, readJsonFromB2 } = await import('./s3-helpers.js');
+    
+    for (const key of zipFiles) {
+        const fallbackKey = key.toLowerCase().endsWith('.zip') ? key : key + '.zip';
+        if (registeredKeys.has(key) || registeredKeys.has(fallbackKey)) continue;
+        
+        // New game found!
+        const { title, version } = parseQuestFilename(key);
+        const fileName = key.split('/').pop();
+        
+        const newGame = {
+            id: makePublicId(),
+            publicId: makePublicId(),
+            title,
+            version,
+            fileKey: key,
+            hashId: hashId(fileName.replace(/\.zip$/i, '')),
+            description: '',
+            thumbnailUrl: '',
+            downloads: 0,
+            lastUpdated: new Date().toISOString()
+        };
+        
+        // Lookup Thumbnail: check cache for .meta/thumbnails/PACKAGE.jpg
+        // We'd need the package name for this... for now we skip or guess if possible.
+        // The user suggested using the VRP-GameList.txt for package mapping if we had it.
+        
+        // Lookup Notes: .meta/notes/FILENAME.txt
+        const notesKey = `.meta/notes/${fileName.replace(/\.zip$/i, '.txt')}`;
+        if (files.includes(notesKey)) {
+            try {
+                // Class B read (GetObject) - acceptable for auto-sync
+                const notes = await readJsonFromB2(notesKey, null);
+                if (notes && typeof notes === 'string') {
+                    newGame.description = notes;
+                } else if (notes && notes.description) {
+                    newGame.description = notes.description;
+                }
+            } catch (e) {}
+        }
+        
+        db.push(newGame);
+        addedCount++;
+    }
+    
+    if (addedCount > 0) {
+        await writeDB(db);
+        console.log(`[AUTO-ADD] Successfully registered ${addedCount} new games.`);
+    } else {
+        console.log('[AUTO-ADD] No new games found.');
+    }
+}
+
+export function initAutoAddJob() {
+    // Run on boot (with 10s delay to allow system to settle)
+    setTimeout(() => {
+        autoAddGamesFromCache().catch(e => console.error('[AUTO-ADD] Job failed:', e));
+    }, 10000);
+    
+    // Run every 24 hours
+    setInterval(() => {
+        autoAddGamesFromCache().catch(e => console.error('[AUTO-ADD] Job failed:', e));
+    }, 24 * 60 * 60 * 1000);
 }

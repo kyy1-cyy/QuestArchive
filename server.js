@@ -159,8 +159,9 @@ const server = app.listen(config.PORT, async () => {
 
     // Initialize B2 Bucket Cache
     try {
-        const { getBucketFileCache, refreshBucketFileCache } = await import('./src/utils/db.js');
+        const { getBucketFileCache, initAutoAddJob } = await import('./src/utils/db.js');
         await getBucketFileCache();
+        initAutoAddJob();
         
         // Cache initialized from persistent JSON on B2.
         // Background refresh is disabled to save Class C costs.

@@ -24,22 +24,27 @@ const downloadLimiter = rateLimit({
 });
 
 async function resolveGameFileKey(game) {
+    // Priority 1: DIRECT FILE KEY from database.json (Secret aliasing)
+    if (game.fileKey && await checkObjectExists(game.fileKey)) return game.fileKey;
+
+    // Priority 2: Fallback to hashId if we haven't migrated this entry yet
     const hashId = String(game.hashId || '').trim().toLowerCase();
-    
     if (/^[a-f0-9]{32}$/.test(hashId)) {
+        const { findKeyByHash } = await import('../utils/md5-map.js');
         const mapped = await findKeyByHash(hashId);
         if (mapped && await checkObjectExists(mapped)) return mapped;
     }
 
+    // Priority 3: Blind title guess
     const titleKey = game.title.toLowerCase().endsWith('.zip') ? game.title : `${game.title}.zip`;
     if (await checkObjectExists(titleKey)) return titleKey;
 
     return null;
 }
 
-function issueDownloadTicket(req, res, publicId) {
+function issueDownloadTicket(req, res, id) {
     const token = jwt.sign(
-        { dl: true, publicId: String(publicId) },
+        { dl: true, id: String(id) },
         config.JWT_SECRET,
         { expiresIn: '3m' }
     );
@@ -53,12 +58,12 @@ function issueDownloadTicket(req, res, publicId) {
     });
 }
 
-function requireDownloadTicket(req, res, publicId) {
+function requireDownloadTicket(req, res, id) {
     const token = req.cookies?.dl_ticket;
     if (!token) return false;
     try {
         const payload = jwt.verify(token, config.JWT_SECRET);
-        return Boolean(payload?.dl) && String(payload?.publicId) === String(publicId);
+        return Boolean(payload?.dl) && String(payload?.id) === String(id);
     } catch {
         return false;
     }
@@ -101,8 +106,9 @@ router.get('/games', async (req, res, next) => {
         res.setHeader('Pragma', 'no-cache');
         res.setHeader('Expires', '0');
         res.json(games.map(g => ({
+            id: g.id || g.publicId, // Use unified ID
             title: g.title || '',
-            version: g.version || '1.0',
+            version: g.version || null,
             description: g.description || '',
             thumbnailUrl: g.thumbnailUrl || '',
             lastUpdated: g.lastUpdated || '',
@@ -161,7 +167,7 @@ async function pipeUpstreamToResponse(upstream, res) {
 }
 
 async function sendDownloadInfo(req, res, game) {
-    issueDownloadTicket(req, res, game.publicId);
+    issueDownloadTicket(req, res, game.id || game.publicId);
 
     const fileKey = await resolveGameFileKey(game) || (game.title.toLowerCase().endsWith('.zip') ? game.title : `${game.title}.zip`);
     
@@ -170,7 +176,6 @@ async function sendDownloadInfo(req, res, game) {
 
     try {
         const { HeadObjectCommand } = await import('@aws-sdk/client-s3');
-        const headStart = Date.now();
         const head = await s3Client.send(new HeadObjectCommand({ Bucket: config.B2.BUCKET_NAME, Key: fileKey }));
         fileSize = head.ContentLength;
         
@@ -188,12 +193,9 @@ async function sendDownloadInfo(req, res, game) {
         }
     } catch (e) {}
 
-    const directUrl = buildPublicDownloadUrl(fileKey);
-
-
     res.json({
         title: game.title,
-        url: `/api/download/${game.publicId}`,
+        url: `/api/download/${game.id || game.publicId}`,
         fileSize,
         supportsRange: true,
         chunks
@@ -201,12 +203,13 @@ async function sendDownloadInfo(req, res, game) {
 }
 
 async function serveGameDownload(req, res, game, { requireTicket = true } = {}) {
-    if (requireTicket && !requireDownloadTicket(req, res, game.publicId)) {
+    const gameId = game.id || game.publicId;
+    if (requireTicket && !requireDownloadTicket(req, res, gameId)) {
         res.status(403).send('Download link expired. Please click download again.');
         return;
     }
 
-    issueDownloadTicket(req, res, game.publicId);
+    issueDownloadTicket(req, res, gameId);
 
     const fileKey = await resolveGameFileKey(game);
     if (!fileKey) {
@@ -215,7 +218,7 @@ async function serveGameDownload(req, res, game, { requireTicket = true } = {}) 
     }
 
     if (!req.headers.range) {
-        incrementDownloadCount(game.publicId).catch(e => logger.error('Incr error', e));
+        incrementDownloadCount(gameId).catch(e => logger.error('Incr error', e));
     }
 
     // Build the upstream URL (Cloudflare proxy or direct B2 presigned)
