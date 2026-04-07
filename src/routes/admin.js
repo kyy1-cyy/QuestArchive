@@ -91,19 +91,40 @@ router.post('/database/bulk-add', async (req, res, next) => {
                 // Use the same VRP-GameList.txt lookup that single-add uses
                 const result = await getPackageNameFromList(fileKey);
                 if (result) {
-                    const pkg = String(result.packageName || '').trim();
                     if (result.fileSize) newGame.fileSize = result.fileSize;
-                    
-                    // Case-insensitive thumbnail lookup
-                    const thumbKeyPrefix = `.meta/thumbnails/${pkg}.`;
-                    const foundThumb = cacheClones.find(f => 
-                        String(f).toLowerCase().startsWith(thumbKeyPrefix.toLowerCase()) && 
-                        (String(f).toLowerCase().endsWith('.jpg') || String(f).toLowerCase().endsWith('.png') || String(f).toLowerCase().endsWith('.jpeg'))
-                    );
-                    
-                    if (foundThumb) {
-                        newGame.thumbnailUrl = foundThumb; 
+
+                    // 1. Try package-based thumbnail
+                    const pkg = String(result.packageName || '').trim();
+                    if (pkg) {
+                        const thumbKeyPrefix = `.meta/thumbnails/${pkg}.`;
+                        const foundThumb = cacheClones.find(f => 
+                            String(f).toLowerCase().startsWith(thumbKeyPrefix.toLowerCase()) && 
+                            (String(f).toLowerCase().endsWith('.jpg') || String(f).toLowerCase().endsWith('.png') || String(f).toLowerCase().endsWith('.jpeg'))
+                        );
+                        if (foundThumb) newGame.thumbnailUrl = foundThumb;
                     }
+
+                    // 2. Fallback: match by baseName (zip name)
+                    if (!newGame.thumbnailUrl) {
+                        const thumbTarget = baseName.toLowerCase();
+                        const foundThumb = cacheClones.find(f => {
+                            const fLow = String(f).toLowerCase();
+                            return fLow.includes('/thumbnails/') && 
+                                   fLow.includes(thumbTarget) && 
+                                   (fLow.endsWith('.jpg') || fLow.endsWith('.png') || fLow.endsWith('.jpeg'));
+                        });
+                        if (foundThumb) newGame.thumbnailUrl = foundThumb;
+                    }
+                } else {
+                    // 3. Last Resort: match by baseName even if no package name found
+                    const thumbTarget = baseName.toLowerCase();
+                    const foundThumb = cacheClones.find(f => {
+                        const fLow = String(f).toLowerCase();
+                        return fLow.includes('/thumbnails/') && 
+                               fLow.includes(thumbTarget) && 
+                               (fLow.endsWith('.jpg') || fLow.endsWith('.png') || fLow.endsWith('.jpeg'));
+                    });
+                    if (foundThumb) newGame.thumbnailUrl = foundThumb;
                 }
 
                 const notesKey = `.meta/notes/${baseName}.txt`;
