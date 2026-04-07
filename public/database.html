@@ -2343,14 +2343,16 @@
                     this.bulkAddCancelled = false;
                     
                     let displayCount = 0;
+                    this.bulkLog(`Started: processing ${this.bulkAddTotal} files...`);
+
                     this.logTimer = setInterval(() => {
-                        if (displayCount < this.bulkAddCurrent && displayCount < this.bulkAddTotal) {
-                            displayCount++;
-                            if (displayCount % 2 === 0) {
-                                this.bulkAddProgress = (displayCount / this.bulkAddTotal) * 100;
+                        if (displayCount < this.bulkAddTotal) {
+                            if (displayCount < this.bulkAddCurrent) {
+                                displayCount += Math.ceil((this.bulkAddCurrent - displayCount) / 10);
                             }
+                            this.bulkAddProgress = (displayCount / this.bulkAddTotal) * 100;
                         }
-                    }, 2); // Ultra-fast "alive" feel
+                    }, 30); 
 
                     for (let i = 0; i < this.bulkAddSelected.length; i += batchSize) {
                         if (this.bulkAddCancelled) break;

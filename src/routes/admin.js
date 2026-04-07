@@ -86,28 +86,27 @@ router.post('/database/bulk-add', async (req, res, next) => {
                 downloads: 0
             };
 
-            // 1. Automatic Thumbnail Lookup (if available in cache)
+            // 1. Automatic Metadata Lookup (Thumbs/Notes)
             try {
-                const pkg = await getPackageNameFromList(fileKey);
-                if (pkg) {
-                    const thumbKey = `.meta/thumbnails/${pkg}.jpg`;
-                    if (cacheClones.includes(thumbKey)) {
-                        // We use the storage helper to get a signed URL or just the public path if configured
-                        const { config } = await import('../utils/config.js');
-                        // For now we set a hint and the frontend or a later job can resolve it, 
-                        // but let's try to get a persistent URL if they have one or guess it.
-                        newGame.thumbnailUrl = `.meta/thumbnails/${pkg}.jpg`; 
-                    }
-                }
-            } catch (e) {}
+                const baseName = fileName.replace(/\.zip$/i, '');
+                
+                // Try to find package name by splitting the filename (usually the end part)
+                // or just matching the baseName to possible thumbnail names
+                const pkgMatch = fileName.match(/\[(.*?)\]/); // Many use [com.pkg.name]
+                const pkg = pkgMatch ? pkgMatch[1] : baseName;
 
-            // 2. Automatic Notes Lookup (.txt in cache)
-            const notesKey = `.meta/notes/${baseName}.txt`;
-            if (cacheClones.includes(notesKey)) {
-                try {
+                const thumbKey = `.meta/thumbnails/${pkg}.jpg`;
+                if (cacheClones.includes(thumbKey)) {
+                    newGame.thumbnailUrl = thumbKey; 
+                }
+
+                const notesKey = `.meta/notes/${baseName}.txt`;
+                if (cacheClones.includes(notesKey)) {
                     const notes = await readJsonFromB2(notesKey, null);
                     if (notes) newGame.description = typeof notes === 'string' ? notes : (notes.description || '');
-                } catch (e) {}
+                }
+            } catch (e) {
+                console.error('Metadata lookup failed for', fileKey, e);
             }
 
             db.push(newGame);
