@@ -160,7 +160,7 @@ export async function incrementDownloadCount(id) {
 // === Bucket File List Cache (10m) ===
 let bucketFileCache = null;
 let lastBucketListFetch = 0;
-const BUCKET_CACHE_TTL = 10 * 60 * 1000; // 10 minutes memory cache
+const BUCKET_CACHE_TTL = 24 * 60 * 60 * 1000; // 24h — only re-read on deploy restart
 
 export async function getBucketFileCache() {
     const now = Date.now();

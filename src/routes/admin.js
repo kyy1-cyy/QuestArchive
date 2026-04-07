@@ -144,7 +144,7 @@ router.get('/pending-games', async (req, res, next) => {
     if (!requireAdmin(req, res)) return;
     try {
         const files = await getBucketFileCache();
-        const md5Map = await ensureMd5MapFresh({ force: true });
+        const md5Map = await ensureMd5MapFresh({ force: false });
 
         const pending = files
             .filter(f => String(f).toLowerCase().endsWith('.zip'))
