@@ -105,15 +105,21 @@ router.get('/games', async (req, res, next) => {
         res.setHeader('Cache-Control', 'no-store');
         res.setHeader('Pragma', 'no-cache');
         res.setHeader('Expires', '0');
-        res.json(games.map(g => ({
-            id: g.id || g.publicId, // Use unified ID
-            title: g.title || '',
-            version: g.version || null,
-            description: g.description || '',
-            thumbnailUrl: g.thumbnailUrl || '',
-            lastUpdated: g.lastUpdated || '',
-            downloads: Number(g.downloads || 0)
-        })));
+        res.json(games.map(g => {
+            let thumb = g.thumbnailUrl || '';
+            if (thumb.startsWith('.meta/')) {
+                thumb = buildPublicDownloadUrl(thumb);
+            }
+            return {
+                id: g.id || g.publicId, // Use unified ID
+                title: g.title || '',
+                version: g.version || null,
+                description: g.description || '',
+                thumbnailUrl: thumb,
+                lastUpdated: g.lastUpdated || '',
+                downloads: Number(g.downloads || 0)
+            };
+        }));
     } catch (err) {
         next(err);
     }

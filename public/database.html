@@ -2335,7 +2335,7 @@
                     this.bulkAddCancelled = false;
                     
                     const startTime = Date.now();
-                    const batchSize = 10;
+                    const batchSize = 500;
                     
                     for (let i = 0; i < this.bulkAddSelected.length; i += batchSize) {
                         if (this.bulkAddCancelled) break;

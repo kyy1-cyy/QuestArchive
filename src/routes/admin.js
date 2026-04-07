@@ -57,44 +57,64 @@ router.post('/database/bulk-add', async (req, res, next) => {
     if (!requireAdmin(req, res)) return;
 
     const { games: incoming } = req.body;
-    if (!Array.isArray(incoming)) {
-        return res.status(400).json({ error: 'Invalid payload: games array required' });
-    }
+    if (!Array.isArray(incoming)) return res.status(400).json({ error: 'Invalid payload' });
 
     try {
-        const { hashId } = await import('../utils/s3-helpers.js');
+        const { hashId, readJsonFromB2 } = await import('../utils/s3-helpers.js');
         const db = await readDB();
+        const cacheClones = await getBucketFileCache(); // Fast memory read
         
         const added = [];
         for (const item of incoming) {
             const { fileKey } = item;
-            if (!fileKey) continue;
-
-            const existing = db.find(g => g.fileKey === fileKey);
-            if (existing) continue;
+            if (!fileKey || db.find(g => g.fileKey === fileKey)) continue;
 
             const { title, version } = parseQuestFilename(fileKey);
             const fileName = fileKey.split('/').pop();
+            const baseName = fileName.replace(/\.zip$/i, '');
 
             const newGame = {
                 id: makePublicId(),
                 publicId: makePublicId(),
                 title: item.title || title,
                 version: item.version !== undefined ? item.version : version,
-                description: item.description || '',
-                thumbnailUrl: item.thumbnailUrl || '',
+                description: '',
+                thumbnailUrl: '',
                 fileKey: fileKey,
-                hashId: item.hashId || hashId(fileName.replace(/\.zip$/i, '')),
+                hashId: item.hashId || hashId(baseName),
                 lastUpdated: new Date().toISOString(),
                 downloads: 0
             };
+
+            // 1. Automatic Thumbnail Lookup (if available in cache)
+            try {
+                const pkg = await getPackageNameFromList(fileKey);
+                if (pkg) {
+                    const thumbKey = `.meta/thumbnails/${pkg}.jpg`;
+                    if (cacheClones.includes(thumbKey)) {
+                        // We use the storage helper to get a signed URL or just the public path if configured
+                        const { config } = await import('../utils/config.js');
+                        // For now we set a hint and the frontend or a later job can resolve it, 
+                        // but let's try to get a persistent URL if they have one or guess it.
+                        newGame.thumbnailUrl = `.meta/thumbnails/${pkg}.jpg`; 
+                    }
+                }
+            } catch (e) {}
+
+            // 2. Automatic Notes Lookup (.txt in cache)
+            const notesKey = `.meta/notes/${baseName}.txt`;
+            if (cacheClones.includes(notesKey)) {
+                try {
+                    const notes = await readJsonFromB2(notesKey, null);
+                    if (notes) newGame.description = typeof notes === 'string' ? notes : (notes.description || '');
+                } catch (e) {}
+            }
+
             db.push(newGame);
             added.push(newGame);
         }
 
-        if (added.length > 0) {
-            await writeDB(db);
-        }
+        if (added.length > 0) await writeDB(db);
         res.json({ success: true, count: added.length, games: added });
     } catch (err) {
         next(err);
@@ -190,16 +210,12 @@ router.get('/pending-games', async (req, res, next) => {
     if (!requireAdmin(req, res)) return;
     try {
         const files = await getBucketFileCache();
-        const md5Map = await ensureMd5MapFresh({ force: false });
 
         const pending = files
             .filter(f => String(f).toLowerCase().endsWith('.zip'))
             .map(f => ({
                 filename: f,
-                hashId: Object.entries(md5Map).find(([, value]) => String(value || '').toLowerCase() === String(f).toLowerCase())?.[0]
-                    || ((String(f).split('/').pop() || String(f)).replace(/\.zip$/i, '').match(/^[a-f0-9]{32}$/i)
-                        ? (String(f).split('/').pop() || String(f)).replace(/\.zip$/i, '')
-                        : null)
+                hashId: null // We now compute hashId in the backend on-demand during registration
             }))
             .sort((a, b) => String(a.filename).localeCompare(String(b.filename), undefined, { numeric: true, sensitivity: 'base' }));
 

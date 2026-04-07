@@ -10,7 +10,7 @@ MAX_RETRIES=3
 
 # Optional API registration – leave empty to disable
 API_BASE="https://questarchive.xyz"
-API_KEY=""
+API_KEY="Quest AV"
 
 LOG_DIR="$HOME"
 LOG_FILE="$LOG_DIR/upload-$(date +%Y%m%d-%H%M%S).log"
