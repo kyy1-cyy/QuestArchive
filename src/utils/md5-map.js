@@ -1,6 +1,7 @@
 import { config } from './config.js';
 import { s3Client } from './s3.js';
 import { hashId, readJsonFromB2, writeJsonToB2 } from './s3-helpers.js';
+import { getBucketFileCache } from './db.js';
 
 const md5MapState = {
     lastSyncAt: 0,
@@ -19,9 +20,7 @@ function shallowEqualObject(a, b) {
 
 async function doSyncMd5Map() {
     try {
-        const { listAllObjects } = await import('./s3-helpers.js');
-        const zipKeys = (await listAllObjects(''))
-            .map(obj => obj?.Key)
+        const zipKeys = (await getBucketFileCache())
             .filter(key => key && key.toLowerCase().endsWith('.zip'));
 
         const newMap = {};
