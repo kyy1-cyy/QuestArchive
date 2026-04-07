@@ -104,9 +104,9 @@ router.post('/database/bulk-add', async (req, res, next) => {
                         if (foundThumb) newGame.thumbnailUrl = foundThumb;
                     }
 
-                    // 2. Fallback: match by baseName (zip name)
+                    // 2. Fallback: match by baseName (strip versions/tags)
                     if (!newGame.thumbnailUrl) {
-                        const thumbTarget = baseName.toLowerCase();
+                        const thumbTarget = baseName.toLowerCase().split(' v')[0].split(' -vrp')[0].trim();
                         const foundThumb = cacheClones.find(f => {
                             const fLow = String(f).toLowerCase();
                             return fLow.includes('/thumbnails/') && 
@@ -117,7 +117,7 @@ router.post('/database/bulk-add', async (req, res, next) => {
                     }
                 } else {
                     // 3. Last Resort: match by baseName even if no package name found
-                    const thumbTarget = baseName.toLowerCase();
+                    const thumbTarget = baseName.toLowerCase().split(' v')[0].split(' -vrp')[0].trim();
                     const foundThumb = cacheClones.find(f => {
                         const fLow = String(f).toLowerCase();
                         return fLow.includes('/thumbnails/') && 
