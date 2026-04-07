@@ -197,28 +197,13 @@ export async function checkFileInCache(key) {
     return files.includes(key);
 }
 
+/**
+ * REPLACED: No more active bucket scanning to save Class C costs.
+ * This now only reads the persistent cache from B2.
+ */
 export async function refreshBucketFileCache() {
-    console.log('[B2] Active bucket listing (Class C) starting...');
-    const { listAllObjects, writeJsonToB2 } = await import('./s3-helpers.js');
-    try {
-        const allObjects = await listAllObjects('');
-        const files = allObjects.map(obj => obj.Key).filter(Boolean);
-        
-        const now = Date.now();
-        bucketFileCache = files;
-        lastBucketListFetch = now;
-
-        await writeJsonToB2(config.B2.GAME_CACHE_KEY, {
-            timestamp: now,
-            files: files
-        });
-
-        console.log(`[B2] Cache updated with ${files.length} files. Saved to ${config.B2.GAME_CACHE_KEY}`);
-        return files;
-    } catch (err) {
-        console.error('[B2] FAILED listing bucket:', err.message);
-        return bucketFileCache || [];
-    }
+    console.log('[B2] Skipping full scan (Class C protection). Reading JSON only.');
+    return getBucketFileCache();
 }
 
 /**
