@@ -735,9 +735,11 @@
                             const results = this.fuse.search(query);
                             list = results.map(r => r.item);
                         } else if (query) {
+                            const q = query.toLowerCase();
                             list = list.filter(g =>
-                                g.title.toLowerCase().includes(query) ||
-                                g.description.toLowerCase().includes(query)
+                                String(g.title || '').toLowerCase().includes(q) ||
+                                String(g.description || '').toLowerCase().includes(q) ||
+                                String(g.fileKey || '').toLowerCase().includes(q)
                             );
                         }
 
@@ -787,8 +789,8 @@
                         handler(newVal) {
                             if (newVal.length > 0) {
                                 this.fuse = new Fuse(newVal, {
-                                    keys: ['title', 'description', 'version'],
-                                    threshold: 0.35
+                                    keys: ['title', 'description', 'version', 'fileKey'],
+                                    threshold: 0.3
                                 });
                             }
                         },

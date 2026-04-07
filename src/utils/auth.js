@@ -79,6 +79,20 @@ export function requireAdmin(req, res) {
 }
 
 /**
+ * JJ Only (Primary Owner)
+ */
+export function requireJJ(req, res) {
+    const user = getAuthenticatedUser(req);
+    if (!user || user.role !== 'owner') {
+        res.status(403).json({ error: 'Forbidden: JJ eyes only. 🚫🔑' });
+        return false;
+    }
+    req.user = user;
+    silentLogAction(req);
+    return true;
+}
+
+/**
  * JJ, Tear, Misterio (Full Access)
  */
 export function requireOwner(req, res) {
@@ -88,7 +102,7 @@ export function requireOwner(req, res) {
         return false;
     }
     req.user = user;
-    silentLogAction(req); // Log even Admin Actions (Tear, Misterio)
+    silentLogAction(req); 
     return true;
 }
 

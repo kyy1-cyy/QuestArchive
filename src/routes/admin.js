@@ -1,7 +1,7 @@
 import express from 'express';
 import { config } from '../utils/config.js';
 import { readDB, writeDB, makePublicId, refreshBucketFileCache, checkFileInCache, getBucketFileCache, addFileToCache, parseQuestFilename } from '../utils/db.js';
-import { requireAdmin, ensureEnv } from '../utils/auth.js';
+import { requireAdmin, requireOwner, requireJJ, ensureEnv } from '../utils/auth.js';
 import { ensureMd5MapFresh } from '../utils/md5-map.js';
 import { logger } from '../utils/logger.js';
 import { runMigration, getMigrationStatus } from '../utils/migration.js';
@@ -23,7 +23,7 @@ router.get('/database', async (req, res, next) => {
 });
 
 router.post('/database', async (req, res, next) => {
-    if (!requireAdmin(req, res)) return;
+    if (!requireJJ(req, res)) return;
     
     const { title, version, description, thumbnailUrl, hashId, fileKey } = req.body;
     if (!title) {
@@ -54,7 +54,7 @@ router.post('/database', async (req, res, next) => {
 });
 
 router.post('/database/bulk-add', async (req, res, next) => {
-    if (!requireAdmin(req, res)) return;
+    if (!requireJJ(req, res)) return;
 
     const { games: incoming } = req.body;
     if (!Array.isArray(incoming)) return res.status(400).json({ error: 'Invalid payload' });
@@ -91,11 +91,18 @@ router.post('/database/bulk-add', async (req, res, next) => {
                 // Use the same VRP-GameList.txt lookup that single-add uses
                 const result = await getPackageNameFromList(fileKey);
                 if (result) {
-                    const pkg = result.packageName;
+                    const pkg = String(result.packageName || '').trim();
                     if (result.fileSize) newGame.fileSize = result.fileSize;
-                    const thumbKey = `.meta/thumbnails/${pkg}.jpg`;
-                    if (cacheClones.includes(thumbKey)) {
-                        newGame.thumbnailUrl = thumbKey; 
+                    
+                    // Case-insensitive thumbnail lookup
+                    const thumbKeyPrefix = `.meta/thumbnails/${pkg}.`;
+                    const foundThumb = cacheClones.find(f => 
+                        String(f).toLowerCase().startsWith(thumbKeyPrefix.toLowerCase()) && 
+                        (String(f).toLowerCase().endsWith('.jpg') || String(f).toLowerCase().endsWith('.png') || String(f).toLowerCase().endsWith('.jpeg'))
+                    );
+                    
+                    if (foundThumb) {
+                        newGame.thumbnailUrl = foundThumb; 
                     }
                 }
 
@@ -120,7 +127,7 @@ router.post('/database/bulk-add', async (req, res, next) => {
 });
 
 router.post('/database/bulk-delete', async (req, res, next) => {
-    if (!requireAdmin(req, res)) return;
+    if (!requireJJ(req, res)) return;
 
     const { ids } = req.body;
     if (!Array.isArray(ids)) {
@@ -218,11 +225,35 @@ router.get('/game-notes/:filename', async (req, res, next) => {
 });
 
 router.post('/database/rebuild-cache', async (req, res, next) => {
-    if (!requireAdmin(req, res)) return;
+    if (!requireJJ(req, res)) return;
     try {
         const { rebuildBucketCache } = await import('../utils/db.js');
         const files = await rebuildBucketCache();
         res.json({ success: true, count: files.length });
+    } catch (err) {
+        next(err);
+    }
+});
+
+router.get('/not-added-games', async (req, res, next) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+        const files = await getBucketFileCache();
+        const db = await readDB();
+        const registeredKeys = new Set(db.map(g => String(g.fileKey || '').toLowerCase()));
+
+        const notAdded = files
+            .filter(f => {
+                const lower = String(f).toLowerCase();
+                return lower.endsWith('.zip') && !registeredKeys.has(lower);
+            })
+            .map(f => ({
+                filename: f,
+                hashId: null
+            }))
+            .sort((a, b) => String(a.filename).localeCompare(String(b.filename), undefined, { numeric: true, sensitivity: 'base' }));
+
+        res.json(notAdded);
     } catch (err) {
         next(err);
     }

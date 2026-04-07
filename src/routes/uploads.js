@@ -4,7 +4,7 @@ import { Upload } from '@aws-sdk/lib-storage';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { config } from '../utils/config.js';
 import { s3Client } from '../utils/s3.js';
-import { requireAdmin, ensureEnv } from '../utils/auth.js';
+import { requireAdmin, requireOwner, ensureEnv } from '../utils/auth.js';
 import { logger } from '../utils/logger.js';
 import { hashId, readJsonFromB2, writeJsonToB2 } from '../utils/s3-helpers.js';
 import { addFileToCache } from '../utils/db.js';
@@ -12,7 +12,7 @@ import { addFileToCache } from '../utils/db.js';
 const router = express.Router();
 
 router.get('/hash', async (req, res) => {
-    if (!requireAdmin(req, res)) return;
+    if (!requireOwner(req, res)) return;
     const filename = String(req.query.filename || '');
     if (!filename || !filename.toLowerCase().endsWith('.zip')) {
         return res.status(400).json({ error: 'filename (.zip) is required' });
@@ -24,7 +24,7 @@ router.get('/hash', async (req, res) => {
 });
 
 router.post('/init', async (req, res, next) => {
-    if (!requireAdmin(req, res)) return;
+    if (!requireOwner(req, res)) return;
     if (!ensureEnv(req, res, ['B2.ENDPOINT', 'B2.KEY_ID', 'B2.APP_KEY', 'B2.BUCKET_NAME'])) return;
 
     const { filename, prefix } = req.body ?? {};
@@ -61,7 +61,7 @@ router.post('/init', async (req, res, next) => {
 // Server-side part upload: browser sends part here, server forwards to B2
 // This avoids CORS issues entirely - browser never talks to B2 directly
 router.put('/put-part', async (req, res, next) => {
-    if (!requireAdmin(req, res)) return;
+    if (!requireOwner(req, res)) return;
 
     const key = String(req.query.key || '');
     const uploadId = String(req.query.uploadId || '');
@@ -96,7 +96,7 @@ router.put('/put-part', async (req, res, next) => {
 });
 
 router.post('/part-url', async (req, res, next) => {
-    if (!requireAdmin(req, res)) return;
+    if (!requireOwner(req, res)) return;
     if (!ensureEnv(req, res, ['B2.ENDPOINT', 'B2.KEY_ID', 'B2.APP_KEY', 'B2.BUCKET_NAME'])) return;
 
     const { key, uploadId, partNumber } = req.body ?? {};
@@ -121,7 +121,7 @@ router.post('/part-url', async (req, res, next) => {
 });
 
 router.post('/complete', async (req, res, next) => {
-    if (!requireAdmin(req, res)) return;
+    if (!requireOwner(req, res)) return;
     const { key, uploadId, parts } = req.body ?? {};
     if (!key || !uploadId || !parts) {
         return res.status(400).json({ error: 'key, uploadId, parts are required' });
@@ -161,7 +161,7 @@ router.post('/complete', async (req, res, next) => {
 });
 
 router.put('/direct', async (req, res, next) => {
-    if (!requireAdmin(req, res)) return;
+    if (!requireOwner(req, res)) return;
     if (!ensureEnv(req, res, ['B2.ENDPOINT', 'B2.KEY_ID', 'B2.APP_KEY', 'B2.BUCKET_NAME'])) return;
 
     const filename = String(req.query.filename || '').trim();
@@ -216,7 +216,7 @@ router.put('/direct', async (req, res, next) => {
 });
 
 router.post('/abort', async (req, res, next) => {
-    if (!requireAdmin(req, res)) return;
+    if (!requireOwner(req, res)) return;
     const { key, uploadId } = req.body ?? {};
     if (!key || !uploadId) return res.status(400).json({ error: 'key and uploadId are required' });
 

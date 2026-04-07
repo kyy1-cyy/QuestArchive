@@ -427,20 +427,19 @@
                     @click="activeTab = 'games'">Games</button>
                 <button class="btn btn-tab" :class="{ active: activeTab === 'donations' }"
                     @click="openDonations">Donations</button>
-                <button v-if="isAdmin" class="btn btn-tab" :class="{ active: activeTab === 'storage' }"
-                    @click="openStorage">Server
-                    Storage</button>
-                <button v-if="isAdmin" class="btn btn-tab"
-                    style="background: rgba(88, 166, 255, 0.1); border-color: rgba(88, 166, 255, 0.3); color: #58a6ff;"
-                    @click="goToSystem">System</button>
-
-                <button v-if="isAdmin" class="btn btn-tab" :class="{ active: activeTab === 'logs' }"
+                <button v-if="isOwner" class="btn btn-tab" :class="{ active: activeTab === 'storage' }"
+                    @click="openStorage">Server Storage</button>
+ 
+                <button v-if="isOwner" class="btn btn-tab" :class="{ active: activeTab === 'logs' }"
                     @click="openLogs">Logs</button>
-                <button v-if="activeTab === 'games'" class="btn" @click="openBulkAddModal"
+ 
+                <button v-if="isOwner && activeTab === 'games'" class="btn" @click="openBulkAddModal"
                     style="background: #2a2d2e; border-color: #444; color: #58a6ff;">Bulk Add</button>
-                <button v-if="activeTab === 'games'" class="btn" @click="openAddModal"
+ 
+                <button v-if="isOwner && activeTab === 'games'" class="btn" @click="openAddModal"
                     style="background: #007acc; border-color: #008be1;">+ Add Game</button>
-                <button v-if="activeTab === 'games' && selectedIds.length > 0" class="btn btn-delete"
+ 
+                <button v-if="isOwner && activeTab === 'games' && selectedIds.length > 0" class="btn btn-delete"
                     @click="bulkRemove">
                     Remove Selected ({{ selectedIds.length }})
                 </button>
@@ -452,7 +451,7 @@
                             style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #666; font-size: 14px;">🔍</span>
                     </div>
                     <div style="display: flex; align-items: center; gap: 10px;">
-                        <button class="btn" @click="rebuildCache" :disabled="cacheRebuilding" 
+                        <button v-if="isOwner" class="btn" @click="rebuildCache" :disabled="cacheRebuilding" 
                             style="font-size: 11px; padding: 4px 10px; background: #3c3c3c;">
                             {{ cacheRebuilding ? 'Rebuilding...' : 'Hard Refresh Cache' }}
                         </button>
@@ -588,7 +587,7 @@
             <table v-if="activeTab === 'games'">
                 <thead>
                     <tr>
-                        <th style="width: 40px;">
+                        <th v-if="isOwner" style="width: 40px;">
                             <input type="checkbox" @change="toggleAll"
                                 :checked="selectedIds.length === games.length && games.length > 0">
                         </th>
@@ -604,7 +603,7 @@
                             criteria.</td>
                     </tr>
                     <tr v-for="game in filteredGames" :key="game.id">
-                        <td>
+                        <td v-if="isOwner">
                             <input type="checkbox" :value="game.id" v-model="selectedIds">
                         </td>
                         <td style="color: #ce9178;">"{{ game.title }}"</td>
@@ -933,29 +932,44 @@
 
                     <!-- Step 1: Selection -->
                     <template v-if="bulkAddStep === 'select'">
-                        <div style="margin-bottom: 12px; display: flex; gap: 10px; align-items: center;">
-                            <button class="btn btn-tab" @click="toggleAllBulk">Select All</button>
-                            <button class="btn btn-tab" @click="bulkAddSelected = []">Deselect All</button>
-                            <div class="muted">{{ pendingGames.length }} total .zip files in bucket</div>
+                        <div style="margin-bottom: 14px; display: flex; gap: 8px; border-bottom: 1px solid #333; padding-bottom: 8px;">
+                            <button class="btn btn-tab" :class="{ active: bulkSubTab === 'not-added' }" @click="activeBulkSubTab('not-added')">Not Added</button>
+                            <button class="btn btn-tab" :class="{ active: bulkSubTab === 'all' }" @click="activeBulkSubTab('all')">All Files</button>
                         </div>
 
-                        <div style="flex: 1; min-height: 400px; overflow-y: auto; border: 1px solid #333; border-radius: 8px; background: #111;">
-                            <table style="margin: 0; width: 100%;">
+                        <div style="margin-bottom: 12px; display: flex; gap: 10px; align-items: center; justify-content: space-between;">
+                            <div style="display:flex; gap:10px;">
+                                <button class="btn btn-tab" @click="toggleAllBulk" style="font-size:11px;">Select All</button>
+                                <button class="btn btn-tab" @click="bulkAddSelected = []" style="font-size:11px;">Clear</button>
+                            </div>
+                            <div style="position: relative;">
+                                <input type="text" v-model="bulkSearchQuery" placeholder="Filter files..." 
+                                    style="width: 180px; padding: 5px 10px; background:#222; border: 1px solid #444; color:#fff; font-size:11px; border-radius:4px;">
+                            </div>
+                            <div class="muted" style="font-size:11px;">{{ displayedBulkGames.length }} files visible</div>
+                        </div>
+
+                        <div style="flex: 1; min-height: 480px; overflow-y: auto; border: 1px solid #333; border-radius: 8px; background: #0a0a0a;">
+                            <table style="margin: 0; width: 100%; border-collapse: collapse;">
                                 <thead style="position: sticky; top: 0; z-index: 10; background: #252526;">
                                     <tr>
-                                        <th style="width: 40px;">Sel</th>
-                                        <th>File Name</th>
+                                        <th style="width: 40px; padding: 10px;">Sel</th>
+                                        <th style="padding: 10px; text-align:left;">File Name</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <tr v-for="(pg, idx) in pendingGames" :key="pg.filename" 
+                                    <tr v-if="displayedBulkGames.length === 0">
+                                        <td colspan="2" style="padding: 40px; text-align: center; color: #666;">No files match filter.</td>
+                                    </tr>
+                                    <tr v-for="(pg, idx) in displayedBulkGames" :key="pg.filename" 
                                         :class="{ active: bulkAddSelected.includes(pg.filename) }"
                                         @click="handleBulkRowClick(pg, idx, $event)"
-                                        style="cursor: pointer; user-select: none;">
-                                        <td>
+                                        style="cursor: pointer; user-select: none; border-bottom: 1px solid #1a1a1a;"
+                                        class="bulk-row">
+                                        <td style="padding: 10px; text-align: center;">
                                             <input type="checkbox" :checked="bulkAddSelected.includes(pg.filename)" @click.stop @change="handleBulkRowClick(pg, idx, $event)">
                                         </td>
-                                        <td style="color:#ce9178; font-size: 11px;">{{ pg.filename }}</td>
+                                        <td style="color:#ce9178; font-size: 11px; padding: 10px; font-family: monospace;">{{ pg.filename }}</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -1290,6 +1304,10 @@
                         error: '',
                         removing: false
                     },
+                    bulkSubTab: 'not-added',
+                    bulkSearchQuery: '',
+                    notAddedGames: [],
+                    bulkAddLastIdx: null,
                     uploadInternals: {
                         startedAt: 0,
                         totalBytes: 0,
@@ -1394,6 +1412,12 @@
                         const text = String(it.name || '').toLowerCase();
                         return queries.every(qi => text.includes(qi));
                     });
+                },
+                displayedBulkGames() {
+                    const list = this.bulkSubTab === 'not-added' ? this.notAddedGames : this.pendingGames;
+                    const q = String(this.bulkSearchQuery || '').toLowerCase();
+                    if (!q) return list;
+                    return list.filter(it => String(it.filename || '').toLowerCase().includes(q));
                 }
             },
             mounted() {
@@ -2296,28 +2320,41 @@
                     this.showBulkAddModal = true;
                     this.bulkAddStep = 'select';
                     this.bulkAddSelected = [];
+                    this.bulkSubTab = 'not-added';
+                    this.bulkSearchQuery = '';
+                    await this.fetchNotAddedGames();
                     await this.fetchPendingGames();
+                },
+                async fetchNotAddedGames() {
+                    try {
+                        const res = await fetch('/api/not-added-games');
+                        if (res.ok) this.notAddedGames = await res.json();
+                    } catch (e) {}
+                },
+                activeBulkSubTab(tab) {
+                    this.bulkSubTab = tab;
+                    this.bulkAddSelected = [];
+                    this.bulkAddLastIdx = null;
                 },
                 closeBulkAddModal() {
                     if (this.bulkAddProcessing) return;
                     this.showBulkAddModal = false;
                 },
                 toggleAllBulk() {
-                    if (this.bulkAddSelected.length === this.pendingGames.length) {
+                    if (this.bulkAddSelected.length === this.displayedBulkGames.length) {
                         this.bulkAddSelected = [];
                     } else {
-                        this.bulkAddSelected = this.pendingGames.map(p => p.filename);
+                        this.bulkAddSelected = this.displayedBulkGames.map(p => p.filename);
                     }
                 },
                 handleBulkRowClick(pg, idx, e) {
                     if (e && e.shiftKey && this.bulkAddLastIdx !== null) {
                         const start = Math.min(idx, this.bulkAddLastIdx);
                         const end = Math.max(idx, this.bulkAddLastIdx);
-                        const subset = this.pendingGames.slice(start, end + 1).map(p => p.filename);
+                        const subset = this.displayedBulkGames.slice(start, end + 1).map(p => p.filename);
                         
-                        // If current is being selected, select all in range. Else deselect.
-                        const currentlySelected = this.bulkAddSelected.includes(pg.filename);
-                        if (!currentlySelected) {
+                        const isSelected = this.bulkAddSelected.includes(pg.filename);
+                        if (!isSelected) {
                             this.bulkAddSelected = [...new Set([...this.bulkAddSelected, ...subset])];
                         } else {
                             this.bulkAddSelected = this.bulkAddSelected.filter(f => !subset.includes(f));
