@@ -1,6 +1,6 @@
 import express from 'express';
 import { config } from '../utils/config.js';
-import { readDB, writeDB, makePublicId, refreshBucketFileCache, checkFileInCache } from '../utils/db.js';
+import { readDB, writeDB, makePublicId, refreshBucketFileCache, checkFileInCache, getBucketFileCache } from '../utils/db.js';
 import { requireAdmin, ensureEnv } from '../utils/auth.js';
 import { ensureMd5MapFresh } from '../utils/md5-map.js';
 import { logger } from '../utils/logger.js';
