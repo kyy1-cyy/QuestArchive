@@ -151,13 +151,6 @@
         }
 
         /* Modal */
-        .game-thumb {
-            opacity: 0;
-            transition: opacity 0.5s ease;
-        }
-        .game-thumb[src] {
-            opacity: 1;
-        }
         .overlay {
             position: fixed;
             top: 0;
@@ -609,14 +602,13 @@
                         <td>
                             <input type="checkbox" :value="game.id" v-model="selectedIds">
                         </td>
-                        <td style="color:#9cdcfe; font-weight:800;">{{ game.title }}</td>
-                        <td style="width: 105px; padding: 5px;">
-                            <img v-if="game.thumbnailUrl" :src="game.thumbnailUrl" loading="lazy" class="game-thumb"
-                                style="width: 100px; height: 56px; border-radius: 4px; object-fit: cover; background: #1a1c1d; display: block;">
-                            <div v-else class="muted" style="font-size: 10px;">No Image</div>
+                        <td style="color: #ce9178;">"{{ game.title }}"</td>
+                        <td
+                            style="color:#9cdcfe; font-size: 12px; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                            {{ game.thumbnailUrl || '-' }}
                         </td>
-                        <td style="color: #b5cea8; font-size: 12px;">{{ game.version || 'null' }}</td>
-                        <td style="color: #6a9955; font-size: 11px; opacity: 0.8;">Active ({{ game.id.slice(0,8) }})</td>
+                        <td style="color: #b5cea8;">{{ game.version || 'null' }}</td>
+                        <td style="color: #6a9955; font-size: 12px;">Active ({{ game.id.slice(0,8) }})</td>
                     </tr>
                 </tbody>
             </table>
@@ -2343,67 +2335,77 @@
                     this.bulkAddTotal = this.bulkAddSelected.length;
                     this.bulkAddLogs = [];
                     this.bulkAddCancelled = false;
+                    this._bulkAddedIds = [];
                     const batchSize = 500;
                     const startTime = Date.now();
-                    
-                    let displayCount = 0;
-                    this.bulkLog(`Launching bulk sync for ${this.bulkAddTotal} files...`, 'success');
 
-                    this.logTimer = setInterval(() => {
-                        if (displayCount < this.bulkAddTotal) {
-                            // Smoothly move displayCount towards bulkAddCurrent + some "optimistic" progress
-                            // so it feels immediate even during network wait times
-                            const target = Math.min(this.bulkAddTotal, this.bulkAddCurrent + 250);
-                            if (displayCount < target) {
-                                displayCount += Math.ceil((target - displayCount) / 15);
-                            }
-                            this.bulkAddProgress = (displayCount / this.bulkAddTotal) * 100;
-                        }
-                    }, 40); 
+                    this.bulkLog(`Processing ${this.bulkAddTotal} files...`, 'success');
 
                     for (let i = 0; i < this.bulkAddSelected.length; i += batchSize) {
                         if (this.bulkAddCancelled) break;
-                        
+
                         const batch = this.bulkAddSelected.slice(i, i + batchSize);
-                        const gamesToAdd = batch.map(fileKey => ({ fileKey }));
-                        
-                        this.bulkLog(`Syncing Batch ${Math.floor(i/batchSize) + 1} (${batch.length} games)...`);
-                        
+                        const batchNum = Math.floor(i / batchSize) + 1;
+                        this.bulkLog(`Batch ${batchNum} — ${batch.length} games...`);
+
                         try {
                             const res = await fetch('/api/database/bulk-add', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ games: gamesToAdd })
+                                body: JSON.stringify({ games: batch.map(fileKey => ({ fileKey })) })
                             });
                             const result = await res.json();
-                            
+
                             if (res.ok) {
-                                this.bulkLog(`Successfully added ${result.count} games.`, 'success');
                                 this.bulkAddCurrent = Math.min(i + batchSize, this.bulkAddTotal);
+                                this.bulkAddProgress = (this.bulkAddCurrent / this.bulkAddTotal) * 100;
+                                this.bulkLog(`Batch ${batchNum} done — added ${result.count} games.`, 'success');
+                                // Track IDs for rollback on cancel
+                                (result.games || []).forEach(g => this._bulkAddedIds.push(g.id));
                             } else {
-                                this.bulkLog(`Batch error: ${result.error}`, 'error');
+                                this.bulkLog(`Batch ${batchNum} error: ${result.error}`, 'error');
                             }
                         } catch (e) {
                             this.bulkLog(`Network error: ${e.message}`, 'error');
                         }
-                        
-                        // ETA calculation
-                        const elapsed = Date.now() - startTime;
-                        const perItem = elapsed / this.bulkAddCurrent;
-                        const remaining = (this.bulkAddTotal - this.bulkAddCurrent) * perItem;
-                        this.bulkAddETA = this.formatETA(remaining);
+
+                        // ETA
+                        if (this.bulkAddCurrent > 0) {
+                            const elapsed = Date.now() - startTime;
+                            const remaining = (elapsed / this.bulkAddCurrent) * (this.bulkAddTotal - this.bulkAddCurrent);
+                            this.bulkAddETA = this.formatETA(remaining);
+                        }
                     }
-                    
-                    clearInterval(this.logTimer);
+
+                    if (!this.bulkAddCancelled) {
+                        this.bulkAddProgress = 100;
+                        this.bulkAddCurrent = this.bulkAddTotal;
+                        this.bulkAddETA = '0s';
+                    }
                     this.bulkAddProcessing = false;
-                    this.bulkLog('Operations complete.');
+                    this.bulkLog(this.bulkAddCancelled ? 'Cancelled.' : 'All done!', this.bulkAddCancelled ? 'error' : 'success');
                     this.fetchGames();
                 },
-                cancelBulkProcessing() {
-                    clearInterval(this.logTimer);
+                async cancelBulkProcessing() {
                     this.bulkAddCancelled = true;
                     this.bulkAddProcessing = false;
-                    this.bulkLog('Cancelled by user.', 'error');
+                    this.bulkLog('Cancelling and rolling back...', 'error');
+
+                    // Delete all games added during this session
+                    if (this._bulkAddedIds && this._bulkAddedIds.length > 0) {
+                        try {
+                            await fetch('/api/database/bulk-delete', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ ids: this._bulkAddedIds })
+                            });
+                            this.bulkLog(`Rolled back ${this._bulkAddedIds.length} games.`, 'error');
+                        } catch (e) {
+                            this.bulkLog(`Rollback failed: ${e.message}`, 'error');
+                        }
+                    }
+                    this._bulkAddedIds = [];
+                    this.fetchGames();
                 },
                 formatETA(ms) {
                     if (!ms || ms < 0) return '0s';
