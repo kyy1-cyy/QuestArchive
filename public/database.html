@@ -151,6 +151,13 @@
         }
 
         /* Modal */
+        .game-thumb {
+            opacity: 0;
+            transition: opacity 0.5s ease;
+        }
+        .game-thumb[src] {
+            opacity: 1;
+        }
         .overlay {
             position: fixed;
             top: 0;
@@ -602,13 +609,14 @@
                         <td>
                             <input type="checkbox" :value="game.id" v-model="selectedIds">
                         </td>
-                        <td style="color: #ce9178;">"{{ game.title }}"</td>
-                        <td
-                            style="color:#9cdcfe; font-size: 12px; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                            {{ game.thumbnailUrl || '-' }}
+                        <td style="color:#9cdcfe; font-weight:800;">{{ game.title }}</td>
+                        <td style="width: 105px; padding: 5px;">
+                            <img v-if="game.thumbnailUrl" :src="game.thumbnailUrl" loading="lazy" class="game-thumb"
+                                style="width: 100px; height: 56px; border-radius: 4px; object-fit: cover; background: #1a1c1d; display: block;">
+                            <div v-else class="muted" style="font-size: 10px;">No Image</div>
                         </td>
-                        <td style="color: #b5cea8;">{{ game.version }}</td>
-                        <td style="color: #6a9955; font-size: 12px;">Active ({{ game.hashId || '-' }})</td>
+                        <td style="color: #b5cea8; font-size: 12px;">{{ game.version || 'null' }}</td>
+                        <td style="color: #6a9955; font-size: 11px; opacity: 0.8;">Active ({{ game.id.slice(0,8) }})</td>
                     </tr>
                 </tbody>
             </table>
@@ -2334,9 +2342,16 @@
                     this.bulkAddLogs = [];
                     this.bulkAddCancelled = false;
                     
-                    const startTime = Date.now();
-                    const batchSize = 500;
-                    
+                    let displayCount = 0;
+                    this.logTimer = setInterval(() => {
+                        if (displayCount < this.bulkAddCurrent && displayCount < this.bulkAddTotal) {
+                            displayCount++;
+                            if (displayCount % 2 === 0) {
+                                this.bulkAddProgress = (displayCount / this.bulkAddTotal) * 100;
+                            }
+                        }
+                    }, 2); // Ultra-fast "alive" feel
+
                     for (let i = 0; i < this.bulkAddSelected.length; i += batchSize) {
                         if (this.bulkAddCancelled) break;
                         
@@ -2374,11 +2389,13 @@
                         this.bulkAddETA = this.formatETA(remaining);
                     }
                     
+                    clearInterval(this.logTimer);
                     this.bulkAddProcessing = false;
                     this.bulkLog('Operations complete.');
                     this.fetchGames();
                 },
                 cancelBulkProcessing() {
+                    clearInterval(this.logTimer);
                     this.bulkAddCancelled = true;
                     this.bulkAddProcessing = false;
                     this.bulkLog('Cancelled by user.', 'error');
