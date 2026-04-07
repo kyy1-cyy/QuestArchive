@@ -37,14 +37,14 @@ async function fetchGameMap() {
             if (!line.trim()) continue;
             
             const parts = line.split(';');
-            if (parts.length >= 7) {
+            if (parts.length >= 6) {
                 const releaseName = parts[1].trim().toLowerCase();
                 const pkgName = parts[2].trim();
-                const sizeStr = parts[6].trim();
+                const sizeMB = parts[5] ? parts[5].trim() : null;
                 let fileSize = 0;
-                if (sizeStr) {
-                    const parsed = parseInt(sizeStr);
-                    if (!isNaN(parsed)) fileSize = parsed;
+                if (sizeMB) {
+                    const parsed = parseFloat(sizeMB); // Use parseFloat for things like 2.5 MB
+                    if (!isNaN(parsed)) fileSize = Math.floor(parsed * 1024 * 1024);
                 }
                 map.set(releaseName, { packageName: pkgName, fileSize });
             }
