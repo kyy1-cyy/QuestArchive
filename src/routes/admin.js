@@ -217,6 +217,17 @@ router.get('/game-notes/:filename', async (req, res, next) => {
     }
 });
 
+router.post('/database/rebuild-cache', async (req, res, next) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+        const { rebuildBucketCache } = await import('../utils/db.js');
+        const files = await rebuildBucketCache();
+        res.json({ success: true, count: files.length });
+    } catch (err) {
+        next(err);
+    }
+});
+
 router.get('/pending-games', async (req, res, next) => {
     if (!requireAdmin(req, res)) return;
     try {

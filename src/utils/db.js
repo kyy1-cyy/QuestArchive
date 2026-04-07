@@ -212,6 +212,52 @@ export async function checkFileInCache(key) {
 }
 
 /**
+ * Performs a REAL B2 bucket listing to rebuild the game_cache.json.
+ * Use sparingly as it incurs Class C costs.
+ */
+export async function rebuildBucketCache() {
+    const { ListObjectsV2Command } = await import('@aws-sdk/client-s3');
+    const { writeJsonToB2 } = await import('./s3-helpers.js');
+    
+    console.log('[CACHE] Rebuilding cache from real bucket list...');
+    
+    let allFiles = [];
+    let continuationToken = null;
+    
+    try {
+        do {
+            const command = new ListObjectsV2Command({
+                Bucket: config.B2.BUCKET_NAME,
+                ContinuationToken: continuationToken
+            });
+            const response = await s3Client.send(command);
+            
+            if (response.Contents) {
+                const keys = response.Contents.map(c => c.Key);
+                allFiles.push(...keys);
+            }
+            
+            continuationToken = response.NextContinuationToken;
+        } while (continuationToken);
+
+        const now = Date.now();
+        bucketFileCache = allFiles;
+        lastBucketListFetch = now;
+
+        await writeJsonToB2(config.B2.GAME_CACHE_KEY, {
+            timestamp: now,
+            files: allFiles
+        });
+
+        console.log(`[CACHE] Rebuild complete: ${allFiles.length} objects found`);
+        return allFiles;
+    } catch (err) {
+        console.error('[CACHE] Rebuild failed:', err);
+        throw err;
+    }
+}
+
+/**
  * No-op version of refreshBucketFileCache to satisfy imports without costs.
  */
 export async function refreshBucketFileCache() {

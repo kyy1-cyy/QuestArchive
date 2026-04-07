@@ -451,8 +451,13 @@
                         <span
                             style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #666; font-size: 14px;">🔍</span>
                     </div>
-                    <span style="color: #808080; font-size: 12px;">Total: {{ filteredGames.length }} / {{ games.length
-                        }}</span>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <button class="btn" @click="rebuildCache" :disabled="cacheRebuilding" 
+                            style="font-size: 11px; padding: 4px 10px; background: #3c3c3c;">
+                            {{ cacheRebuilding ? 'Rebuilding...' : 'Hard Refresh Cache' }}
+                        </button>
+                        <span style="color: #808080; font-size: 12px;">Total: {{ filteredGames.length }} / {{ games.length }}</span>
+                    </div>
                 </div>
             </div>
 
@@ -1224,6 +1229,7 @@
                     activeTab: 'games',
                     donations: [],
                     donationsLoading: false,
+                    cacheRebuilding: false,
                     storagePrefix: '',
                     storageFolders: [],
                     storageObjects: [],
@@ -2496,6 +2502,30 @@
                 },
                 toggleAll(e) {
                     this.selectedIds = e.target.checked ? this.games.map(g => g.id) : [];
+                },
+                async rebuildCache() {
+                    if (this.cacheRebuilding) return;
+                    if (!confirm('This will perform a REAL B2 bucket listing. Costs $0.01 per 1000 files. Continue?')) return;
+                    
+                    this.cacheRebuilding = true;
+                    this.logUIEvent('Hard Cache Rebuild Triggered');
+                    this.showToast('Rebuilding cache from B2 listing...', 'info');
+                    
+                    try {
+                        const res = await fetch('/api/database/rebuild-cache', { method: 'POST' });
+                        const json = await res.json();
+                        if (res.ok) {
+                            this.showToast(`Cache rebuilt: ${json.count} files found`, 'success');
+                            this.logUIEvent('Cache Rebuild Success', `${json.count} files`);
+                        } else {
+                            throw new Error(json.error || 'Failed');
+                        }
+                    } catch (e) {
+                        this.showToast(e.message, 'error');
+                        this.logUIEvent('Cache Rebuild Failed', e.message);
+                    } finally {
+                        this.cacheRebuilding = false;
+                    }
                 }
             }
         }).mount('#app')
