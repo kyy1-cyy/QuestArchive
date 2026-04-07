@@ -498,7 +498,8 @@
                         <div v-else class="flex-1 flex flex-col h-full animate-fade-in">
                             <div
                                 class="w-full aspect-[18/9] rounded-xl overflow-hidden bg-[#111] mb-6 relative border border-white/10 shrink-0">
-                                <img :src="selectedGame.thumbnailUrl || 'https://via.placeholder.com/800x400?text=No+Thumbnail'"
+                                <img :key="selectedGame.id"
+                                    :src="selectedGame.thumbnailUrl || 'https://via.placeholder.com/800x400?text=No+Thumbnail'"
                                     class="w-full h-full object-cover"
                                     @error="handleImageError">
                                 <div

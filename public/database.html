@@ -2377,22 +2377,8 @@
                         }
                     }
 
-                    if (!this.bulkAddCancelled) {
-                        this.bulkAddProgress = 100;
-                        this.bulkAddCurrent = this.bulkAddTotal;
-                        this.bulkAddETA = '0s';
-                    }
-                    this.bulkAddProcessing = false;
-                    this.bulkLog(this.bulkAddCancelled ? 'Cancelled.' : 'All done!', this.bulkAddCancelled ? 'error' : 'success');
-                    this.fetchGames();
-                },
-                async cancelBulkProcessing() {
-                    this.bulkAddCancelled = true;
-                    this.bulkAddProcessing = false;
-                    this.bulkLog('Cancelling and rolling back...', 'error');
-
-                    // Delete all games added during this session
-                    if (this._bulkAddedIds && this._bulkAddedIds.length > 0) {
+                    if (this.bulkAddCancelled && this._bulkAddedIds && this._bulkAddedIds.length > 0) {
+                        this.bulkLog('Rolling back...', 'error');
                         try {
                             await fetch('/api/database/bulk-delete', {
                                 method: 'POST',
@@ -2403,9 +2389,21 @@
                         } catch (e) {
                             this.bulkLog(`Rollback failed: ${e.message}`, 'error');
                         }
+                        this._bulkAddedIds = [];
                     }
-                    this._bulkAddedIds = [];
+
+                    if (!this.bulkAddCancelled) {
+                        this.bulkAddProgress = 100;
+                        this.bulkAddCurrent = this.bulkAddTotal;
+                        this.bulkAddETA = '0s';
+                    }
+                    this.bulkAddProcessing = false;
+                    this.bulkLog(this.bulkAddCancelled ? 'Cancelled.' : 'All done!', this.bulkAddCancelled ? 'error' : 'success');
                     this.fetchGames();
+                },
+                cancelBulkProcessing() {
+                    this.bulkAddCancelled = true;
+                    this.bulkLog('Cancelling after current batch...', 'error');
                 },
                 formatETA(ms) {
                     if (!ms || ms < 0) return '0s';
