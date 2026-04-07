@@ -460,7 +460,7 @@
                 </div>
             </div>
 
-            <div v-if="activeTab === 'games'" class="uploader">
+            <div v-if="isOwner && activeTab === 'games'" class="uploader">
                 <div class="dropzone" :class="{ active: isDragOver }" @dragenter.prevent="isDragOver = true"
                     @dragover.prevent="isDragOver = true" @dragleave.prevent="isDragOver = false"
                     @drop.prevent="handleDrop">
@@ -507,7 +507,7 @@
                 </div>
             </div>
 
-            <div v-if="activeTab === 'games'" class="uploader">
+            <div v-if="isOwner && activeTab === 'games'" class="uploader">
                 <div class="dropzone" :class="{ active: bulkDragOver }" @dragenter.prevent="bulkDragOver = true"
                     @dragover.prevent="bulkDragOver = true" @dragleave.prevent="bulkDragOver = false"
                     @drop.prevent="handleBulkDrop">
@@ -923,7 +923,7 @@
             </div>
 
             <div v-if="showBulkAddModal" class="overlay" @click.self="closeBulkAddModal">
-                <div class="modal" style="width: 800px; max-height: 90vh; display: flex; flex-direction: column;">
+                <div class="modal" style="width: 800px; max-height: 75vh; display: flex; flex-direction: column;">
                     <div class="modal-header">
                         <h3 v-if="bulkAddStep === 'select'">Bulk Add Games ({{ bulkAddSelected.length }} selected)</h3>
                         <h3 v-else>Registering Games...</h3>
@@ -949,7 +949,7 @@
                             <div class="muted" style="font-size:11px;">{{ displayedBulkGames.length }} files visible</div>
                         </div>
 
-                        <div style="flex: 1; min-height: 480px; overflow-y: auto; border: 1px solid #333; border-radius: 8px; background: #0a0a0a;">
+                        <div style="flex: 1; max-height: 300px; overflow-y: auto; border: 1px solid #333; border-radius: 8px; background: #0a0a0a;">
                             <table style="margin: 0; width: 100%; border-collapse: collapse;">
                                 <thead style="position: sticky; top: 0; z-index: 10; background: #252526;">
                                     <tr>
@@ -967,7 +967,7 @@
                                         style="cursor: pointer; user-select: none; border-bottom: 1px solid #1a1a1a;"
                                         class="bulk-row">
                                         <td style="padding: 10px; text-align: center;">
-                                            <input type="checkbox" :checked="bulkAddSelected.includes(pg.filename)" @click.stop @change="handleBulkRowClick(pg, idx, $event)">
+                                            <input type="checkbox" :checked="bulkAddSelected.includes(pg.filename)" @click.stop.prevent="handleBulkRowClick(pg, idx, $event)">
                                         </td>
                                         <td style="color:#ce9178; font-size: 11px; padding: 10px; font-family: monospace;">{{ pg.filename }}</td>
                                     </tr>
@@ -1456,49 +1456,44 @@
             },
             methods: {
                 async login() {
-                    let endpoint = '/api/admin/login';
-                    let isOwnerAttempt = false;
-
-                    // First, let's try owner login directly (since the password field is shared)
-                    let checkOwner = await fetch('/api/admin/owner/login', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ password: this.password })
-                    });
-
-                    if (checkOwner.ok) {
-                        endpoint = '/api/admin/owner/login'; // Success on owner
-                        isOwnerAttempt = true;
-                    } else {
-                        // Fallback to normal admin login if owner failed
-                        checkOwner = await fetch('/api/admin/login', {
+                    try {
+                        let isOwnerAttempt = false;
+                        let checkRes = await fetch('/api/admin/owner/login', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ password: this.password })
                         });
-                    }
 
-                    const json = await checkOwner.json();
-                    if (checkOwner.ok && json.success) {
-                        this.isAuthenticated = true;
-                        this.isAdmin = !!(json.role === 'admin' || json.role === 'owner');
-                        this.isOwner = !!(json.role === 'owner');
-
-                        if (this.isOwner) {
-                            localStorage.setItem('owner_pwd', this.password);
-                            localStorage.setItem('is_owner_session', 'true');
-                            localStorage.setItem('is_admin_session', 'true');
-                        } else if (this.isAdmin) {
-                            localStorage.setItem('admin_pwd', this.password);
-                            localStorage.setItem('is_admin_session', 'true');
+                        if (checkRes.ok) {
+                            isOwnerAttempt = true;
                         } else {
-                            localStorage.setItem('mod_pwd', this.password);
+                            checkRes = await fetch('/api/admin/login', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ password: this.password })
+                            });
                         }
 
-                        this.fetchGames();
-                        this.showToast('Logged in successfully', 'success');
-                    } else {
-                        this.showToast(json.error || 'Invalid password', 'error');
+                        const json = await checkRes.json();
+                        if (checkRes.ok && json.success) {
+                            this.isAuthenticated = true;
+                            this.isAdmin = !!(json.role === 'admin' || json.role === 'owner');
+                            this.isOwner = !!(json.role === 'owner');
+
+                            if (this.isOwner) {
+                                localStorage.setItem('owner_pwd', this.password);
+                            } else if (this.isAdmin) {
+                                localStorage.setItem('admin_pwd', this.password);
+                            }
+
+                            this.fetchGames();
+                            this.showToast('Logged in successfully', 'success');
+                        } else {
+                            this.showToast(json.error || 'Invalid password', 'error');
+                        }
+                    } catch (e) {
+                        console.error('Login error:', e);
+                        this.showToast('Login failed: ' + e.message, 'error');
                     }
                 },
                 showToast(message, type = 'info') {
@@ -2349,14 +2344,22 @@
                 },
                 handleBulkRowClick(pg, idx, e) {
                     if (e && e.shiftKey && this.bulkAddLastIdx !== null) {
-                        const start = Math.min(idx, this.bulkAddLastIdx);
-                        const end = Math.max(idx, this.bulkAddLastIdx);
-                        const subset = this.displayedBulkGames.slice(start, end + 1).map(p => p.filename);
+                        e.preventDefault();
+                        const currentIdx = idx;
+                        const lastIdx = this.bulkAddLastIdx;
                         
-                        const isSelected = this.bulkAddSelected.includes(pg.filename);
-                        if (!isSelected) {
-                            this.bulkAddSelected = [...new Set([...this.bulkAddSelected, ...subset])];
+                        const start = Math.min(currentIdx, lastIdx);
+                        const end = Math.max(currentIdx, lastIdx);
+                        
+                        const subset = this.displayedBulkGames.slice(start, end + 1).map(p => p.filename);
+                        const isAlreadySelected = this.bulkAddSelected.includes(pg.filename);
+                        
+                        if (!isAlreadySelected) {
+                            // Select the whole range
+                            const newSet = new Set([...this.bulkAddSelected, ...subset]);
+                            this.bulkAddSelected = Array.from(newSet);
                         } else {
+                            // Deselect the whole range
                             this.bulkAddSelected = this.bulkAddSelected.filter(f => !subset.includes(f));
                         }
                     } else {
