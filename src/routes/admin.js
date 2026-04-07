@@ -1,6 +1,6 @@
 import express from 'express';
 import { config } from '../utils/config.js';
-import { readDB, writeDB, makePublicId, refreshBucketFileCache } from '../utils/db.js';
+import { readDB, writeDB, makePublicId, refreshBucketFileCache, checkFileInCache } from '../utils/db.js';
 import { requireAdmin, ensureEnv } from '../utils/auth.js';
 import { ensureMd5MapFresh } from '../utils/md5-map.js';
 import { logger } from '../utils/logger.js';
@@ -94,17 +94,10 @@ router.get('/find-thumbnail/:packageName', async (req, res, next) => {
     const { packageName } = req.params;
     const key = `.meta/thumbnails/${packageName}.jpg`;
     try {
-        await s3Client.send(new HeadObjectCommand({
-            Bucket: config.B2.BUCKET_NAME,
-            Key: key
-        }));
-        // If it succeeds, it exists
-        res.json({ found: true, key });
+        const found = await checkFileInCache(key);
+        res.json({ found, key });
     } catch (err) {
-        if (err.name === 'NotFound' || err.$metadata?.httpStatusCode === 404) {
-            return res.json({ found: false });
-        }
-        res.status(500).json({ error: 'Failed to verify thumbnail' });
+        res.status(500).json({ error: 'Failed' });
     }
 });
 
@@ -125,6 +118,9 @@ router.get('/game-notes/:filename', async (req, res, next) => {
     const key = `.meta/notes/${baseName}.txt`;
     
     try {
+        const exists = await checkFileInCache(key);
+        if (!exists) return res.json({ found: false });
+
         const { GetObjectCommand } = await import('@aws-sdk/client-s3');
         const command = new GetObjectCommand({
             Bucket: config.B2.BUCKET_NAME,
@@ -147,7 +143,7 @@ router.get('/game-notes/:filename', async (req, res, next) => {
 router.get('/pending-games', async (req, res, next) => {
     if (!requireAdmin(req, res)) return;
     try {
-        const files = await refreshBucketFileCache();
+        const files = await getBucketFileCache();
         const md5Map = await ensureMd5MapFresh({ force: true });
 
         const pending = files
@@ -164,6 +160,41 @@ router.get('/pending-games', async (req, res, next) => {
         res.json(pending);
     } catch (err) {
         next(err);
+    }
+});
+
+// Internal endpoint for upload.sh to notify the server of a new upload
+router.post('/internal/register-upload', async (req, res) => {
+    // Basic auth check if API_KEY is set
+    const auth = req.headers.authorization;
+    if (config.API_KEY && auth !== `Bearer ${config.API_KEY}`) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { key } = req.body ?? {};
+    if (!key) return res.status(400).json({ error: 'Key required' });
+
+    console.log(`[INTERNAL] Received upload notification for: ${key}`);
+    
+    try {
+        // Incrementally update the cache without a full scan
+        const { getBucketFileCache } = await import('../utils/db.js');
+        const { writeJsonToB2 } = await import('../utils/s3-helpers.js');
+        
+        const files = await getBucketFileCache();
+        if (!files.includes(key)) {
+            files.push(key);
+            const now = Date.now();
+            await writeJsonToB2(config.B2.GAME_CACHE_KEY, {
+                timestamp: now,
+                files: files
+            });
+            console.log(`[INTERNAL] Instant cache update: Added ${key}`);
+        }
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Incremental cache update failed:', err);
+        res.status(500).json({ error: 'Failed' });
     }
 });
 

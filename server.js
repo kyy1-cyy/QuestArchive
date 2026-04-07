@@ -162,10 +162,10 @@ const server = app.listen(config.PORT, async () => {
         const { getBucketFileCache, refreshBucketFileCache } = await import('./src/utils/db.js');
         await getBucketFileCache();
         
-        // Refresh every 24 hours
+        // Safety Refresh every 15 minutes
         setInterval(() => {
             refreshBucketFileCache().catch(err => logger.error('Cache refresh failed', err));
-        }, 24 * 60 * 60 * 1000);
+        }, 15 * 60 * 1000);
     } catch (err) {
         logger.error('Failed to initialize B2 cache', err);
     }

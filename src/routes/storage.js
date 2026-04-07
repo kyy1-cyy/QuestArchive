@@ -14,53 +14,49 @@ function encodeKeyForPublicUrl(key) {
     return encodeURIComponent(key).replace(/%2F/g, '/');
 }
 
+import { getBucketFileCache } from '../utils/db.js';
+
 router.get('/list', async (req, res, next) => {
     if (!requireOwner(req, res)) return;
     if (!ensureEnv(req, res, ['B2.BUCKET_NAME'])) return;
 
     const prefix = String(req.query.prefix || '');
+    const cleanPrefix = prefix ? (prefix.endsWith('/') ? prefix : prefix + '/') : '';
+
     try {
-        let token = undefined;
-        let allFolders = [];
-        let allObjects = [];
+        console.log(`[STORAGE] Fast listing for prefix: "${cleanPrefix}" (cache-backed)`);
+        
+        const allKeys = await getBucketFileCache();
+        
+        const folders = new Set();
+        const objects = [];
 
-        console.log(`[STORAGE] Starting list for bucket: ${config.B2.BUCKET_NAME}, prefix: "${prefix}"`);
+        for (const key of allKeys) {
+            // Only look at keys that start with our prefix
+            if (!key.startsWith(cleanPrefix)) continue;
+            if (key === cleanPrefix) continue; // Skip the directory itself
 
-        try {
-            while (true) {
-                const command = new ListObjectsV2Command({
-                    Bucket: config.B2.BUCKET_NAME,
-                    Prefix: prefix ? (prefix.endsWith('/') ? prefix : prefix + '/') : '',
-                    Delimiter: '/',
-                    ContinuationToken: token
+            const relativePath = key.slice(cleanPrefix.length);
+            const slashIndex = relativePath.indexOf('/');
+
+            if (slashIndex !== -1) {
+                // It's a folder (mimicking CommonPrefixes)
+                const folderName = relativePath.slice(0, slashIndex);
+                folders.add(cleanPrefix + folderName + '/');
+            } else {
+                // It's a file in this folder
+                objects.push({
+                    key: key,
+                    size: 0, // Cache doesn't have size currently, but listing UI usually just needs name/path
+                    lastModified: new Date()
                 });
-                const result = await s3Client.send(command);
-
-                if (result.CommonPrefixes) {
-                    const folders = result.CommonPrefixes.map(p => p.Prefix).filter(Boolean);
-                    allFolders.push(...folders);
-                }
-
-                if (result.Contents) {
-                    const objects = result.Contents
-                        .filter(o => o.Key && o.Key !== prefix && o.Key !== (prefix + '/') && !o.Key.endsWith('/'))
-                        .map(o => ({
-                            key: o.Key,
-                            lastModified: o.LastModified,
-                            size: o.Size
-                        }));
-                    allObjects.push(...objects);
-                }
-
-                if (!result.IsTruncated) break;
-                token = result.NextContinuationToken;
             }
-        } catch (s3Err) {
-            console.error('[STORAGE] B2 List Error:', s3Err.message);
-            // If B2 fails, return what we have or empty list instead of 500
         }
 
-        console.log(`[STORAGE] Listing prefix "${prefix}" found ${allFolders.length} folders, ${allObjects.length} objects`);
+        const allFolders = Array.from(folders).sort();
+        const allObjects = objects.sort((a, b) => a.key.localeCompare(b.key));
+
+        console.log(`[STORAGE] Found ${allFolders.length} folders, ${allObjects.length} objects for prefix "${prefix}"`);
 
         res.json({
             prefix,

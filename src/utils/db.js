@@ -157,10 +157,10 @@ export async function incrementDownloadCount(id) {
     }
 }
 
-// === Bucket File List Cache (24h) ===
+// === Bucket File List Cache (10m) ===
 let bucketFileCache = null;
 let lastBucketListFetch = 0;
-const BUCKET_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+const BUCKET_CACHE_TTL = 10 * 60 * 1000; // 10 minutes memory cache
 
 export async function getBucketFileCache() {
     const now = Date.now();
@@ -175,18 +175,26 @@ export async function getBucketFileCache() {
         const { readJsonFromB2 } = await import('./s3-helpers.js');
         const persistent = await readJsonFromB2(config.B2.GAME_CACHE_KEY, null);
         
-        if (persistent && persistent.timestamp) {
-            bucketFileCache = persistent.files || [];
-            lastBucketListFetch = persistent.timestamp;
+        if (persistent && Array.isArray(persistent.files)) {
+            bucketFileCache = persistent.files;
+            lastBucketListFetch = persistent.timestamp || now;
             return bucketFileCache;
         }
     } catch (e) {
         console.error('[CACHE] Error reading persistent cache:', e.message);
     }
 
-    // 3. Fallback: return empty but don't block. 
-    // Listing handles itself via background setInterval in server.js or manual refresh.
+    // 3. Last resort: internal state or empty
     return bucketFileCache || [];
+}
+
+/**
+ * Checks if a file exists in the bucket without hitting the network.
+ * @param {string} key 
+ */
+export async function checkFileInCache(key) {
+    const files = await getBucketFileCache();
+    return files.includes(key);
 }
 
 export async function refreshBucketFileCache() {
