@@ -212,6 +212,13 @@ export async function checkFileInCache(key) {
 }
 
 /**
+ * No-op version of refreshBucketFileCache to satisfy imports without costs.
+ */
+export async function refreshBucketFileCache() {
+    return getBucketFileCache();
+}
+
+/**
  * Manually adds a single file to the cache and persists it to B2.
  */
 export async function addFileToCache(key) {
