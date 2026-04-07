@@ -2343,16 +2343,19 @@
                     this.bulkAddCancelled = false;
                     
                     let displayCount = 0;
-                    this.bulkLog(`Started: processing ${this.bulkAddTotal} files...`);
+                    this.bulkLog(`Launching bulk sync for ${this.bulkAddTotal} files...`, 'success');
 
                     this.logTimer = setInterval(() => {
                         if (displayCount < this.bulkAddTotal) {
-                            if (displayCount < this.bulkAddCurrent) {
-                                displayCount += Math.ceil((this.bulkAddCurrent - displayCount) / 10);
+                            // Smoothly move displayCount towards bulkAddCurrent + some "optimistic" progress
+                            // so it feels immediate even during network wait times
+                            const target = Math.min(this.bulkAddTotal, this.bulkAddCurrent + 250);
+                            if (displayCount < target) {
+                                displayCount += Math.ceil((target - displayCount) / 15);
                             }
                             this.bulkAddProgress = (displayCount / this.bulkAddTotal) * 100;
                         }
-                    }, 30); 
+                    }, 40); 
 
                     for (let i = 0; i < this.bulkAddSelected.length; i += batchSize) {
                         if (this.bulkAddCancelled) break;
@@ -2360,7 +2363,7 @@
                         const batch = this.bulkAddSelected.slice(i, i + batchSize);
                         const gamesToAdd = batch.map(fileKey => ({ fileKey }));
                         
-                        this.bulkLog(`Processing batch ${Math.floor(i/batchSize) + 1}...`);
+                        this.bulkLog(`Syncing Batch ${Math.floor(i/batchSize) + 1} (${batch.length} games)...`);
                         
                         try {
                             const res = await fetch('/api/database/bulk-add', {
@@ -2371,24 +2374,14 @@
                             const result = await res.json();
                             
                             if (res.ok) {
-                                (result.games || []).forEach(g => {
-                                    this.bulkLog(`Added: ${g.title} (${g.version || 'null'})`, 'success');
-                                });
+                                this.bulkLog(`Successfully added ${result.count} games.`, 'success');
+                                this.bulkAddCurrent = Math.min(i + batchSize, this.bulkAddTotal);
                             } else {
-                                this.bulkLog(`Batch failed: ${result.error}`, 'error');
+                                this.bulkLog(`Batch error: ${result.error}`, 'error');
                             }
                         } catch (e) {
-                            this.bulkLog(`Error: ${e.message}`, 'error');
+                            this.bulkLog(`Network error: ${e.message}`, 'error');
                         }
-                        
-                        this.bulkAddCurrent = Math.min(i + batchSize, this.bulkAddTotal);
-                        this.bulkAddProgress = (this.bulkAddCurrent / this.bulkAddTotal) * 100;
-                        
-                        // Simple ETA
-                        const elapsed = Date.now() - startTime;
-                        const perItem = elapsed / this.bulkAddCurrent;
-                        const remaining = (this.bulkAddTotal - this.bulkAddCurrent) * perItem;
-                        this.bulkAddETA = this.formatETA(remaining);
                     }
                     
                     clearInterval(this.logTimer);
