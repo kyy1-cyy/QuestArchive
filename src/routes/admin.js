@@ -1,6 +1,6 @@
 import express from 'express';
 import { config } from '../utils/config.js';
-import { readDB, writeDB, makePublicId, refreshBucketFileCache, checkFileInCache, getBucketFileCache } from '../utils/db.js';
+import { readDB, writeDB, makePublicId, refreshBucketFileCache, checkFileInCache, getBucketFileCache, addFileToCache } from '../utils/db.js';
 import { requireAdmin, ensureEnv } from '../utils/auth.js';
 import { ensureMd5MapFresh } from '../utils/md5-map.js';
 import { logger } from '../utils/logger.js';
@@ -177,16 +177,7 @@ router.post('/internal/register-upload', async (req, res) => {
     console.log(`[INTERNAL] Received upload notification for: ${key}`);
     
     try {
-        const files = await getBucketFileCache();
-        if (!files.includes(key)) {
-            files.push(key);
-            const now = Date.now();
-            await writeJsonToB2(config.B2.GAME_CACHE_KEY, {
-                timestamp: now,
-                files: files
-            });
-            console.log(`[INTERNAL] Instant cache update: Added ${key}`);
-        }
+        await addFileToCache(key);
         res.json({ success: true });
     } catch (err) {
         console.error('Incremental cache update failed:', err);

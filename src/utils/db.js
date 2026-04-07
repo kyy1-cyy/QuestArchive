@@ -220,3 +220,30 @@ export async function refreshBucketFileCache() {
         return bucketFileCache || [];
     }
 }
+
+/**
+ * Manually adds a single file to the cache and persists it to B2.
+ * This is MUCH faster than a full refreshBucketFileCache().
+ */
+export async function addFileToCache(key) {
+    if (!key) return;
+    try {
+        const { writeJsonToB2 } = await import('./s3-helpers.js');
+        const files = await getBucketFileCache();
+        
+        if (!files.includes(key)) {
+            files.push(key);
+            const now = Date.now();
+            bucketFileCache = files;
+            lastBucketListFetch = now;
+            
+            await writeJsonToB2(config.B2.GAME_CACHE_KEY, {
+                timestamp: now,
+                files: files
+            });
+            console.log(`[CACHE] Incrementally added ${key} to cache`);
+        }
+    } catch (err) {
+        console.error('[CACHE] Incremental update failed:', err.message);
+    }
+}

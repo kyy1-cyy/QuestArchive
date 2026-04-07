@@ -7,7 +7,7 @@ import { s3Client } from '../utils/s3.js';
 import { requireAdmin, ensureEnv } from '../utils/auth.js';
 import { logger } from '../utils/logger.js';
 import { hashId, readJsonFromB2, writeJsonToB2 } from '../utils/s3-helpers.js';
-import { refreshBucketFileCache } from '../utils/db.js';
+import { addFileToCache } from '../utils/db.js';
 
 const router = express.Router();
 
@@ -150,7 +150,7 @@ router.post('/complete', async (req, res, next) => {
             console.log(`[UPLOAD] MD5 map updated in ${Date.now() - mapStart}ms: ${hash} -> ${key}`);
         }
 
-        refreshBucketFileCache().catch(e => logger.error('Cache refresh after upload failed', e));
+        addFileToCache(key).catch(e => logger.error('Incremental cache update failed', e));
 
         console.log(`[UPLOAD] Complete TOTAL: ${Date.now() - startTime}ms`);
         res.json({ success: true });
@@ -204,7 +204,7 @@ router.put('/direct', async (req, res, next) => {
                 const map = await readJsonFromB2(config.B2.MD5_MAP_KEY, {});
                 map[hash] = String(key);
                 await writeJsonToB2(config.B2.MD5_MAP_KEY, map);
-                await refreshBucketFileCache();
+                await addFileToCache(key);
             } catch (e) {
                 logger.error('Post-upload update failed', e);
             }
