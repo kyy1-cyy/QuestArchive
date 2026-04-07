@@ -1341,7 +1341,8 @@
                     bulkAddTotal: 0,
                     bulkAddETA: '--:--',
                     bulkAddLogs: [],
-                    bulkAddCancelled: false
+                    bulkAddCancelled: false,
+                    logTimer: null
                 }
             },
             computed: {
@@ -2410,7 +2411,6 @@
                 selectPending(pg) {
                     const filename = String(pg.filename || '');
                     this.newGame.fileKey = filename;
-                    this.newGame.hashId = pg.hashId || '';
 
                     // Improved Parsing (Matches Server)
                     const base = filename.split('/').pop().replace(/\.zip$/i, '');
@@ -2430,8 +2430,9 @@
                     this.manualMode = false;
                     this.showToast('Details parsed from filename', 'success');
 
+                    // Automatically compute hash if not provided
                     if (filename) {
-                        this.autoProcessGame(pg.hashId, filename);
+                        this.autoProcessGame(null, filename);
                     }
                 },
                 async fetchGames() {
