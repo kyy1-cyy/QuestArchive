@@ -6,7 +6,7 @@ import { ensureMd5MapFresh } from '../utils/md5-map.js';
 import { logger } from '../utils/logger.js';
 import { runMigration, getMigrationStatus } from '../utils/migration.js';
 import { getPackageNameFromList } from '../utils/game-list.js';
-import { readJsonFromB2 } from '../utils/s3-helpers.js';
+import { readJsonFromB2, writeJsonToB2 } from '../utils/s3-helpers.js';
 import { HeadObjectCommand } from '@aws-sdk/client-s3';
 import { s3Client } from '../utils/s3.js';
 
@@ -177,10 +177,6 @@ router.post('/internal/register-upload', async (req, res) => {
     console.log(`[INTERNAL] Received upload notification for: ${key}`);
     
     try {
-        // Incrementally update the cache without a full scan
-        const { getBucketFileCache } = await import('../utils/db.js');
-        const { writeJsonToB2 } = await import('../utils/s3-helpers.js');
-        
         const files = await getBucketFileCache();
         if (!files.includes(key)) {
             files.push(key);

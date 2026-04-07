@@ -6,7 +6,7 @@ import { s3Client } from '../utils/s3.js';
 import { requireOwner, ensureEnv } from '../utils/auth.js';
 import { logger } from '../utils/logger.js';
 import { ensureMd5MapFresh } from '../utils/md5-map.js';
-import { refreshBucketFileCache } from '../utils/db.js';
+import { refreshBucketFileCache, getBucketFileCache } from '../utils/db.js';
 
 const router = express.Router();
 
@@ -14,7 +14,6 @@ function encodeKeyForPublicUrl(key) {
     return encodeURIComponent(key).replace(/%2F/g, '/');
 }
 
-import { getBucketFileCache } from '../utils/db.js';
 
 router.get('/list', async (req, res, next) => {
     if (!requireOwner(req, res)) return;
