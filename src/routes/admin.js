@@ -89,8 +89,10 @@ router.post('/database/bulk-add', async (req, res, next) => {
             // 1. Automatic Metadata Lookup (Thumbs/Notes)
             try {
                 // Use the same VRP-GameList.txt lookup that single-add uses
-                const pkg = await getPackageNameFromList(fileKey);
-                if (pkg) {
+                const result = await getPackageNameFromList(fileKey);
+                if (result) {
+                    const pkg = result.packageName;
+                    if (result.fileSize) newGame.fileSize = result.fileSize;
                     const thumbKey = `.meta/thumbnails/${pkg}.jpg`;
                     if (cacheClones.includes(thumbKey)) {
                         newGame.thumbnailUrl = thumbKey; 
@@ -144,8 +146,8 @@ router.get('/inspect-zip/:hash', async (req, res, next) => {
         const key = map[hash];
         if (!key) return res.status(404).json({ error: 'Hash not found in map' });
         
-        const packageName = await getPackageNameFromList(key);
-        res.json({ packageName });
+        const result = await getPackageNameFromList(key);
+        res.json({ packageName: result?.packageName || null, fileSize: result?.fileSize || 0 });
     } catch (err) {
         next(err);
     }
@@ -157,8 +159,8 @@ router.get('/inspect-by-filename', async (req, res, next) => {
     const filename = req.query.filename;
     if (!filename) return res.status(400).json({ error: 'filename required' });
     try {
-        const packageName = await getPackageNameFromList(filename);
-        res.json({ packageName });
+        const result = await getPackageNameFromList(filename);
+        res.json({ packageName: result?.packageName || null, fileSize: result?.fileSize || 0 });
     } catch (err) {
         next(err);
     }

@@ -411,29 +411,34 @@
                             </div>
                         </div>
 
-                        <div class="flex-1 overflow-y-auto">
-                            <table class="w-full text-left border-collapse text-sm">
+                        <div class="flex-1 overflow-y-auto overflow-x-hidden">
+                            <table class="w-full text-left border-collapse text-sm table-fixed">
                                 <thead
                                     class="hidden sm:table-header-group sticky top-0 bg-[#0a0a0a]/90 backdrop-blur-md z-10 text-xs text-gray-500 font-medium">
                                     <tr>
-                                        <th v-if="isLongList" class="py-3 px-4 border-b border-white/5 w-10 text-center">#</th>
+                                        <th v-if="isLongList" class="py-3 px-4 border-b border-white/5 w-12 text-center">#</th>
                                         <th class="py-3 px-6 border-b border-white/5 font-medium cursor-pointer select-none hover:text-white transition-colors"
                                             @click="toggleSort('title')">
                                             Title <span v-if="sortKey === 'title'" class="text-white/50">{{ sortDir ===
                                                 1 ? '↑' : '↓' }}</span>
                                         </th>
-                                        <th class="py-3 px-6 border-b border-white/5 font-medium cursor-pointer select-none hover:text-white transition-colors"
+                                        <th class="py-3 px-6 border-b border-white/5 font-medium cursor-pointer select-none hover:text-white transition-colors w-32"
                                             @click="toggleSort('version')">
-                                            Version <span v-if="sortKey === 'version'" class="text-white/50">{{ sortDir
+                                            Ver <span v-if="sortKey === 'version'" class="text-white/50">{{ sortDir
                                                 === 1 ? '↑' : '↓' }}</span>
                                         </th>
-                                        <th class="py-3 px-6 border-b border-white/5 font-medium cursor-pointer select-none hover:text-white transition-colors"
+                                        <th class="py-3 px-6 border-b border-white/5 font-medium cursor-pointer select-none hover:text-white transition-colors w-24"
                                             @click="toggleSort('downloads')">
-                                            Downloads <span v-if="sortKey === 'downloads'" class="text-white/50">{{
+                                            DLs <span v-if="sortKey === 'downloads'" class="text-white/50">{{
                                                 sortDir
                                                 === 1 ? '↑' : '↓' }}</span>
                                         </th>
-                                        <th class="py-3 px-6 border-b border-white/5 font-medium text-right">Status</th>
+                                        <th class="py-3 px-6 border-b border-white/5 font-medium text-right cursor-pointer select-none hover:text-white transition-colors w-28"
+                                            @click="toggleSort('fileSize')">
+                                            Size <span v-if="sortKey === 'fileSize'" class="text-white/50">{{
+                                                sortDir
+                                                === 1 ? '↑' : '↓' }}</span>
+                                        </th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -444,33 +449,24 @@
                                         <td :colspan="isLongList ? 5 : 4" class="py-12 text-center text-gray-500">No matching titles
                                             found.</td>
                                     </tr>
-                                    <tr v-for="(game, index) in displayGames" :key="game.title" @click="selectGame(game)"
-                                        :class="{'bg-white/10': selectedGame?.title === game.title, 'hover:bg-white/5': selectedGame?.title !== game.title}"
-                                        class="border-b border-white/5 cursor-pointer transition-colors duration-150 group">
-                                        <td v-if="isLongList" class="py-4 px-4 text-gray-500 font-mono text-xs text-center border-r border-white/5">{{ index + 1 }}</td>
+                                    <tr v-for="(game, index) in displayGames" :key="game.id" @click="selectGame(game)"
+                                        :class="{'bg-white/10': selectedGame?.id === game.id, 'hover:bg-white/5': selectedGame?.id !== game.id}"
+                                        class="border-b border-white/5 cursor-pointer transition-colors duration-150 group h-[60px] content-visibility-auto">
+                                        <td v-if="isLongList" class="py-4 px-4 text-gray-500 font-mono text-[10px] text-center border-r border-white/5">{{ index + 1 }}</td>
                                         <td
-                                            class="py-5 sm:py-4 px-4 sm:px-6 text-white font-medium sm:group-hover:pl-8 transition-all duration-300">
+                                            class="py-4 px-6 text-white font-medium group-hover:pl-8 transition-all duration-300 truncate">
                                             {{ game.title }}
-                                            <div class="sm:hidden mt-1 flex items-center justify-between gap-3">
-                                                <div class="text-gray-400 font-mono text-xs">{{ game.version || '1.0' }}
-                                                </div>
-                                                <div class="text-gray-500 font-mono text-xs">{{ Number(game.downloads ||
-                                                    0) }} dl</div>
-                                                <span
-                                                    class="inline-flex items-center gap-1.5 text-xs text-green-400/80 bg-green-400/10 px-2 py-1 rounded-full">
-                                                    <span class="w-1.5 h-1.5 rounded-full bg-green-400"></span> Online
-                                                </span>
+                                            <div class="sm:hidden mt-0.5 flex items-center justify-between gap-3 font-mono text-[9px]">
+                                                <div class="text-gray-400 truncate max-w-[120px]">{{ game.version || '---' }}</div>
+                                                <div class="text-gray-500">{{ formatBytes(game.fileSize) }}</div>
                                             </div>
                                         </td>
-                                        <td class="hidden sm:table-cell py-4 px-6 text-gray-400 font-mono text-xs">{{
-                                            game.version || '1.0' }}</td>
-                                        <td class="hidden sm:table-cell py-4 px-6 text-gray-400 font-mono text-xs">{{
+                                        <td class="hidden sm:table-cell py-4 px-6 text-gray-400 font-mono text-[10px] truncate">{{
+                                            game.version || '---' }}</td>
+                                        <td class="hidden sm:table-cell py-4 px-6 text-gray-400 font-mono text-[10px]">{{
                                             Number(game.downloads || 0) }}</td>
-                                        <td class="hidden sm:table-cell py-4 px-6 text-right">
-                                            <span
-                                                class="inline-flex items-center gap-1.5 text-xs text-green-400/80 bg-green-400/10 px-2 py-1 rounded-full">
-                                                <span class="w-1.5 h-1.5 rounded-full bg-green-400"></span> Online
-                                            </span>
+                                        <td class="hidden sm:table-cell py-4 px-6 text-right text-gray-500 font-mono text-[10px]">
+                                            {{ formatBytes(game.fileSize) }}
                                         </td>
                                     </tr>
                                 </tbody>
@@ -818,7 +814,8 @@
                         const units = ['B', 'KB', 'MB', 'GB', 'TB'];
                         let u = 0; let v = n;
                         while (v >= 1024 && u < units.length - 1) { v /= 1024; u++; }
-                        return `${v.toFixed(v >= 10 || u === 0 ? 0 : 1)} ${units[u]}`;
+                        // Show more decimals for larger units
+                        return `${v.toFixed(u === 0 ? 0 : 2)} ${units[u]}`;
                     },
                     formatTime(iso) {
                         if (!iso) return 'Long ago';

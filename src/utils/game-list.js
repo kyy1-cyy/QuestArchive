@@ -2,7 +2,7 @@ import { GetObjectCommand } from '@aws-sdk/client-s3';
 import { s3Client } from './s3.js';
 import { config } from './config.js';
 
-let listCache = null;
+let cachedMap = null;
 let lastFetch = 0;
 
 async function streamToString(stream) {
@@ -13,11 +13,11 @@ async function streamToString(stream) {
     return Buffer.concat(chunks).toString('utf-8');
 }
 
-async function fetchGameList() {
+async function fetchGameMap() {
     const now = Date.now();
     // Cache for 10 minutes
-    if (listCache && (now - lastFetch < 10 * 60 * 1000)) {
-        return listCache;
+    if (cachedMap && (now - lastFetch < 10 * 60 * 1000)) {
+        return cachedMap;
     }
     try {
         console.log('[GameList] Fetching VRP-GameList.txt from B2...');
@@ -29,43 +29,49 @@ async function fetchGameList() {
         if (!response.Body) return null;
         
         const text = await streamToString(response.Body);
-        listCache = text;
+        const map = new Map();
+        const lines = text.split(/\r?\n/);
+        
+        for (let i = 1; i < lines.length; i++) {
+            const line = lines[i];
+            if (!line.trim()) continue;
+            
+            const parts = line.split(';');
+            if (parts.length >= 7) {
+                const releaseName = parts[1].trim().toLowerCase();
+                const pkgName = parts[2].trim();
+                const sizeStr = parts[6].trim();
+                let fileSize = 0;
+                if (sizeStr) {
+                    const parsed = parseInt(sizeStr);
+                    if (!isNaN(parsed)) fileSize = parsed;
+                }
+                map.set(releaseName, { packageName: pkgName, fileSize });
+            }
+        }
+        
+        cachedMap = map;
         lastFetch = now;
-        console.log(`[GameList] successfully loaded and cached (${text.length} bytes)`);
-        return listCache;
+        console.log(`[GameList] successfully loaded and indexed (${map.size} items)`);
+        return cachedMap;
     } catch (err) {
         console.error('[GameList] Failed to fetch VRP-GameList.txt from B2:', err.message);
-        return null; // keep old cache if exists, or return null
+        return cachedMap; 
     }
 }
 
 export async function getPackageNameFromList(filename) {
-    const text = await fetchGameList();
-    if (!text) return null;
+    const map = await fetchGameMap();
+    if (!map) return null;
     
-    // Example CSV row:
-    // Game Name;Release Name;Package Name;Version Code...
     // Strip external .zip if provided
     const searchName = filename.replace(/\.zip$/i, '').trim().toLowerCase();
     
-    const lines = text.split(/\r?\n/);
-    for (let i = 1; i < lines.length; i++) { // skip header
-        const line = lines[i];
-        if (!line.trim()) continue;
-        
-        const parts = line.split(';');
-        if (parts.length >= 3) {
-            const releaseName = parts[1].trim().toLowerCase();
-            
-            // Allow exact match or if releaseName is exactly the base name
-            if (releaseName === searchName) {
-                const pkgName = parts[2].trim();
-                console.log(`[GameList] Found package for "${filename}": ${pkgName}`);
-                return pkgName;
-            }
-        }
+    const res = map.get(searchName);
+    if (res) {
+        console.log(`[GameList] Found data for "${filename}": ${res.packageName} (${res.fileSize})`);
+        return res;
     }
     
-    console.log(`[GameList] No matching package found for "${filename}"`);
     return null;
 }

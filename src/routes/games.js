@@ -99,27 +99,45 @@ async function checkObjectExists(key) {
     }
 }
 
+import { getPackageNameFromList } from '../utils/game-list.js';
+
 router.get('/games', async (req, res, next) => {
     try {
         const games = await readDB();
-        res.setHeader('Cache-Control', 'no-store');
-        res.setHeader('Pragma', 'no-cache');
-        res.setHeader('Expires', '0');
-        res.json(games.map(g => {
+        
+        // Optimize: Pre-fetch and cache the game list results for the entire request
+        // This ensures O(1) matching after the first O(G) scan of the CSV
+        // But since getPackageNameFromList already has an internal cache, we just call it.
+        
+        const mappedGames = await Promise.all(games.map(async (g) => {
             let thumb = g.thumbnailUrl || '';
             if (thumb.startsWith('.meta/')) {
                 thumb = buildPublicDownloadUrl(thumb);
             }
+            
+            let size = g.fileSize || 0;
+            // If size is missing, try to resolve it from the game list cache
+            if (!size && g.fileKey) {
+                const result = await getPackageNameFromList(g.fileKey);
+                if (result?.fileSize) size = result.fileSize;
+            }
+
             return {
-                id: g.id || g.publicId, // Use unified ID
+                id: g.id || g.publicId,
                 title: g.title || '',
                 version: g.version || null,
                 description: g.description || '',
                 thumbnailUrl: thumb,
                 lastUpdated: g.lastUpdated || '',
-                downloads: Number(g.downloads || 0)
+                downloads: Number(g.downloads || 0),
+                fileSize: size
             };
         }));
+
+        res.setHeader('Cache-Control', 'no-store');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        res.json(mappedGames);
     } catch (err) {
         next(err);
     }
