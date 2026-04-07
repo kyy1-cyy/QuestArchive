@@ -88,16 +88,13 @@ router.post('/database/bulk-add', async (req, res, next) => {
 
             // 1. Automatic Metadata Lookup (Thumbs/Notes)
             try {
-                const baseName = fileName.replace(/\.zip$/i, '');
-                
-                // Try to find package name by splitting the filename (usually the end part)
-                // or just matching the baseName to possible thumbnail names
-                const pkgMatch = fileName.match(/\[(.*?)\]/); // Many use [com.pkg.name]
-                const pkg = pkgMatch ? pkgMatch[1] : baseName;
-
-                const thumbKey = `.meta/thumbnails/${pkg}.jpg`;
-                if (cacheClones.includes(thumbKey)) {
-                    newGame.thumbnailUrl = thumbKey; 
+                // Use the same VRP-GameList.txt lookup that single-add uses
+                const pkg = await getPackageNameFromList(fileKey);
+                if (pkg) {
+                    const thumbKey = `.meta/thumbnails/${pkg}.jpg`;
+                    if (cacheClones.includes(thumbKey)) {
+                        newGame.thumbnailUrl = thumbKey; 
+                    }
                 }
 
                 const notesKey = `.meta/notes/${baseName}.txt`;
@@ -148,6 +145,19 @@ router.get('/inspect-zip/:hash', async (req, res, next) => {
         if (!key) return res.status(404).json({ error: 'Hash not found in map' });
         
         const packageName = await getPackageNameFromList(key);
+        res.json({ packageName });
+    } catch (err) {
+        next(err);
+    }
+});
+
+// New: lookup package name directly by filename (no hash needed)
+router.get('/inspect-by-filename', async (req, res, next) => {
+    if (!requireAdmin(req, res)) return;
+    const filename = req.query.filename;
+    if (!filename) return res.status(400).json({ error: 'filename required' });
+    try {
+        const packageName = await getPackageNameFromList(filename);
         res.json({ packageName });
     } catch (err) {
         next(err);

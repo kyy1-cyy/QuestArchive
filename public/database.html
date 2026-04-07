@@ -1548,6 +1548,7 @@
                     const lookupName = String(filename || '').split('/').pop() || String(filename || '');
 
                     try {
+                        // 1. Notes lookup
                         const notesRes = await fetch(`/api/game-notes/${encodeURIComponent(lookupName)}`);
                         const notesJson = await notesRes.json();
                         if (notesRes.ok && notesJson.found) {
@@ -1556,10 +1557,11 @@
                             localError = 'Notes not found. ';
                         }
 
-                        const zipRes = await fetch(`/api/inspect-zip/${hash}`);
-                        const zipJson = await zipRes.json();
-                        if (zipRes.ok && zipJson.packageName) {
-                            const pkg = zipJson.packageName;
+                        // 2. Package name lookup (by filename, not hash)
+                        const inspectRes = await fetch(`/api/inspect-by-filename?filename=${encodeURIComponent(filename)}`);
+                        const inspectJson = await inspectRes.json();
+                        if (inspectRes.ok && inspectJson.packageName) {
+                            const pkg = inspectJson.packageName;
                             const thumbRes = await fetch(`/api/find-thumbnail/${pkg}`);
                             const thumbJson = await thumbRes.json();
                             if (thumbRes.ok && thumbJson.found) {
@@ -1568,7 +1570,7 @@
                                 if (urlRes.ok && urlJson.url) {
                                     this.newGame.thumbnailUrl = urlJson.url;
                                     this.imageState.message = 'Success! Game details matched.';
-                                    localError = ''; // Wipe notes error since thumbnail was a success
+                                    localError = '';
                                 } else {
                                     localError += 'Thumbnail download failed.';
                                 }
@@ -1576,14 +1578,14 @@
                                 localError += 'Thumbnail not found on R2.';
                             }
                         } else {
-                            if (!localError) localError = 'Package not found in VRP-GameList.csv';
+                            if (!localError) localError = 'Package not found in VRP-GameList';
                         }
                     } catch (e) {
                         console.error('Auto-process error:', e);
                         localError = 'Failed to auto-process game.';
                     } finally {
                         this.imageState.inProgress = false;
-                        this.imageState.error = localError; // Only apply reactive error at the exact end!
+                        this.imageState.error = localError;
                         if (this.imageState.error) this.imageState.message = '';
                     }
                 },
@@ -2341,6 +2343,8 @@
                     this.bulkAddTotal = this.bulkAddSelected.length;
                     this.bulkAddLogs = [];
                     this.bulkAddCancelled = false;
+                    const batchSize = 500;
+                    const startTime = Date.now();
                     
                     let displayCount = 0;
                     this.bulkLog(`Launching bulk sync for ${this.bulkAddTotal} files...`, 'success');
@@ -2382,6 +2386,12 @@
                         } catch (e) {
                             this.bulkLog(`Network error: ${e.message}`, 'error');
                         }
+                        
+                        // ETA calculation
+                        const elapsed = Date.now() - startTime;
+                        const perItem = elapsed / this.bulkAddCurrent;
+                        const remaining = (this.bulkAddTotal - this.bulkAddCurrent) * perItem;
+                        this.bulkAddETA = this.formatETA(remaining);
                     }
                     
                     clearInterval(this.logTimer);
