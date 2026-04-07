@@ -967,7 +967,7 @@
                                         style="cursor: pointer; user-select: none; border-bottom: 1px solid #1a1a1a;"
                                         class="bulk-row">
                                         <td style="padding: 10px; text-align: center;">
-                                            <input type="checkbox" :checked="bulkAddSelected.includes(pg.filename)" @click.stop.prevent="handleBulkRowClick(pg, idx, $event)">
+                                            <input type="checkbox" :checked="bulkAddSelected.includes(pg.filename)" @click.stop="handleBulkRowClick(pg, idx, $event)">
                                         </td>
                                         <td style="color:#ce9178; font-size: 11px; padding: 10px; font-family: monospace;">{{ pg.filename }}</td>
                                     </tr>
@@ -2345,26 +2345,19 @@
                 handleBulkRowClick(pg, idx, e) {
                     if (e && e.shiftKey && this.bulkAddLastIdx !== null) {
                         e.preventDefault();
-                        const currentIdx = idx;
-                        const lastIdx = this.bulkAddLastIdx;
-                        
-                        const start = Math.min(currentIdx, lastIdx);
-                        const end = Math.max(currentIdx, lastIdx);
-                        
+                        const start = Math.min(idx, this.bulkAddLastIdx);
+                        const end = Math.max(idx, this.bulkAddLastIdx);
                         const subset = this.displayedBulkGames.slice(start, end + 1).map(p => p.filename);
                         const isAlreadySelected = this.bulkAddSelected.includes(pg.filename);
                         
                         if (!isAlreadySelected) {
-                            // Select the whole range
-                            const newSet = new Set([...this.bulkAddSelected, ...subset]);
-                            this.bulkAddSelected = Array.from(newSet);
+                            subset.forEach(f => { if (!this.bulkAddSelected.includes(f)) this.bulkAddSelected.push(f); });
                         } else {
-                            // Deselect the whole range
                             this.bulkAddSelected = this.bulkAddSelected.filter(f => !subset.includes(f));
                         }
                     } else {
-                        const has = this.bulkAddSelected.includes(pg.filename);
-                        if (has) this.bulkAddSelected = this.bulkAddSelected.filter(f => f !== pg.filename);
+                        const idxInList = this.bulkAddSelected.indexOf(pg.filename);
+                        if (idxInList > -1) this.bulkAddSelected.splice(idxInList, 1);
                         else this.bulkAddSelected.push(pg.filename);
                     }
                     this.bulkAddLastIdx = idx;
