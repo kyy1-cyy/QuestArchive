@@ -204,6 +204,14 @@ export async function getBucketFileCache() {
 }
 
 /**
+ * Checks if a file exists in the bucket without hitting the network.
+ */
+export async function checkFileInCache(key) {
+    const files = await getBucketFileCache();
+    return files.includes(key);
+}
+
+/**
  * Manually adds a single file to the cache and persists it to B2.
  */
 export async function addFileToCache(key) {
