@@ -498,10 +498,12 @@
                         <div v-else class="flex-1 flex flex-col h-full animate-fade-in">
                             <div
                                 class="w-full aspect-[18/9] rounded-xl overflow-hidden bg-[#111] mb-6 relative border border-white/10 shrink-0">
-                                <img :key="selectedGame.id"
-                                    :src="selectedGame.thumbnailUrl || 'https://via.placeholder.com/800x400?text=No+Thumbnail'"
-                                    class="w-full h-full object-cover"
-                                    @error="handleImageError">
+                                <transition name="img-fade" mode="out-in">
+                                    <img :key="selectedGame.id"
+                                        :src="selectedGame.thumbnailUrl || 'https://via.placeholder.com/800x400?text=No+Thumbnail'"
+                                        class="w-full h-full object-cover"
+                                        @error="handleImageError">
+                                </transition>
                                 <div
                                     class="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none">
                                 </div>
@@ -630,6 +632,15 @@
                     opacity: 1;
                     transform: translateY(0);
                 }
+            }
+
+            .img-fade-enter-active,
+            .img-fade-leave-active {
+                transition: opacity 0.15s ease;
+            }
+            .img-fade-enter-from,
+            .img-fade-leave-to {
+                opacity: 0;
             }
         </style>
 
