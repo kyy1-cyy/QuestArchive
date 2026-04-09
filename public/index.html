@@ -159,7 +159,7 @@
         }
 
         .chunk-box {
-            aspect-ratio: 1.1;
+            aspect-ratio: 1;
             border-radius: 4px;
             background: rgba(255,255,255,0.03);
             border: 1px solid rgba(255,255,255,0.04);
@@ -175,16 +175,16 @@
         }
 
         .chunk-box .idx {
-            font-size: 8px;
-            font-weight: 800;
-            color: rgba(255,255,255,0.25);
+            font-size: 6px;
+            font-weight: 700;
+            color: rgba(255,255,255,0.2);
             line-height: 1;
         }
 
         .chunk-box .perc {
             font-size: 6px;
-            font-weight: 600;
-            color: rgba(255,255,255,0.4);
+            font-weight: 700;
+            color: rgba(255,255,255,0.3);
             line-height: 1;
         }
 
@@ -605,7 +605,7 @@
 
                     <!-- Active Tasks Overlay -->
                     <transition name="fade">
-                        <div v-if="dlState.active" class="fixed bottom-6 right-6 w-80 z-50 animate-task-in">
+                        <div v-if="dlState.active" class="fixed top-24 right-6 w-72 z-50 animate-task-in">
                             <div class="glass-panel p-5 rounded-2xl border-white/10 shadow-2xl relative overflow-hidden">
                                 <div class="flex items-center justify-between mb-4">
                                     <div class="flex items-center gap-2">
@@ -627,14 +627,15 @@
 
                                 <!-- Mini Parts Grid -->
                                 <div class="mt-4 pt-3 border-t border-white/5">
-                                    <div class="chunk-grid !max-h-[60px] !p-2 !gap-1 !grid-template-columns-[repeat(auto-fill,minmax(28px,1fr))]">
+                                    <div class="chunk-grid !max-h-[50px] !p-1.5 !gap-1 !grid-cols-[repeat(auto-fill,minmax(28px,1fr))]">
                                         <div v-for="(c, idx) in dlInternals.chunks" :key="idx" 
-                                             class="chunk-box !aspect-square !border-none !bg-white-[0.02]"
+                                             class="chunk-box !bg-white/5"
                                              :class="{ 
-                                                'done !bg-blue-500/40': dlInternals.perChunkLoaded[c.index] >= (c.end - c.start),
-                                                'active !bg-blue-400/20': dlInternals.activeChunkIndices.includes(c.index)
+                                                'done !bg-white !shadow-[0_0_8px_rgba(255,255,255,0.2)]': dlInternals.perChunkLoaded[c.index] >= (c.end - c.start),
+                                                'active !bg-blue-500/20 !border-blue-500/30': dlInternals.activeChunkIndices.includes(c.index)
                                              }">
-                                             <span class="idx !text-[6px] !opacity-30">{{ c.index + 1 }}</span>
+                                             <span class="idx">{{ c.index + 1 }}</span>
+                                             <span class="perc">{{ Math.floor((dlInternals.perChunkLoaded[c.index] || 0) / (c.end - c.start) * 100) }}%</span>
                                         </div>
                                     </div>
                                 </div>
