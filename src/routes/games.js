@@ -12,6 +12,8 @@ import { getBucketFileCache, readDB, incrementDownloadCount } from '../utils/db.
 import { ensureCloudflare } from '../utils/auth.js';
 import { logger } from '../utils/logger.js';
 
+import crypto from 'crypto';
+
 const router = express.Router();
 
 const downloadLimiter = rateLimit({
@@ -161,8 +163,16 @@ function buildPublicDownloadUrl(fileKey) {
     if (!base) return '';
     const bucket = encodeURIComponent(String(config.B2.BUCKET_NAME || '').trim());
     const keyPath = encodeObjectKeyForUrl(fileKey);
-    if (!bucket || !keyPath) return '';
-    return `${base}/${bucket}/${keyPath}`;
+    const fullPath = `/${bucket}/${keyPath}`;
+    
+    // SECURITY: Rolling 3-Minute Token (HMAC)
+    const expires = Math.floor(Date.now() / 1000) + 180; // 3 Minutes
+    const secret = config.HASH_SECRET;
+    const token = crypto.createHmac('sha256', secret)
+        .update(`${fullPath}:${expires}`)
+        .digest('hex');
+
+    return `${base}${fullPath}?token=${token}&expires=${expires}`;
 }
 
 async function pipeUpstreamToResponse(upstream, res) {
