@@ -1098,8 +1098,8 @@
                     },
 
                     async preloadInitialBlobs() {
-                        // Only preload first 50 to keep browser fast
-                        const games = this.games.filter(g => g.thumbnailUrl && g.thumbnailUrl.startsWith('http')).slice(0, 50);
+                        // Preload first 300 to keep it instant without crashing
+                        const games = this.games.filter(g => g.thumbnailUrl && g.thumbnailUrl.startsWith('http')).slice(0, 300);
                         for (const game of games) {
                             try {
                                 const blob = await this.getFromDB(game.thumbnailUrl);
@@ -1274,40 +1274,44 @@
                     async selectGame(game) {
                         if (this.selectedGame?.id === game.id) return;
                         
-                        this.prevThumbnailUrl = this.activeThumbnailUrl || null;
                         this.selectedGame = { ...game, fileSize: null, loadingSize: true };
                         this.resetDlState();
-                        
-                        // Try memory cache first
-                        let finalizedUrl = this.imageCache.blobs[game.thumbnailUrl];
 
-                        // If not in RAM, try fetching from Disk (extremely fast)
-                        if (!finalizedUrl && game.thumbnailUrl) {
-                            try {
-                                const blob = await this.getFromDB(game.thumbnailUrl);
-                                if (blob) {
-                                    finalizedUrl = URL.createObjectURL(blob);
-                                    this.imageCache.blobs[game.thumbnailUrl] = finalizedUrl;
-                                }
-                            } catch (e) {}
-                        }
+                        // IMMEDIATELY try to find the image
+                        const cachedUrl = this.imageCache.blobs[game.thumbnailUrl];
 
-                        if (finalizedUrl) {
-                            this.activeThumbnailUrl = finalizedUrl;
+                        if (cachedUrl) {
+                            // CASE 1: Instant swap from RAM
+                            this.activeThumbnailUrl = cachedUrl;
                             this.imgLoaded = true;
-                        } else if (game.thumbnailUrl) {
+                        } else {
+                            // CASE 2: Needs disk or network
+                            this.activeThumbnailUrl = null; // Clear so old image doesn't linger
                             this.imgLoaded = false;
-                            const img = new Image();
-                            img.src = game.thumbnailUrl;
-                            img.onload = () => {
+                            
+                            // Check Disk (IndexedDB)
+                            const blob = await this.getFromDB(game.thumbnailUrl);
+                            if (blob) {
+                                const url = URL.createObjectURL(blob);
+                                this.imageCache.blobs[game.thumbnailUrl] = url;
                                 if (this.selectedGame?.id === game.id) {
-                                    this.activeThumbnailUrl = game.thumbnailUrl;
+                                    this.activeThumbnailUrl = url;
                                     this.imgLoaded = true;
                                 }
-                            };
-                        } else {
-                            this.activeThumbnailUrl = 'https://via.placeholder.com/800x400?text=No+Thumbnail';
-                            this.imgLoaded = true;
+                            } else if (game.thumbnailUrl) {
+                                // Network Fallback
+                                const img = new Image();
+                                img.src = game.thumbnailUrl;
+                                img.onload = () => {
+                                    if (this.selectedGame?.id === game.id) {
+                                        this.activeThumbnailUrl = game.thumbnailUrl;
+                                        this.imgLoaded = true;
+                                    }
+                                };
+                            } else {
+                                this.activeThumbnailUrl = 'https://via.placeholder.com/800x400?text=No+Thumbnail';
+                                this.imgLoaded = true;
+                            }
                         }
 
                         try {
