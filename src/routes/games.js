@@ -250,52 +250,27 @@ async function serveGameDownload(req, res, game, { requireTicket = true } = {}) 
 
     // Build the upstream URL (Cloudflare proxy or direct B2 presigned)
     let upstreamUrl = buildPublicDownloadUrl(fileKey);
-    if (!upstreamUrl) {
-        // Fallback: presigned URL directly to B2
-        try {
-            const command = new GetObjectCommand({
-                Bucket: config.B2.BUCKET_NAME,
-                Key: fileKey,
-                ResponseContentDisposition: `attachment; filename="${game.title.replace(/"/g, '_')}.zip"`
-            });
-            upstreamUrl = await getSignedUrl(s3Client, command, { expiresIn: 300 });
-        } catch (s3Err) {
-            res.status(500).send('Storage connection error');
-            return;
-        }
+    
+    // STEALTH REDIRECT: Bypass Koyeb (Node.js) and go direct to Cloudflare Worker
+    if (upstreamUrl) {
+        // Handle Range headers by appending them if necessary, but 302 automatically handles Range follow-up in modern browsers
+        return res.redirect(302, upstreamUrl);
     }
 
-    // Stream from Cloudflare/B2 to browser via https.get (forces IPv4)
-    const parsedUrl = new URL(upstreamUrl);
-    const reqModule = parsedUrl.protocol === 'https:' ? https : http;
-    const reqOptions = {
-        hostname: parsedUrl.hostname,
-        port: parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
-        path: parsedUrl.pathname + parsedUrl.search,
-        method: 'GET',
-        family: 4,
-        headers: {},
-        timeout: 300000
-    };
-    if (req.headers.range) reqOptions.headers.Range = req.headers.range;
-
-    const upstream = reqModule.request(reqOptions, (upstreamRes) => {
-        res.status(upstreamRes.statusCode);
-        const headersToForward = ['content-type', 'content-length', 'content-range', 'accept-ranges', 'etag'];
-        for (const h of headersToForward) {
-            if (upstreamRes.headers[h]) res.setHeader(h, upstreamRes.headers[h]);
-        }
-        res.setHeader('content-disposition', `attachment; filename="${game.title.replace(/"/g, '_')}.zip"`);
-        upstreamRes.pipe(res);
-    });
-
-    upstream.on('error', (err) => {
-        if (!res.headersSent) {
-            res.status(500).json({ error: 'fetch failed' });
-        }
-    });
-
-    upstream.end();
+    // Fallback: If no worker URL, use presigned B2 (still faster than piping through Koyeb)
+    try {
+        const { GetObjectCommand } = await import('@aws-sdk/client-s3');
+        const { getSignedUrl } = await import('@aws-sdk/s3-request-presigner');
+        const command = new GetObjectCommand({
+            Bucket: config.B2.BUCKET_NAME,
+            Key: fileKey,
+            ResponseContentDisposition: `attachment; filename="${game.title.replace(/"/g, '_')}.zip"`
+        });
+        const signedUrl = await getSignedUrl(s3Client, command, { expiresIn: 300 });
+        return res.redirect(302, signedUrl);
+    } catch (s3Err) {
+        res.status(500).send('Storage connection error');
+    }
 }
 
 router.get('/download-info-by-title', async (req, res, next) => {
