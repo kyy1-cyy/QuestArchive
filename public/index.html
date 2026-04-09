@@ -1037,52 +1037,79 @@
                         if (gamesToCache.length === 0) return;
 
                         this.syncingLibrary = true;
-                        this.syncTotal = gamesToCache.length;
+                        
+                        // 1. Get ALL current keys in one go (INSANELY FAST)
+                        const allKeys = await this.getAllKeysFromDB();
+                        const keySet = new Set(allKeys);
+                        
+                        const missingGames = gamesToCache.filter(g => !keySet.has(g.thumbnailUrl));
+                        
+                        this.syncTotal = missingGames.length;
                         this.syncProgress = 0;
-                        const startTime = Date.now();
+                        this.syncPercent = 0;
+                        
+                        if (this.syncTotal === 0) {
+                            localStorage.setItem('library_last_sync', Date.now().toString());
+                            await this.preloadBlobs();
+                            setTimeout(() => this.syncingLibrary = false, 500);
+                            return;
+                        }
 
-                        const batchSize = 15;
-                        for (let i = 0; i < gamesToCache.length; i += batchSize) {
-                            const batch = gamesToCache.slice(i, i + batchSize);
-                            await Promise.all(batch.map(async (game) => {
+                        const startTime = Date.now();
+                        
+                        // 2. High-concurrency worker pool (60 at once)
+                        const concurrency = 60;
+                        let index = 0;
+                        
+                        const worker = async () => {
+                            while (index < missingGames.length) {
+                                const game = missingGames[index++];
                                 try {
-                                    const cached = await this.getFromDB(game.thumbnailUrl);
-                                    if (!cached) {
-                                        const res = await fetch(game.thumbnailUrl);
-                                        const blob = await res.blob();
-                                        await this.saveToDB(game.thumbnailUrl, blob);
-                                        const blobUrl = URL.createObjectURL(blob);
-                                        this.imageCache.blobs[game.thumbnailUrl] = blobUrl;
-                                    } else {
-                                        const blobUrl = URL.createObjectURL(cached);
-                                        this.imageCache.blobs[game.thumbnailUrl] = blobUrl;
-                                    }
+                                    const res = await fetch(game.thumbnailUrl, { priority: 'high' });
+                                    if (!res.ok) throw new Error('Fetch failed');
+                                    const blob = await res.blob();
+                                    await this.saveToDB(game.thumbnailUrl, blob);
                                 } catch (e) {
                                     console.warn('Sync failed for:', game.title);
                                 }
+                                
                                 this.syncProgress++;
                                 this.syncPercent = Math.round((this.syncProgress / this.syncTotal) * 100);
-                                
                                 const elapsed = (Date.now() - startTime) / 1000;
                                 const rate = this.syncProgress / elapsed;
                                 const remaining = (this.syncTotal - this.syncProgress) / rate;
                                 this.syncEta = this.fmtEta(remaining);
-                            }));
-                        }
+                            }
+                        };
+
+                        // Launch workers
+                        const workers = Array(concurrency).fill(null).map(() => worker());
+                        await Promise.all(workers);
 
                         localStorage.setItem('library_last_sync', Date.now().toString());
+                        await this.preloadBlobs();
                         setTimeout(() => this.syncingLibrary = false, 800);
                     },
 
                     async preloadBlobs() {
                         const games = this.games.filter(g => g.thumbnailUrl && g.thumbnailUrl.startsWith('http'));
-                        for (const game of games) {
-                            try {
-                                const blob = await this.getFromDB(game.thumbnailUrl);
-                                if (blob) {
-                                    this.imageCache.blobs[game.thumbnailUrl] = URL.createObjectURL(blob);
-                                }
-                            } catch (e) {}
+                        // Clean up old blob URLs to prevent memory leak
+                        for (const url in this.imageCache.blobs) {
+                            URL.revokeObjectURL(this.imageCache.blobs[url]);
+                        }
+                        this.imageCache.blobs = {};
+                        
+                        const batchSize = 100;
+                        for (let i = 0; i < games.length; i += batchSize) {
+                            const batch = games.slice(i, i + batchSize);
+                            await Promise.all(batch.map(async (game) => {
+                                try {
+                                    const blob = await this.getFromDB(game.thumbnailUrl);
+                                    if (blob) {
+                                        this.imageCache.blobs[game.thumbnailUrl] = URL.createObjectURL(blob);
+                                    }
+                                } catch (e) {}
+                            }));
                         }
                     },
 
@@ -1096,9 +1123,21 @@
 
                     getFromDB(key) {
                         return new Promise((resolve) => {
+                            if (!this.imageCache.db) return resolve(null);
                             const tx = this.imageCache.db.transaction('thumbnails', 'readonly');
                             const req = tx.objectStore('thumbnails').get(key);
                             req.onsuccess = () => resolve(req.result);
+                            req.onerror = () => resolve(null);
+                        });
+                    },
+
+                    getAllKeysFromDB() {
+                        return new Promise((resolve) => {
+                            if (!this.imageCache.db) return resolve([]);
+                            const tx = this.imageCache.db.transaction('thumbnails', 'readonly');
+                            const req = tx.objectStore('thumbnails').getAllKeys();
+                            req.onsuccess = () => resolve(req.result);
+                            req.onerror = () => resolve([]);
                         });
                     },
 
