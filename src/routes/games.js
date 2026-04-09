@@ -352,6 +352,22 @@ router.get('/download/:id', downloadLimiter, async (req, res, next) => {
     }
 });
 
+router.get('/cache-timestamp', async (req, res) => {
+    try {
+        const games = await readDB();
+        // Create a timestamp based on the latest game update
+        const latestTimestamp = games.reduce((latest, game) => {
+            const gameTime = new Date(game.lastUpdated || 0).getTime();
+            return gameTime > latest ? gameTime : latest;
+        }, 0);
+        
+        res.setHeader('Cache-Control', 'no-cache');
+        res.send(latestTimestamp.toString());
+    } catch (err) {
+        res.status(500).send('0');
+    }
+});
+
 router.post('/download-complete', async (req, res) => {
     try {
         const { publicId } = req.body ?? {};

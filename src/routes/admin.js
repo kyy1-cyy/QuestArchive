@@ -263,10 +263,19 @@ router.get('/not-added-games', async (req, res, next) => {
         const db = await readDB();
         const registeredKeys = new Set(db.map(g => String(g.fileKey || '').toLowerCase()));
 
+        const excludedPatterns = [
+            'meta.7z',
+            '.meta/',
+            'vrp-gamelist.txt',
+            '.stfolder.zip',
+            '.stfolder/'
+        ];
+
         const notAdded = files
             .filter(f => {
                 const lower = String(f).toLowerCase();
-                return lower.endsWith('.zip') && !registeredKeys.has(lower);
+                const isExcluded = excludedPatterns.some(p => lower.includes(p.toLowerCase()));
+                return !isExcluded && lower.endsWith('.zip') && !registeredKeys.has(lower);
             })
             .map(f => ({
                 filename: f,
@@ -284,9 +293,20 @@ router.get('/pending-games', async (req, res, next) => {
     if (!requireAdmin(req, res)) return;
     try {
         const files = await getBucketFileCache();
+        const excludedPatterns = [
+            'meta.7z',
+            '.meta/',
+            'vrp-gamelist.txt',
+            '.stfolder.zip',
+            '.stfolder/'
+        ];
 
         const pending = files
-            .filter(f => String(f).toLowerCase().endsWith('.zip'))
+            .filter(f => {
+                const lower = String(f).toLowerCase();
+                const isExcluded = excludedPatterns.some(p => lower.includes(p.toLowerCase()));
+                return !isExcluded && lower.endsWith('.zip');
+            })
             .map(f => ({
                 filename: f,
                 hashId: null // We now compute hashId in the backend on-demand during registration

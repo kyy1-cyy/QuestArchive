@@ -326,7 +326,19 @@ export async function autoAddGamesFromCache() {
     const files = await getBucketFileCache();
     const db = await readDB();
     
-    const zipFiles = files.filter(f => f.toLowerCase().endsWith('.zip'));
+    const excludedPatterns = [
+        'meta.7z',
+        '.meta/',
+        'vrp-gamelist.txt',
+        '.stfolder.zip',
+        '.stfolder/'
+    ];
+
+    const zipFiles = files.filter(f => {
+        const lower = f.toLowerCase();
+        const isExcluded = excludedPatterns.some(p => lower.includes(p.toLowerCase()));
+        return !isExcluded && lower.endsWith('.zip');
+    });
     const registeredKeys = new Set(db.map(g => g.fileKey || g.title + '.zip'));
     
     let addedCount = 0;
