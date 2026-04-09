@@ -137,36 +137,69 @@
 
         .chunk-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(12px, 1fr));
-            gap: 2px;
-            padding: 8px;
+            grid-template-columns: repeat(auto-fill, minmax(42px, 1fr));
+            gap: 4px;
+            padding: 10px;
             background: rgba(0,0,0,0.3);
-            border-radius: 8px;
+            border-radius: 10px;
             border: 1px solid rgba(255,255,255,0.05);
-            max-height: 120px;
+            max-height: 180px;
             overflow-y: auto;
         }
 
         .chunk-box {
-            aspect-ratio: 1;
-            border-radius: 1px;
+            aspect-ratio: 1.2;
+            border-radius: 4px;
             background: rgba(255,255,255,0.03);
-            transition: background 0.2s ease;
+            border: 1px solid rgba(255,255,255,0.04);
+            transition: all 0.2s ease;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 2px;
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .chunk-box .idx {
+            font-size: 8px;
+            font-weight: 800;
+            color: rgba(255,255,255,0.25);
+            line-height: 1;
+        }
+
+        .chunk-box .perc {
+            font-size: 7px;
+            font-weight: 600;
+            color: rgba(255,255,255,0.4);
+            line-height: 1;
         }
 
         .chunk-box.active {
-            background: rgba(255,255,255,0.4);
+            background: rgba(255,255,255,0.08);
+            border-color: rgba(255,255,255,0.15);
             animation: pulse-light 1.5s infinite;
         }
 
+        .chunk-box.active .idx { color: rgba(255,255,255,0.6); }
+        .chunk-box.active .perc { color: rgba(255,255,255,0.8); }
+
         .chunk-box.done {
             background: rgba(255,255,255,0.9);
-            box-shadow: 0 0 5px rgba(255,255,255,0.2);
+            border-color: #fff;
+            box-shadow: 0 0 10px rgba(255,255,255,0.15);
+        }
+
+        .chunk-box.done .idx, .chunk-box.done .perc {
+            color: #000;
+            opacity: 0.8;
         }
 
         @keyframes pulse-light {
-            0%, 100% { opacity: 0.4; }
-            50% { opacity: 0.8; }
+            0%, 100% { border-color: rgba(255,255,255,0.1); }
+            50% { border-color: rgba(255,255,255,0.4); }
         }
 
         /* Toast Notifications */
@@ -684,14 +717,15 @@
                                             Download Parts ({{ dlInternals.chunks.length }})
                                         </button>
                                         
-                                        <div v-if="dlInternals.showParts" class="chunk-grid animate-fade-in">
+                                        <div v-if="dlInternals.showParts" class="chunk-grid animate-fade-in mt-2 relative">
                                             <div v-for="(c, idx) in dlInternals.chunks" :key="idx" 
                                                  class="chunk-box"
                                                  :class="{ 
                                                     'done': dlInternals.perChunkLoaded[c.index] >= (c.end - c.start),
                                                     'active': dlInternals.activeChunkIndices.includes(c.index)
-                                                 }"
-                                                 :title="'Part ' + c.index">
+                                                 }">
+                                                 <span class="idx">{{ c.index + 1 }}</span>
+                                                 <span class="perc">{{ Math.floor((dlInternals.perChunkLoaded[c.index] || 0) / (c.end - c.start) * 100) }}%</span>
                                             </div>
                                         </div>
                                     </div>
@@ -1447,34 +1481,30 @@
                         }
                     },
                     async setDlDirectory() {
-                        try {
-                            const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
-                            this.dlDirectory = handle;
-                            await this.dbSet('dlDirectory', handle);
-                            this.showToast(`Default directory set to: ${handle.name}`, 'success');
-                        } catch (e) {
-                            // User cancelled picker
                         }
                     },
                     updateDlProgress() {
-                            const total = this.dlInternals.totalBytes || 0;
-                            const loaded = this.dlInternals.loadedBytes || 0;
-                            this.dlState.percent = total ? Math.min(100, (loaded / total) * 100) : 0;
+                        const total = this.dlInternals.totalBytes || 0;
+                        const loaded = this.dlInternals.loadedBytes || 0;
+                        
+                        const now = Date.now();
+                        const lastUIUpdate = this.dlInternals.lastCalcTime || 0;
+                        
+                        this.dlState.percent = total ? Math.min(100, (loaded / total) * 100) : 0;
 
-                            const now = Date.now();
+                        if (now - lastUIUpdate >= 400) { 
                             const lastTime = this.dlInternals.lastCalcTime || this.dlInternals.startedAt;
                             const lastLoaded = this.dlInternals.lastLoadedBytes || 0;
                             const timeDiff = (now - lastTime) / 1000;
 
-                            if (timeDiff >= 0.8) { // Slower update for more stable ETA
+                            if (timeDiff > 0) {
                                 const bytesDiff = Math.max(0, loaded - lastLoaded);
                                 const currentBps = bytesDiff / timeDiff;
 
-                                // Weighted rolling average: 90% old, 10% new for stability
                                 if (this.dlInternals.rollingBps === undefined) {
                                     this.dlInternals.rollingBps = currentBps;
                                 } else {
-                                    this.dlInternals.rollingBps = this.dlInternals.rollingBps * 0.9 + currentBps * 0.1;
+                                    this.dlInternals.rollingBps = this.dlInternals.rollingBps * 0.8 + currentBps * 0.2;
                                 }
 
                                 this.dlState.mbps = this.dlInternals.rollingBps / (1024 * 1024);
@@ -1489,7 +1519,8 @@
                                 this.dlInternals.lastCalcTime = now;
                                 this.dlInternals.lastLoadedBytes = loaded;
                             }
-                        },
+                        }
+                    },
                     async startChunkedDownload(game) {
                         if (this.dlState.active) return;
                         this.resetDlState();
