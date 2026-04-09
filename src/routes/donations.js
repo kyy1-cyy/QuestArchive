@@ -87,86 +87,23 @@ router.get('/check-status', async (req, res) => {
 });
 
 router.post('/init', async (req, res, next) => {
+    return res.status(503).json({ error: 'Public submissions are currently disabled. Please check back later.' });
+    /*
     if (!process.env.ULTRACC_HOST) return res.status(500).json({ error: 'Ultracc SFTP not configured in .env' });
-
-    const { filename } = req.body ?? {};
-    if (!filename || typeof filename !== 'string') return res.status(400).json({ error: 'filename is required' });
-    if (!filename.toLowerCase().endsWith('.zip')) return res.status(400).json({ error: 'Only .zip files are allowed' });
-
-    const key = makeDonationKey(filename);
-    const uploadId = `_tmp_${Date.now()}_${key}`;
-
-    try {
-        const sftp = await getSftpClient();
-        const dir = getDonationsDir();
-        const exists = await sftp.exists(dir);
-        if (!exists) await sftp.mkdir(dir, true);
-        
-        await sftp.put(Buffer.alloc(0), `${dir}/${uploadId}`);
-        await sftp.end();
-
-        res.json({ uploadId: uploadId, key });
-    } catch (err) {
-        next(err);
-    }
+    ...
+    */
 });
 
+router.put('/put-part', (req, res) => res.status(503).send('Disabled'));
+router.post('/complete', (req, res) => res.status(503).send('Disabled'));
+router.post('/abort', (req, res) => res.status(503).send('Disabled'));
+
+/*
 router.put('/put-part', async (req, res, next) => {
-    if (!process.env.ULTRACC_HOST) return res.status(500).json({ error: 'Ultracc SFTP not configured' });
-    const key = String(req.query.key || '');
-    const uploadId = String(req.query.uploadId || '');
-    const partNumber = Number(req.query.partNumber || 0);
-
-    if (!key || !uploadId || !partNumber) return res.status(400).json({ error: 'key, uploadId, partNumber required' });
-
-    try {
-        const sftp = await getSftpClient();
-        const dir = getDonationsDir();
-        
-        // Append chunk stream directly using SFTP append
-        await sftp.append(req, `${dir}/${uploadId}`);
-        await sftp.end();
-
-        res.json({ ETag: `part-${partNumber}` });
-    } catch (err) {
-        console.error(`[DONO SFTP] Part ${partNumber} fail:`, err.message);
-        res.status(500).json({ error: err.message });
-    }
-});
-
-router.post('/complete', async (req, res, next) => {
-    if (!process.env.ULTRACC_HOST) return res.status(500).json({ error: 'Ultracc SFTP not configured' });
-    const { key, uploadId } = req.body ?? {};
-    if (!key || !uploadId) return res.status(400).json({ error: 'Missing data' });
-
-    try {
-        const sftp = await getSftpClient();
-        const dir = getDonationsDir();
-        
-        await sftp.rename(`${dir}/${uploadId}`, `${dir}/${key}`);
-        await sftp.end();
-
-        res.json({ success: true });
-    } catch (err) {
-        next(err);
-    }
-});
-
+...
 router.post('/abort', async (req, res, next) => {
-    if (!process.env.ULTRACC_HOST) return res.status(500).json({ error: 'Ultracc SFTP not configured' });
-    const { key, uploadId } = req.body ?? {};
-    if (!key || !uploadId) return res.status(400).json({ error: 'Missing data' });
-
-    try {
-        const sftp = await getSftpClient();
-        const dir = getDonationsDir();
-        await sftp.delete(`${dir}/${uploadId}`).catch(() => {});
-        await sftp.end();
-        res.json({ success: true });
-    } catch (err) {
-        next(err);
-    }
-});
+...
+*/
 
 router.get('/list', async (req, res, next) => {
     if (!requireAdmin(req, res)) return;
