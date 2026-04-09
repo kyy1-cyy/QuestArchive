@@ -1383,7 +1383,7 @@
                     async selectGame(game) {
                         if (this.selectedGame?.id === game.id) return;
                         
-                        this.selectedGame = { ...game, fileSize: null, loadingSize: true };
+                        this.selectedGame = { ...game, fileSize: game.fileSize || null, loadingSize: !game.fileSize };
                         this.resetDlState();
 
                         // IMMEDIATELY try to find the image
@@ -1492,6 +1492,16 @@
                         }
                     },
                     async setDlDirectory() {
+                        if (!window.showDirectoryPicker) {
+                            this.showToast('Full directory access is not supported in this browser.', 'error');
+                            return;
+                        }
+                        try {
+                            const dir = await window.showDirectoryPicker({ mode: 'readwrite' });
+                            this.dlDirectory = dir;
+                            this.showToast(`Download directory set to: ${dir.name}`, 'success');
+                        } catch (e) {
+                            if (e.name !== 'AbortError') this.showToast(e.message, 'error');
                         }
                     },
                     updateDlProgress() {
@@ -1500,29 +1510,33 @@
                         
                         const now = Date.now();
                         const lastUIUpdate = this.dlInternals.lastCalcTime || 0;
+                        const lastLoaded = this.dlInternals.lastLoadedBytes || 0;
                         
+                        // Percentage is high priority, update every call
                         this.dlState.percent = total ? Math.min(100, (loaded / total) * 100) : 0;
 
+                        // Heavy stats (BPS/ETA) throttled to 400ms to keep UI snappy
                         if (now - lastUIUpdate >= 400) { 
-                            const lastTime = this.dlInternals.lastCalcTime || this.dlInternals.startedAt;
-                            const lastLoaded = this.dlInternals.lastLoadedBytes || 0;
+                            const lastTime = lastUIUpdate || this.dlInternals.startedAt;
                             const timeDiff = (now - lastTime) / 1000;
 
                             if (timeDiff > 0) {
                                 const bytesDiff = Math.max(0, loaded - lastLoaded);
                                 const currentBps = bytesDiff / timeDiff;
 
+                                // Smoothing factor: 90% history / 10% current to prevent "jumping"
                                 if (this.dlInternals.rollingBps === undefined) {
                                     this.dlInternals.rollingBps = currentBps;
                                 } else {
-                                    this.dlInternals.rollingBps = this.dlInternals.rollingBps * 0.8 + currentBps * 0.2;
+                                    this.dlInternals.rollingBps = (this.dlInternals.rollingBps * 0.9) + (currentBps * 0.1);
                                 }
 
                                 this.dlState.mbps = this.dlInternals.rollingBps / (1024 * 1024);
-                                if (total > 0 && this.dlInternals.rollingBps > 1000) {
-                                    const remaining = Math.max(total - loaded, 0);
-                                    const eta = remaining / this.dlInternals.rollingBps;
-                                    this.dlState.eta = this.fmtEta(eta);
+                                
+                                if (total > 0 && this.dlInternals.rollingBps > 1024) {
+                                    const remainingBytes = Math.max(total - loaded, 0);
+                                    const etaSeconds = remainingBytes / this.dlInternals.rollingBps;
+                                    this.dlState.eta = this.fmtEta(etaSeconds);
                                 } else {
                                     this.dlState.eta = '--:--';
                                 }
