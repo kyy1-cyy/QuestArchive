@@ -514,7 +514,7 @@
                                 <!-- Scanline effect -->
                                 <div class="absolute inset-0 pointer-events-none z-10 opacity-20 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] bg-[length:100%_2px,3px_100%]"></div>
                                 
-                                <transition name="img-fade" mode="out-in">
+                                <transition name="img-fade">
                                     <img :key="activeThumbnailUrl"
                                         :src="activeThumbnailUrl || 'https://via.placeholder.com/800x400?text=No+Thumbnail'"
                                         class="w-full h-full object-cover transition-transform duration-700 group-hover/thumb:scale-105"
@@ -659,6 +659,8 @@
             .img-fade-enter-active,
             .img-fade-leave-active {
                 transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+                position: absolute;
+                inset: 0;
             }
             .img-fade-enter-from {
                 opacity: 0;
