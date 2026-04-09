@@ -221,6 +221,34 @@
     <div class="glow-bg"></div>
     <div id="app" class="min-h-screen md:h-full flex flex-col w-full">
 
+        <!-- Splash Sync Overlay -->
+        <transition name="img-fade">
+            <div v-if="syncingLibrary" class="fixed inset-0 z-[100] bg-[#050505] flex flex-col items-center justify-center p-6 text-center">
+                <div class="glow-bg"></div>
+                <div class="mb-10 animate-pulse">
+                    <svg width="60" height="60" viewBox="0 0 24 24" fill="none" class="text-white">
+                        <path d="M12 2.75c4.832 0 8.75 3.918 8.75 8.75 0 4.832-3.918 8.75-8.75 8.75-4.832 0-8.75-3.918-8.75-8.75C3.25 6.668 7.168 2.75 12 2.75Z" stroke="currentColor" stroke-width="1" opacity="0.3" />
+                        <path d="M8.5 12.25c1.05-2.55 2.717-3.75 3.5-3.75s2.45 1.2 3.5 3.75" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                        <path d="M7.25 13.25c1.8 3.35 4.2 4.75 4.75 4.75s2.95-1.4 4.75-4.75" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                    </svg>
+                </div>
+                
+                <h1 class="text-3xl font-bold text-white tracking-tighter mb-3">Quest Archive</h1>
+                <p class="text-gray-400 text-sm mb-12 max-w-[280px] leading-relaxed">Populating library records and caching 4K thumbnails for instant global access.</p>
+                
+                <div class="w-full max-w-[320px] mb-4">
+                    <div class="h-1 w-full bg-white/5 rounded-full overflow-hidden border border-white/5 relative">
+                        <div class="absolute inset-y-0 left-0 bg-white transition-all duration-500 ease-out shadow-[0_0_15px_rgba(255,255,255,0.5)]" :style="{ width: syncPercent + '%' }"></div>
+                    </div>
+                </div>
+                
+                <div class="flex flex-col items-center gap-1">
+                    <div class="text-[10px] font-mono text-white/40 uppercase tracking-[0.2em]">{{ syncProgress }} / {{ syncTotal }} TITLES</div>
+                    <div class="text-[10px] font-mono text-white/20 uppercase tracking-[0.2em]">ETA: {{ syncEta }}</div>
+                </div>
+            </div>
+        </transition>
+
         <!-- Minimal Top Nav -->
         <header
             class="glass-panel border-b border-white/5 px-4 sm:px-8 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between z-10 shrink-0 gap-3">
@@ -735,14 +763,14 @@
                         imgLoaded: true,
                         activeThumbnailUrl: '',
                         prevThumbnailUrl: null,
+                        syncingLibrary: false,
+                        syncPercent: 0,
+                        syncProgress: 0,
+                        syncTotal: 0,
+                        syncEta: '--:--',
                         imageCache: {
-                            loading: false,
-                            percent: 0,
-                            eta: '--:--',
-                            total: 0,
-                            loaded: 0,
-                            startTime: 0,
-                            lastCacheCheck: 0
+                            db: null,
+                            blobs: {}
                         }
                     }
                 },
@@ -826,9 +854,17 @@
                     }
                 },
                 async mounted() {
+                    await this.initImageDB();
                     await this.fetchGames();
-                    this.preloadVisibleImages();
                     this.restoreDlDirectory();
+                    
+                    const lastSync = localStorage.getItem('library_last_sync');
+                    if (!lastSync || (Date.now() - parseInt(lastSync)) > 7 * 24 * 60 * 60 * 1000) {
+                        await this.syncLibraryImages();
+                    } else {
+                        // Pre-load all blobs into memory for zero-latency swap
+                        this.preloadBlobs();
+                    }
                 },
                 methods: {
                     async preloadGameImages() {
@@ -982,25 +1018,107 @@
                         }
                     },
 
+                    async initImageDB() {
+                        return new Promise((resolve, reject) => {
+                            const request = indexedDB.open('QuestArchiveImages', 1);
+                            request.onupgradeneeded = (e) => {
+                                e.target.result.createObjectStore('thumbnails');
+                            };
+                            request.onsuccess = (e) => {
+                                this.imageCache.db = e.target.result;
+                                resolve();
+                            };
+                            request.onerror = reject;
+                        });
+                    },
+
+                    async syncLibraryImages() {
+                        const gamesToCache = this.games.filter(g => g.thumbnailUrl && g.thumbnailUrl.startsWith('http'));
+                        if (gamesToCache.length === 0) return;
+
+                        this.syncingLibrary = true;
+                        this.syncTotal = gamesToCache.length;
+                        this.syncProgress = 0;
+                        const startTime = Date.now();
+
+                        const batchSize = 15;
+                        for (let i = 0; i < gamesToCache.length; i += batchSize) {
+                            const batch = gamesToCache.slice(i, i + batchSize);
+                            await Promise.all(batch.map(async (game) => {
+                                try {
+                                    const cached = await this.getFromDB(game.thumbnailUrl);
+                                    if (!cached) {
+                                        const res = await fetch(game.thumbnailUrl);
+                                        const blob = await res.blob();
+                                        await this.saveToDB(game.thumbnailUrl, blob);
+                                        const blobUrl = URL.createObjectURL(blob);
+                                        this.imageCache.blobs[game.thumbnailUrl] = blobUrl;
+                                    } else {
+                                        const blobUrl = URL.createObjectURL(cached);
+                                        this.imageCache.blobs[game.thumbnailUrl] = blobUrl;
+                                    }
+                                } catch (e) {
+                                    console.warn('Sync failed for:', game.title);
+                                }
+                                this.syncProgress++;
+                                this.syncPercent = Math.round((this.syncProgress / this.syncTotal) * 100);
+                                
+                                const elapsed = (Date.now() - startTime) / 1000;
+                                const rate = this.syncProgress / elapsed;
+                                const remaining = (this.syncTotal - this.syncProgress) / rate;
+                                this.syncEta = this.fmtEta(remaining);
+                            }));
+                        }
+
+                        localStorage.setItem('library_last_sync', Date.now().toString());
+                        setTimeout(() => this.syncingLibrary = false, 800);
+                    },
+
+                    async preloadBlobs() {
+                        const games = this.games.filter(g => g.thumbnailUrl && g.thumbnailUrl.startsWith('http'));
+                        for (const game of games) {
+                            try {
+                                const blob = await this.getFromDB(game.thumbnailUrl);
+                                if (blob) {
+                                    this.imageCache.blobs[game.thumbnailUrl] = URL.createObjectURL(blob);
+                                }
+                            } catch (e) {}
+                        }
+                    },
+
+                    saveToDB(key, blob) {
+                        return new Promise((resolve) => {
+                            const tx = this.imageCache.db.transaction('thumbnails', 'readwrite');
+                            tx.objectStore('thumbnails').put(blob, key);
+                            tx.oncomplete = () => resolve();
+                        });
+                    },
+
+                    getFromDB(key) {
+                        return new Promise((resolve) => {
+                            const tx = this.imageCache.db.transaction('thumbnails', 'readonly');
+                            const req = tx.objectStore('thumbnails').get(key);
+                            req.onsuccess = () => resolve(req.result);
+                        });
+                    },
+
+                    getCachedImageUrl(url) {
+                        return this.imageCache.blobs[url] || url;
+                    },
+
+                    fmtEta(s) {
+                        if (!isFinite(s) || s < 0) return '--:--';
+                        const m = Math.floor(s / 60);
+                        const sec = Math.floor(s % 60);
+                        return `${m}:${sec.toString().padStart(2, '0')}`;
+                    },
+
                     preloadImage(imageUrl) {
-                        if (!imageUrl || imageUrl === 'https://via.placeholder.com/800x400?text=No+Thumbnail') return;
-                        
-                        const img = new Image();
-                        img.src = imageUrl;
+                        // Deprecated in favor of IndexedDB sync
                     },
                     
                     preloadVisibleImages() {
-                        // Preload first 20 images immediately
-                        const visibleGames = this.filteredGames.slice(0, 20);
-                        visibleGames.forEach(game => {
-                            if (game.thumbnailUrl) {
-                                this.preloadImage(game.thumbnailUrl);
-                            }
-                        });
-                    },
-                    
-                    getCachedImageUrl(imageUrl) {
-                        return imageUrl; // Just return the original URL, browser will handle caching
+                        // Deprecated in favor of IndexedDB sync
                     },
                     toggleSort(key) {
                         if (this.sortKey === key) {
@@ -1121,10 +1239,15 @@
                         this.selectedGame = { ...game, fileSize: null, loadingSize: true };
                         this.resetDlState();
                         
-                        const newUrl = game.thumbnailUrl || 'https://via.placeholder.com/800x400?text=No+Thumbnail';
+                        const cachedUrl = this.getCachedImageUrl(game.thumbnailUrl);
+                        const finalUrl = cachedUrl || 'https://via.placeholder.com/800x400?text=No+Thumbnail';
 
-                        // Preload the selected game's image
-                        if (game.thumbnailUrl) {
+                        // If it's already a blob URL (cached), swap instantly
+                        if (cachedUrl && cachedUrl.startsWith('blob:')) {
+                            this.activeThumbnailUrl = cachedUrl;
+                            this.imgLoaded = true;
+                        } else if (game.thumbnailUrl) {
+                            // Fallback for uncached
                             this.imgLoaded = false;
                             const img = new Image();
                             img.src = game.thumbnailUrl;
@@ -1134,14 +1257,8 @@
                                     this.imgLoaded = true;
                                 }
                             };
-                            img.onerror = () => {
-                                if (this.selectedGame?.id === game.id) {
-                                    this.activeThumbnailUrl = 'https://via.placeholder.com/800x400?text=No+Thumbnail';
-                                    this.imgLoaded = true;
-                                }
-                            };
                         } else {
-                            this.activeThumbnailUrl = newUrl;
+                            this.activeThumbnailUrl = finalUrl;
                             this.imgLoaded = true;
                         }
 
