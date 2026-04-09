@@ -16,7 +16,7 @@ export default {
             });
         }
 
-        // 2. SECURITY BYPASS: Thumbnails and Meta files are free to view
+        // 2. SECURITY BYPASS: Thumbnails and Meta files
         const isPublicMeta = url.pathname.includes('/.meta/') || 
                              url.pathname.endsWith('.png') || 
                              url.pathname.endsWith('.jpg') ||
@@ -46,9 +46,7 @@ export default {
             if (!isValid) return new Response('Access Denied: Invalid Request 🚫', { status: 403 });
         }
 
-        // 4. HIGH-SPEED STREAMING PROXY
-        // We remove the Cache logic here to avoid Cloudflare CPU Throttling on 100MB chunks.
-        // 100MB chunks already keep B2 Class B API calls low enough for the free tier.
+        // 4. HIGH-SPEED TRANSPARENT PROXY
         url.host = 's3.us-west-004.backblazeb2.com';
         
         const response = await fetch(url.toString(), {
@@ -57,10 +55,21 @@ export default {
             redirect: 'follow'
         });
 
-        // Add headers and return the response stream immediately
-        const finalResponse = new Response(response.body, response);
+        // 5. CRITICAL: Disable Cloudflare buffering/caching for this response
+        // This is the "Nuclear" speed fix. It tells Cloudflare to act like a wire, not a cache.
+        const finalResponse = new Response(response.body, {
+            status: response.status,
+            statusText: response.statusText,
+            headers: response.headers
+        });
+
         finalResponse.headers.set('Access-Control-Allow-Origin', '*');
         finalResponse.headers.set('Access-Control-Expose-Headers', 'Content-Range, Content-Length, Accept-Ranges, ETag');
+        
+        // Tells Cloudflare's CDN middleman to NOT touch this data
+        finalResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        finalResponse.headers.set('CDN-Cache-Control', 'no-store');
+        finalResponse.headers.set('Cloudflare-CDN-Cache-Control', 'no-store');
         
         return finalResponse;
     }
