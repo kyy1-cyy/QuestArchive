@@ -207,8 +207,8 @@ async function sendDownloadInfo(req, res, game) {
     }
     
     if (fileSize) {
-        // Use smaller 10MB chunks for MUCH smoother progress reporting ('jumps' fixed)
-        const chunkSize = 10 * 1024 * 1024;
+        // Use 20MB chunks for optimized Cloudflare throughput
+        const chunkSize = 20 * 1024 * 1024;
         let index = 0;
         for (let i = 0; i < fileSize; i += chunkSize) {
             chunks.push({

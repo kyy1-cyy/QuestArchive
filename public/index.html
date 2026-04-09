@@ -614,7 +614,7 @@
                                     </div>
                                     <button @click="cancelDownload" class="text-gray-500 hover:text-white transition">✕</button>
                                 </div>
-                                <div class="text-[11px] text-white font-bold truncate mb-3 tracking-tight">{{ dlInternals.currentFileName }}</div>
+                                <div class="text-[11px] text-white font-bold truncate mb-3 tracking-tight">{{ dlInternals.currentFileName.replace('.zip', '') }}</div>
                                 
                                 <div class="progress-wrap h-1.5 mb-3 bg-white/5 border-none">
                                     <div class="progress-bar bg-blue-500" :style="{ width: dlState.percent + '%' }"></div>
