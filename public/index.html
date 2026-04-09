@@ -1038,7 +1038,7 @@
 
                         this.syncingLibrary = true;
                         
-                        // 1. Get ALL current keys in one go (INSANELY FAST)
+                        // 1. Get ALL current keys in one go
                         const allKeys = await this.getAllKeysFromDB();
                         const keySet = new Set(allKeys);
                         
@@ -1050,22 +1050,23 @@
                         
                         if (this.syncTotal === 0) {
                             localStorage.setItem('library_last_sync', Date.now().toString());
-                            await this.preloadBlobs();
+                            await this.preloadInitialBlobs();
                             setTimeout(() => this.syncingLibrary = false, 500);
                             return;
                         }
 
                         const startTime = Date.now();
                         
-                        // 2. High-concurrency worker pool (60 at once)
-                        const concurrency = 60;
+                        // 2. Reasonable concurrency (12) to avoid browser stalling
+                        const concurrency = 12;
                         let index = 0;
+                        let lastUpdate = Date.now();
                         
                         const worker = async () => {
                             while (index < missingGames.length) {
                                 const game = missingGames[index++];
                                 try {
-                                    const res = await fetch(game.thumbnailUrl, { priority: 'high' });
+                                    const res = await fetch(game.thumbnailUrl);
                                     if (!res.ok) throw new Error('Fetch failed');
                                     const blob = await res.blob();
                                     await this.saveToDB(game.thumbnailUrl, blob);
@@ -1074,42 +1075,41 @@
                                 }
                                 
                                 this.syncProgress++;
-                                this.syncPercent = Math.round((this.syncProgress / this.syncTotal) * 100);
-                                const elapsed = (Date.now() - startTime) / 1000;
-                                const rate = this.syncProgress / elapsed;
-                                const remaining = (this.syncTotal - this.syncProgress) / rate;
-                                this.syncEta = this.fmtEta(remaining);
+                                
+                                // Throttle UI updates to every 10 items or 100ms
+                                const now = Date.now();
+                                if (this.syncProgress % 10 === 0 || now - lastUpdate > 100) {
+                                    this.syncPercent = Math.round((this.syncProgress / this.syncTotal) * 100);
+                                    const elapsed = (now - startTime) / 1000;
+                                    const rate = this.syncProgress / elapsed;
+                                    const remaining = (this.syncTotal - this.syncProgress) / rate;
+                                    this.syncEta = this.fmtEta(remaining);
+                                    lastUpdate = now;
+                                }
                             }
                         };
 
-                        // Launch workers
                         const workers = Array(concurrency).fill(null).map(() => worker());
                         await Promise.all(workers);
 
                         localStorage.setItem('library_last_sync', Date.now().toString());
-                        await this.preloadBlobs();
+                        await this.preloadInitialBlobs();
                         setTimeout(() => this.syncingLibrary = false, 800);
                     },
 
-                    async preloadBlobs() {
-                        const games = this.games.filter(g => g.thumbnailUrl && g.thumbnailUrl.startsWith('http'));
-                        // Clean up old blob URLs to prevent memory leak
-                        for (const url in this.imageCache.blobs) {
-                            URL.revokeObjectURL(this.imageCache.blobs[url]);
-                        }
-                        this.imageCache.blobs = {};
-                        
-                        const batchSize = 100;
-                        for (let i = 0; i < games.length; i += batchSize) {
-                            const batch = games.slice(i, i + batchSize);
-                            await Promise.all(batch.map(async (game) => {
-                                try {
-                                    const blob = await this.getFromDB(game.thumbnailUrl);
-                                    if (blob) {
-                                        this.imageCache.blobs[game.thumbnailUrl] = URL.createObjectURL(blob);
+                    async preloadInitialBlobs() {
+                        // Only preload first 50 to keep browser fast
+                        const games = this.games.filter(g => g.thumbnailUrl && g.thumbnailUrl.startsWith('http')).slice(0, 50);
+                        for (const game of games) {
+                            try {
+                                const blob = await this.getFromDB(game.thumbnailUrl);
+                                if (blob) {
+                                    if (this.imageCache.blobs[game.thumbnailUrl]) {
+                                        URL.revokeObjectURL(this.imageCache.blobs[game.thumbnailUrl]);
                                     }
-                                } catch (e) {}
-                            }));
+                                    this.imageCache.blobs[game.thumbnailUrl] = URL.createObjectURL(blob);
+                                }
+                            } catch (e) {}
                         }
                     },
 
@@ -1278,15 +1278,24 @@
                         this.selectedGame = { ...game, fileSize: null, loadingSize: true };
                         this.resetDlState();
                         
-                        const cachedUrl = this.getCachedImageUrl(game.thumbnailUrl);
-                        const finalUrl = cachedUrl || 'https://via.placeholder.com/800x400?text=No+Thumbnail';
+                        // Try memory cache first
+                        let finalizedUrl = this.imageCache.blobs[game.thumbnailUrl];
 
-                        // If it's already a blob URL (cached), swap instantly
-                        if (cachedUrl && cachedUrl.startsWith('blob:')) {
-                            this.activeThumbnailUrl = cachedUrl;
+                        // If not in RAM, try fetching from Disk (extremely fast)
+                        if (!finalizedUrl && game.thumbnailUrl) {
+                            try {
+                                const blob = await this.getFromDB(game.thumbnailUrl);
+                                if (blob) {
+                                    finalizedUrl = URL.createObjectURL(blob);
+                                    this.imageCache.blobs[game.thumbnailUrl] = finalizedUrl;
+                                }
+                            } catch (e) {}
+                        }
+
+                        if (finalizedUrl) {
+                            this.activeThumbnailUrl = finalizedUrl;
                             this.imgLoaded = true;
                         } else if (game.thumbnailUrl) {
-                            // Fallback for uncached
                             this.imgLoaded = false;
                             const img = new Image();
                             img.src = game.thumbnailUrl;
@@ -1297,7 +1306,7 @@
                                 }
                             };
                         } else {
-                            this.activeThumbnailUrl = finalUrl;
+                            this.activeThumbnailUrl = 'https://via.placeholder.com/800x400?text=No+Thumbnail';
                             this.imgLoaded = true;
                         }
 
