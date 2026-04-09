@@ -131,7 +131,42 @@
             height: 100%;
             width: 0%;
             background: rgba(255, 255, 255, 0.9);
-            transition: width 0.15s linear;
+            box-shadow: 0 0 15px rgba(255, 255, 255, 0.3);
+            transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .chunk-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(12px, 1fr));
+            gap: 2px;
+            padding: 8px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.05);
+            max-height: 120px;
+            overflow-y: auto;
+        }
+
+        .chunk-box {
+            aspect-ratio: 1;
+            border-radius: 1px;
+            background: rgba(255,255,255,0.03);
+            transition: background 0.2s ease;
+        }
+
+        .chunk-box.active {
+            background: rgba(255,255,255,0.4);
+            animation: pulse-light 1.5s infinite;
+        }
+
+        .chunk-box.done {
+            background: rgba(255,255,255,0.9);
+            box-shadow: 0 0 5px rgba(255,255,255,0.2);
+        }
+
+        @keyframes pulse-light {
+            0%, 100% { opacity: 0.4; }
+            50% { opacity: 0.8; }
         }
 
         /* Toast Notifications */
@@ -629,18 +664,41 @@
                                     </div>
                                 </template>
 
-                                <div v-if="dlState.active || dlState.percent >= 100">
+                                <div v-if="dlState.active || dlState.percent >= 100" class="mt-4">
                                     <div class="progress-wrap">
                                         <div class="progress-bar" :style="{ width: dlState.percent + '%' }"></div>
                                     </div>
-                                    <div class="flex items-center justify-between mt-3 text-xs text-gray-500">
+                                    <div class="flex items-center justify-between mt-3 mb-2 text-xs text-gray-500 font-mono">
                                         <span>{{ dlState.percent.toFixed(1) }}% · {{ dlState.mbps.toFixed(2) }} MB/s ·
                                             ETA {{ dlState.eta }}</span>
-                                        <span v-if="dlState.message" class="text-white/80">{{ dlState.message }}</span>
+                                        <span v-if="dlState.message" class="text-white/80 font-sans tracking-tight">{{ dlState.message }}</span>
                                     </div>
+
+                                    <!-- Thread Visualizer -->
+                                    <div v-if="dlState.active && dlInternals.chunks.length > 0" class="mt-4 border-t border-white/5 pt-3">
+                                        <button @click="dlInternals.showParts = !dlInternals.showParts" 
+                                                class="flex items-center gap-2 text-[10px] text-gray-500 hover:text-white transition uppercase tracking-widest font-bold mb-3 px-1">
+                                            <svg class="w-2.5 h-2.5 transition-transform" :class="{ 'rotate-180': dlInternals.showParts }" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M19 9l-7 7-7-7" />
+                                            </svg>
+                                            Download Parts ({{ dlInternals.chunks.length }})
+                                        </button>
+                                        
+                                        <div v-if="dlInternals.showParts" class="chunk-grid animate-fade-in">
+                                            <div v-for="(c, idx) in dlInternals.chunks" :key="idx" 
+                                                 class="chunk-box"
+                                                 :class="{ 
+                                                    'done': dlInternals.perChunkLoaded[c.index] >= (c.end - c.start),
+                                                    'active': dlInternals.activeChunkIndices.includes(c.index)
+                                                 }"
+                                                 :title="'Part ' + c.index">
+                                            </div>
+                                        </div>
+                                    </div>
+
                                     <button v-if="dlState.active" @click="cancelDownload"
-                                        class="mt-3 w-full py-2 rounded-xl text-xs font-semibold border border-white/10 text-white/60 hover:text-white hover:bg-white/10 transition">
-                                        Cancel
+                                        class="mt-4 w-full py-2.5 rounded-xl text-[11px] font-bold uppercase tracking-widest border border-white/5 text-white/40 hover:text-white hover:bg-white/5 transition">
+                                        Cancel Download
                                     </button>
                                 </div>
                                 <div v-if="dlState.error" class="mt-3 text-xs text-red-400">{{ dlState.error }}</div>
@@ -751,7 +809,13 @@
                             startedAt: 0,
                             totalBytes: 0,
                             loadedBytes: 0,
+                            lastLoadedBytes: 0,
+                            lastCalcTime: 0,
+                            rollingBps: undefined,
                             perChunkLoaded: {},
+                            chunks: [],
+                            activeChunkIndices: [],
+                            showParts: false,
                             abortControllers: [],
                             cancelled: false,
                             activeWritable: null,
@@ -1402,21 +1466,24 @@
                             const lastLoaded = this.dlInternals.lastLoadedBytes || 0;
                             const timeDiff = (now - lastTime) / 1000;
 
-                            if (timeDiff >= 0.4) {
+                            if (timeDiff >= 0.8) { // Slower update for more stable ETA
                                 const bytesDiff = Math.max(0, loaded - lastLoaded);
                                 const currentBps = bytesDiff / timeDiff;
 
+                                // Weighted rolling average: 90% old, 10% new for stability
                                 if (this.dlInternals.rollingBps === undefined) {
                                     this.dlInternals.rollingBps = currentBps;
                                 } else {
-                                    this.dlInternals.rollingBps = this.dlInternals.rollingBps * 0.7 + currentBps * 0.3;
+                                    this.dlInternals.rollingBps = this.dlInternals.rollingBps * 0.9 + currentBps * 0.1;
                                 }
 
                                 this.dlState.mbps = this.dlInternals.rollingBps / (1024 * 1024);
-                                if (total > 0) {
+                                if (total > 0 && this.dlInternals.rollingBps > 1000) {
                                     const remaining = Math.max(total - loaded, 0);
-                                    const eta = this.dlInternals.rollingBps > 0 ? remaining / this.dlInternals.rollingBps : Infinity;
+                                    const eta = remaining / this.dlInternals.rollingBps;
                                     this.dlState.eta = this.fmtEta(eta);
+                                } else {
+                                    this.dlState.eta = '--:--';
                                 }
 
                                 this.dlInternals.lastCalcTime = now;
@@ -1500,7 +1567,10 @@
                         this.dlInternals.loadedBytes = 0;
                         this.dlInternals.lastLoadedBytes = 0;
                         this.dlInternals.lastCalcTime = Date.now();
-                        this.dlInternals.rollingBps = 0;
+                        this.dlInternals.rollingBps = undefined;
+                        this.dlInternals.perChunkLoaded = {};
+                        this.dlInternals.chunks = chunks;
+                        this.dlInternals.activeChunkIndices = [];
 
                         // Multi-threaded download with 6 connections (browser-native thread pool limit)
                         const maxThreads = 6;
@@ -1538,6 +1608,7 @@
 
                                 const chunk = chunks[chunkIndex++];
                                 activeCount++;
+                                this.dlInternals.activeChunkIndices.push(chunk.index);
 
                                 try {
                                     const ac = new AbortController();
@@ -1560,12 +1631,14 @@
                                         position: chunk.start
                                     });
 
+                                    this.dlInternals.perChunkLoaded[chunk.index] = data.length;
                                     this.dlInternals.loadedBytes += data.length;
                                     this.updateDlProgress();
                                 } catch (e) {
                                     if (!this.dlInternals.cancelled) reject(e);
                                 } finally {
                                     activeCount--;
+                                    this.dlInternals.activeChunkIndices = this.dlInternals.activeChunkIndices.filter(id => id !== chunk.index);
                                     spawn();
                                 }
                             };
