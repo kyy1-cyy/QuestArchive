@@ -25,21 +25,18 @@ const downloadLimiter = rateLimit({
 
 async function resolveGameFileKey(game) {
     // Priority 1: DIRECT FILE KEY from database.json (Secret aliasing)
-    if (game.fileKey && await checkObjectExists(game.fileKey)) return game.fileKey;
+    if (game.fileKey) return game.fileKey;
 
     // Priority 2: Fallback to hashId if we haven't migrated this entry yet
     const hashId = String(game.hashId || '').trim().toLowerCase();
     if (/^[a-f0-9]{32}$/.test(hashId)) {
         const { findKeyByHash } = await import('../utils/md5-map.js');
         const mapped = await findKeyByHash(hashId);
-        if (mapped && await checkObjectExists(mapped)) return mapped;
+        if (mapped) return mapped;
     }
 
     // Priority 3: Blind title guess
-    const titleKey = game.title.toLowerCase().endsWith('.zip') ? game.title : `${game.title}.zip`;
-    if (await checkObjectExists(titleKey)) return titleKey;
-
-    return null;
+    return game.title.toLowerCase().endsWith('.zip') ? game.title : `${game.title}.zip`;
 }
 
 function issueDownloadTicket(req, res, id) {
@@ -193,29 +190,35 @@ async function pipeUpstreamToResponse(upstream, res) {
 async function sendDownloadInfo(req, res, game) {
     issueDownloadTicket(req, res, game.id || game.publicId);
 
-    const fileKey = await resolveGameFileKey(game) || (game.title.toLowerCase().endsWith('.zip') ? game.title : `${game.title}.zip`);
+    const fileKey = await resolveGameFileKey(game);
     
-    let fileSize = null;
+    // Use cached fileSize if available to avoid S3 HeadObject latency
+    let fileSize = game.fileSize || null;
     let chunks = [];
 
-    try {
-        const { HeadObjectCommand } = await import('@aws-sdk/client-s3');
-        const head = await s3Client.send(new HeadObjectCommand({ Bucket: config.B2.BUCKET_NAME, Key: fileKey }));
-        fileSize = head.ContentLength;
-        
-        if (fileSize) {
-            const chunkSize = 25 * 1024 * 1024;
-            let index = 0;
-            for (let i = 0; i < fileSize; i += chunkSize) {
-                chunks.push({
-                    index,
-                    start: i,
-                    end: Math.min(i + chunkSize - 1, fileSize - 1)
-                });
-                index += 1;
-            }
+    if (!fileSize) {
+        try {
+            const { HeadObjectCommand } = await import('@aws-sdk/client-s3');
+            const head = await s3Client.send(new HeadObjectCommand({ Bucket: config.B2.BUCKET_NAME, Key: fileKey }));
+            fileSize = head.ContentLength;
+        } catch (e) {
+            console.error('[DL-INFO] HeadObject failed:', e.message);
         }
-    } catch (e) {}
+    }
+    
+    if (fileSize) {
+        // Use smaller 10MB chunks for MUCH smoother progress reporting ('jumps' fixed)
+        const chunkSize = 10 * 1024 * 1024;
+        let index = 0;
+        for (let i = 0; i < fileSize; i += chunkSize) {
+            chunks.push({
+                index,
+                start: i,
+                end: Math.min(i + chunkSize - 1, fileSize - 1)
+            });
+            index += 1;
+        }
+    }
 
     res.json({
         title: game.title,

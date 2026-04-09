@@ -1460,7 +1460,7 @@
                         }
 
                         this.dlState.active = true;
-                        this.dlState.message = 'Connecting...';
+                        this.dlState.message = 'Pre-allocating...';
 
                         // Get download info for file size
                         let info;
@@ -1493,8 +1493,8 @@
                         this.dlInternals.startedAt = Date.now();
                         this.dlInternals.totalBytes = totalBytes;
 
-                        // Multi-threaded download with 16 parallel connections
-                        const maxThreads = 16;
+                        // Multi-threaded download with 8 parallel connections (optimal for browser limits)
+                        const maxThreads = 8;
                         const actualThreads = Math.min(maxThreads, chunks.length || 1);
                         
                         console.log('Using threads:', actualThreads, 'Total chunks:', chunks.length);
