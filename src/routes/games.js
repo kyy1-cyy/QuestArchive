@@ -207,8 +207,8 @@ async function sendDownloadInfo(req, res, game) {
     }
     
     if (fileSize) {
-        // Use 20MB chunks for optimized Cloudflare throughput
-        const chunkSize = 20 * 1024 * 1024;
+        // Use 100MB chunks for maximum Cloudflare Free Tier efficiency (protected 100k Daily Limit)
+        const chunkSize = 100 * 1024 * 1024;
         let index = 0;
         for (let i = 0; i < fileSize; i += chunkSize) {
             chunks.push({
