@@ -1393,36 +1393,36 @@
                         }
                     },
                     updateDlProgress() {
-                        const total = this.dlInternals.totalBytes || 0;
-                        let loaded = 0;
-                        for (const k in this.dlInternals.perChunkLoaded) loaded += this.dlInternals.perChunkLoaded[k] || 0;
-                        this.dlInternals.loadedBytes = loaded;
-                        this.dlState.percent = total ? Math.min(100, (loaded / total) * 100) : 0;
+                            const total = this.dlInternals.totalBytes || 0;
+                            const loaded = this.dlInternals.loadedBytes || 0;
+                            this.dlState.percent = total ? Math.min(100, (loaded / total) * 100) : 0;
 
-                        const now = Date.now();
-                        const lastTime = this.dlInternals.lastCalcTime || this.dlInternals.startedAt;
-                        const lastLoaded = this.dlInternals.lastLoadedBytes || 0;
-                        const timeDiff = (now - lastTime) / 1000;
+                            const now = Date.now();
+                            const lastTime = this.dlInternals.lastCalcTime || this.dlInternals.startedAt;
+                            const lastLoaded = this.dlInternals.lastLoadedBytes || 0;
+                            const timeDiff = (now - lastTime) / 1000;
 
-                        if (timeDiff >= 0.4) {
-                            const bytesDiff = loaded - lastLoaded;
-                            const currentBps = bytesDiff / timeDiff;
+                            if (timeDiff >= 0.4) {
+                                const bytesDiff = Math.max(0, loaded - lastLoaded);
+                                const currentBps = bytesDiff / timeDiff;
 
-                            if (this.dlInternals.rollingBps === undefined) {
-                                this.dlInternals.rollingBps = currentBps;
-                            } else {
-                                this.dlInternals.rollingBps = this.dlInternals.rollingBps * 0.75 + currentBps * 0.25;
+                                if (this.dlInternals.rollingBps === undefined) {
+                                    this.dlInternals.rollingBps = currentBps;
+                                } else {
+                                    this.dlInternals.rollingBps = this.dlInternals.rollingBps * 0.7 + currentBps * 0.3;
+                                }
+
+                                this.dlState.mbps = this.dlInternals.rollingBps / (1024 * 1024);
+                                if (total > 0) {
+                                    const remaining = Math.max(total - loaded, 0);
+                                    const eta = this.dlInternals.rollingBps > 0 ? remaining / this.dlInternals.rollingBps : Infinity;
+                                    this.dlState.eta = this.fmtEta(eta);
+                                }
+
+                                this.dlInternals.lastCalcTime = now;
+                                this.dlInternals.lastLoadedBytes = loaded;
                             }
-
-                            this.dlState.mbps = this.dlInternals.rollingBps / (1024 * 1024);
-                            const remaining = Math.max(total - loaded, 0);
-                            const eta = this.dlInternals.rollingBps > 0 ? remaining / this.dlInternals.rollingBps : Infinity;
-                            this.dlState.eta = this.fmtEta(eta);
-
-                            this.dlInternals.lastCalcTime = now;
-                            this.dlInternals.lastLoadedBytes = loaded;
-                        }
-                    },
+                        },
                     async startChunkedDownload(game) {
                         if (this.dlState.active) return;
                         this.resetDlState();
@@ -1452,6 +1452,11 @@
                             writable = await fileHandle.createWritable();
                             this.dlInternals.activeWritable = writable;
                             this.dlInternals.currentFileName = `${game.title}.zip`;
+
+                            // Pre-allocate space to avoid mid-download fragmentation/slowdown
+                            if (game.fileSize) {
+                                await writable.truncate(game.fileSize);
+                            }
                         } catch (e) {
                             if (e.name !== 'AbortError') {
                                 this.showToast(e.message || 'Access denied', 'error');
@@ -1492,25 +1497,25 @@
                         this.dlState.message = 'Downloading...';
                         this.dlInternals.startedAt = Date.now();
                         this.dlInternals.totalBytes = totalBytes;
+                        this.dlInternals.loadedBytes = 0;
+                        this.dlInternals.lastLoadedBytes = 0;
+                        this.dlInternals.lastCalcTime = Date.now();
+                        this.dlInternals.rollingBps = 0;
 
-                        // Multi-threaded download with 8 parallel connections (optimal for browser limits)
-                        const maxThreads = 8;
+                        // Multi-threaded download with 6 connections (browser-native thread pool limit)
+                        const maxThreads = 6;
                         const actualThreads = Math.min(maxThreads, chunks.length || 1);
                         
-                        console.log('Using threads:', actualThreads, 'Total chunks:', chunks.length);
+                        console.log('Starting high-speed parallel download with', actualThreads, 'threads...');
                         
                         if (chunks.length > 1) {
-                            // Multi-threaded download using chunks
-                            console.log('Starting multi-threaded download...');
                             await this.downloadMultiThreaded(downloadUrl, chunks, writable, totalBytes, actualThreads);
                         } else {
-                            // Fallback to single stream for non-chunked files
-                            console.log('Starting single stream download...');
                             await this.downloadSingleStream(downloadUrl, writable, totalBytes);
                         }
 
                         await writable.close();
-
+                        
                         this.dlState.percent = 100;
                         this.dlState.mbps = 0;
                         this.dlState.eta = '00:00';
@@ -1520,132 +1525,69 @@
                     },
                     
                     async downloadMultiThreaded(baseUrl, chunks, writable, totalBytes, threadCount) {
-                        console.log('downloadMultiThreaded started:', { chunks: chunks.length, threadCount });
-                        
-                        let totalDownloaded = 0;
-                        let activeCount = 0;
                         let chunkIndex = 0;
+                        let activeCount = 0;
                         
                         return new Promise((resolve, reject) => {
-                            const next = async () => {
-                                if (chunkIndex >= chunks.length || this.dlInternals.cancelled) {
+                            const spawn = async () => {
+                                if (this.dlInternals.cancelled) return;
+                                if (chunkIndex >= chunks.length) {
                                     if (activeCount === 0) resolve();
                                     return;
                                 }
 
                                 const chunk = chunks[chunkIndex++];
                                 activeCount++;
-                                
+
                                 try {
                                     const ac = new AbortController();
                                     this.dlInternals.abortControllers.push(ac);
-                                    
+
                                     const res = await fetch(baseUrl, {
                                         headers: { Range: `bytes=${chunk.start}-${chunk.end}` },
                                         signal: ac.signal
                                     });
 
-                                    if (!res.ok) throw new Error(`Chunk ${chunk.index} failed: ${res.status}`);
+                                    if (!res.ok) throw new Error(`Thread failed: ${res.status}`);
                                     
                                     const buffer = await res.arrayBuffer();
-                                    
-                                    // Write DIRECTLY to the correct position in the file
-                                    // This is the key to multi-threaded disk writing without memory spikes
+                                    const data = new Uint8Array(buffer);
+
+                                    // Direct-to-Disk Positioning (No RAM buffering)
                                     await writable.write({
                                         type: 'write',
-                                        data: buffer,
+                                        data: data,
                                         position: chunk.start
                                     });
 
-                                    totalDownloaded += buffer.byteLength;
-                                    this.updateDownloadProgress(totalDownloaded, totalBytes);
-                                    
+                                    this.dlInternals.loadedBytes += data.length;
+                                    this.updateDlProgress();
                                 } catch (e) {
-                                    if (!this.dlInternals.cancelled) {
-                                        console.error('Parallel download error:', e);
-                                        return reject(e);
-                                    }
+                                    if (!this.dlInternals.cancelled) reject(e);
                                 } finally {
                                     activeCount--;
-                                    next();
+                                    spawn();
                                 }
                             };
 
-                            // Launch the physical connection pool
-                            for (let i = 0; i < threadCount; i++) {
-                                next();
-                            }
+                            for (let i = 0; i < threadCount; i++) spawn();
                         });
                     },
                     
                     async downloadSingleStream(url, writable, totalBytes) {
-                        const ac = new AbortController();
-                        this.dlInternals.abortControllers.push(ac);
-                        
                         try {
-                            const response = await fetch(url, {
-                                signal: ac.signal,
-                                cache: 'no-store'
-                            });
-                            
-                            if (!response.ok) {
-                                throw new Error(`Download failed (${response.status})`);
-                            }
-                            
-                            const reader = response.body.getReader();
-                            let bytesReceived = 0;
-                            
+                            const res = await fetch(url, { cache: 'no-store' });
+                            const reader = res.body.getReader();
                             while (true) {
                                 if (this.dlInternals.cancelled) break;
                                 const { done, value } = await reader.read();
                                 if (done) break;
-                                
                                 await writable.write(value);
-                                bytesReceived += value.byteLength;
-                                
-                                // Update progress
-                                if (totalBytes > 0) {
-                                    this.dlState.percent = Math.min(99, (bytesReceived / totalBytes) * 100);
-                                }
-                                
-                                // Update speed/ETA
-                                this.updateDownloadProgress(bytesReceived, totalBytes);
+                                this.dlInternals.loadedBytes += value.length;
+                                this.updateDlProgress();
                             }
-                        } catch (error) {
-                            if (!this.dlInternals.cancelled) {
-                                throw error;
-                            }
-                        }
-                    },
-                    
-                    updateDownloadProgress(bytesReceived, totalBytes) {
-                        const now = Date.now();
-                        const lastTime = this.dlInternals.lastCalcTime || this.dlInternals.startedAt;
-                        const lastLoaded = this.dlInternals.lastUploadedBytes || 0;
-                        const timeDiff = (now - lastTime) / 1000;
-                        
-                        if (timeDiff >= 0.5) {
-                            const bytesDiff = bytesReceived - lastLoaded;
-                            const currentBps = bytesDiff / timeDiff;
-                            
-                            if (this.dlInternals.rollingBps === undefined) {
-                                this.dlInternals.rollingBps = currentBps;
-                            } else {
-                                this.dlInternals.rollingBps = this.dlInternals.rollingBps * 0.7 + currentBps * 0.3;
-                            }
-                            
-                            this.dlState.mbps = this.dlInternals.rollingBps / (1024 * 1024);
-                            
-                            if (totalBytes > 0) {
-                                const remaining = Math.max(totalBytes - bytesReceived, 0);
-                                const eta = this.dlInternals.rollingBps > 0 ? remaining / this.dlInternals.rollingBps : Infinity;
-                                const mins = Math.floor(eta / 60);
-                                const secs = Math.floor(eta % 60);
-                                this.dlState.eta = eta > 3600 ? '> 1hr' : `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-                            }
-                            
-                            this.dlInternals.lastCalcTime = now;
-                            this.dlInternals.lastUploadedBytes = bytesReceived;
+                        } catch (e) {
+                            if (!this.dlInternals.cancelled) throw e;
                         }
                     },
                     handleImageError(e) {
