@@ -603,6 +603,45 @@
                         </div>
                     </main>
 
+                    <!-- Active Tasks Overlay -->
+                    <transition name="fade">
+                        <div v-if="dlState.active" class="fixed bottom-6 right-6 w-80 z-50 animate-task-in">
+                            <div class="glass-panel p-5 rounded-2xl border-white/10 shadow-2xl relative overflow-hidden">
+                                <div class="flex items-center justify-between mb-4">
+                                    <div class="flex items-center gap-2">
+                                        <div class="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></div>
+                                        <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Active Task</span>
+                                    </div>
+                                    <button @click="cancelDownload" class="text-gray-500 hover:text-white transition">✕</button>
+                                </div>
+                                <div class="text-[11px] text-white font-bold truncate mb-3 tracking-tight">{{ dlInternals.currentFileName }}</div>
+                                
+                                <div class="progress-wrap h-1.5 mb-3 bg-white/5 border-none">
+                                    <div class="progress-bar bg-blue-500" :style="{ width: dlState.percent + '%' }"></div>
+                                </div>
+
+                                <div class="flex items-center justify-between text-[10px] font-mono text-gray-400">
+                                    <span>{{ dlState.percent.toFixed(1) }}% · {{ dlState.mbps.toFixed(2) }} MB/s</span>
+                                    <span>{{ dlState.eta }}</span>
+                                </div>
+
+                                <!-- Mini Parts Grid -->
+                                <div class="mt-4 pt-3 border-t border-white/5">
+                                    <div class="chunk-grid !max-h-[60px] !p-2 !gap-1 !grid-template-columns-[repeat(auto-fill,minmax(28px,1fr))]">
+                                        <div v-for="(c, idx) in dlInternals.chunks" :key="idx" 
+                                             class="chunk-box !aspect-square !border-none !bg-white-[0.02]"
+                                             :class="{ 
+                                                'done !bg-blue-500/40': dlInternals.perChunkLoaded[c.index] >= (c.end - c.start),
+                                                'active !bg-blue-400/20': dlInternals.activeChunkIndices.includes(c.index)
+                                             }">
+                                             <span class="idx !text-[6px] !opacity-30">{{ c.index + 1 }}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </transition>
+
                     <!-- Right: Details Pane -->
                     <aside
                         class="flex-1 glass-panel rounded-2xl p-5 sm:p-8 flex flex-col relative overflow-hidden min-h-[46vh] md:min-h-0 md:h-full">
@@ -708,43 +747,14 @@
                                     </div>
                                 </template>
 
-                                <div v-if="dlState.active || dlState.percent >= 100" class="mt-4">
+                                <div v-if="dlState.percent >= 100" class="mt-4">
                                     <div class="progress-wrap">
                                         <div class="progress-bar" :style="{ width: dlState.percent + '%' }"></div>
                                     </div>
-                                    <div class="flex items-center justify-between mt-3 mb-2 text-xs text-gray-500 font-mono">
-                                        <span>{{ dlState.percent.toFixed(1) }}% · {{ dlState.mbps.toFixed(2) }} MB/s ·
-                                            ETA {{ dlState.eta }}</span>
-                                        <span v-if="dlState.message" class="text-white/80 font-sans tracking-tight">{{ dlState.message }}</span>
+                                    <div class="flex items-center justify-between mt-3 text-xs text-gray-500 font-mono">
+                                        <span>Download Complete</span>
+                                        <span class="text-white/80 font-sans tracking-tight">{{ dlState.message }}</span>
                                     </div>
-
-                                    <!-- Thread Visualizer -->
-                                    <div v-if="dlState.active && dlInternals.chunks.length > 0" class="mt-4 border-t border-white/5 pt-3">
-                                        <button @click="dlInternals.showParts = !dlInternals.showParts" 
-                                                class="flex items-center gap-2 text-[10px] text-gray-500 hover:text-white transition uppercase tracking-widest font-bold mb-3 px-1">
-                                            <svg class="w-2.5 h-2.5 transition-transform" :class="{ 'rotate-180': dlInternals.showParts }" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M19 9l-7 7-7-7" />
-                                            </svg>
-                                            Download Parts ({{ dlInternals.chunks.length }})
-                                        </button>
-                                        
-                                        <div v-if="dlInternals.showParts" class="chunk-grid animate-fade-in mt-2 relative">
-                                            <div v-for="(c, idx) in dlInternals.chunks" :key="idx" 
-                                                 class="chunk-box"
-                                                 :class="{ 
-                                                    'done': dlInternals.perChunkLoaded[c.index] >= (c.end - c.start),
-                                                    'active': dlInternals.activeChunkIndices.includes(c.index)
-                                                 }">
-                                                 <span class="idx">{{ c.index + 1 }}</span>
-                                                 <span class="perc">{{ Math.floor((dlInternals.perChunkLoaded[c.index] || 0) / (c.end - c.start) * 100) }}%</span>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <button v-if="dlState.active" @click="cancelDownload"
-                                        class="mt-4 w-full py-2.5 rounded-xl text-[11px] font-bold uppercase tracking-widest border border-white/5 text-white/40 hover:text-white hover:bg-white/5 transition">
-                                        Cancel Download
-                                    </button>
                                 </div>
                                 <div v-if="dlState.error" class="mt-3 text-xs text-red-400">{{ dlState.error }}</div>
                             </div>
@@ -1384,7 +1394,7 @@
                         if (this.selectedGame?.id === game.id) return;
                         
                         this.selectedGame = { ...game, fileSize: game.fileSize || null, loadingSize: !game.fileSize };
-                        this.resetDlState();
+                        if (!this.dlState.active) this.resetDlState();
 
                         // IMMEDIATELY try to find the image
                         const cachedUrl = this.imageCache.blobs[game.thumbnailUrl];
@@ -1670,8 +1680,7 @@
                                     const ac = new AbortController();
                                     this.dlInternals.abortControllers.push(ac);
                                     
-                                    // Connection Heartbeat: fail fast if thread hangs
-                                    const timeoutId = setTimeout(() => ac.abort(), 8000); 
+                                    const timeoutId = setTimeout(() => ac.abort(), 12000); 
 
                                     const res = await fetch(baseUrl, {
                                         headers: { Range: `bytes=${chunk.start}-${chunk.end}` },
@@ -1681,24 +1690,34 @@
 
                                     if (!res.ok) throw new Error(`Thread failed: ${res.status}`);
                                     
-                                    const buffer = await res.arrayBuffer();
-                                    const data = new Uint8Array(buffer);
+                                    // REAL-TIME STREAMING: Read the body reader
+                                    const reader = res.body.getReader();
+                                    let chunkOffset = 0;
 
-                                    // Direct-to-Disk Positioning (No RAM buffering)
-                                    await writable.write({
-                                        type: 'write',
-                                        data: data,
-                                        position: chunk.start
-                                    });
+                                    while (true) {
+                                        if (this.dlInternals.cancelled) break;
+                                        const { done, value } = await reader.read();
+                                        if (done) break;
 
-                                    this.dlInternals.perChunkLoaded[chunk.index] = data.length;
-                                    this.dlInternals.loadedBytes += data.length;
-                                    this.updateDlProgress();
+                                        // Position calculation: Start + bytes written so far in this chunk
+                                        await writable.write({
+                                            type: 'write',
+                                            data: value,
+                                            position: chunk.start + chunkOffset
+                                        });
+
+                                        chunkOffset += value.length;
+                                        this.dlInternals.perChunkLoaded[chunk.index] = chunkOffset;
+                                        this.dlInternals.loadedBytes += value.length;
+                                        
+                                        // Trigger UI heartbeat for MBps/Progress
+                                        this.updateDlProgress();
+                                    }
                                 } catch (e) {
                                     if (!this.dlInternals.cancelled) {
                                         console.warn(`Retry chunk ${chunk.index}:`, e.message);
-                                        chunkIndex--; // Push back for retry
-                                        await new Promise(r => setTimeout(r, 1000));
+                                        chunkIndex--; 
+                                        await new Promise(r => setTimeout(r, 800));
                                     }
                                 } finally {
                                     activeCount--;
