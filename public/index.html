@@ -1520,82 +1520,62 @@
                     },
                     
                     async downloadMultiThreaded(baseUrl, chunks, writable, totalBytes, threadCount) {
-                        console.log('downloadMultiThreaded called with:', { baseUrl: baseUrl.substring(0, 50) + '...', chunks: chunks.length, threadCount });
-                        const chunksPerThread = Math.ceil(chunks.length / threadCount);
-                        const activeDownloads = new Set();
-                        const completedChunks = new Set();
-                        const chunkBuffers = new Map();
+                        console.log('downloadMultiThreaded started:', { chunks: chunks.length, threadCount });
+                        
                         let totalDownloaded = 0;
+                        let activeCount = 0;
+                        let chunkIndex = 0;
                         
-                        const downloadChunk = async (chunk) => {
-                            if (this.dlInternals.cancelled) return;
-                            
-                            const range = `bytes=${chunk.start}-${chunk.end}`;
-                            const ac = new AbortController();
-                            this.dlInternals.abortControllers.push(ac);
-                            
-                            try {
-                                const response = await fetch(baseUrl, {
-                                    headers: { Range: range },
-                                    signal: ac.signal,
-                                    cache: 'no-store'
-                                });
-                                
-                                if (!response.ok) {
-                                    throw new Error(`Chunk ${chunk.index} failed (${response.status})`);
+                        return new Promise((resolve, reject) => {
+                            const next = async () => {
+                                if (chunkIndex >= chunks.length || this.dlInternals.cancelled) {
+                                    if (activeCount === 0) resolve();
+                                    return;
                                 }
+
+                                const chunk = chunks[chunkIndex++];
+                                activeCount++;
                                 
-                                const buffer = await response.arrayBuffer();
-                                chunkBuffers.set(chunk.index, { buffer, start: chunk.start, end: chunk.end });
-                                completedChunks.add(chunk.index);
-                                
-                                // Update progress
-                                totalDownloaded += buffer.byteLength;
-                                if (totalBytes > 0) {
-                                    this.dlState.percent = Math.min(99, (totalDownloaded / totalBytes) * 100);
+                                try {
+                                    const ac = new AbortController();
+                                    this.dlInternals.abortControllers.push(ac);
+                                    
+                                    const res = await fetch(baseUrl, {
+                                        headers: { Range: `bytes=${chunk.start}-${chunk.end}` },
+                                        signal: ac.signal
+                                    });
+
+                                    if (!res.ok) throw new Error(`Chunk ${chunk.index} failed: ${res.status}`);
+                                    
+                                    const buffer = await res.arrayBuffer();
+                                    
+                                    // Write DIRECTLY to the correct position in the file
+                                    // This is the key to multi-threaded disk writing without memory spikes
+                                    await writable.write({
+                                        type: 'write',
+                                        data: buffer,
+                                        position: chunk.start
+                                    });
+
+                                    totalDownloaded += buffer.byteLength;
+                                    this.updateDownloadProgress(totalDownloaded, totalBytes);
+                                    
+                                } catch (e) {
+                                    if (!this.dlInternals.cancelled) {
+                                        console.error('Parallel download error:', e);
+                                        return reject(e);
+                                    }
+                                } finally {
+                                    activeCount--;
+                                    next();
                                 }
-                                
-                                // Update speed/ETA
-                                this.updateDownloadProgress(totalDownloaded, totalBytes);
-                                
-                            } catch (error) {
-                                if (!this.dlInternals.cancelled) {
-                                    console.error(`Chunk ${chunk.index} failed:`, error);
-                                    throw error;
-                                }
+                            };
+
+                            // Launch the physical connection pool
+                            for (let i = 0; i < threadCount; i++) {
+                                next();
                             }
-                        };
-                        
-                        // Start downloads in batches
-                        for (let i = 0; i < chunks.length; i += chunksPerThread) {
-                            if (this.dlInternals.cancelled) break;
-                            
-                            const batch = chunks.slice(i, Math.min(i + chunksPerThread, chunks.length));
-                            const batchPromises = batch.map(chunk => {
-                                activeDownloads.add(chunk.index);
-                                return downloadChunk(chunk).finally(() => {
-                                    activeDownloads.delete(chunk.index);
-                                });
-                            });
-                            
-                            await Promise.allSettled(batchPromises);
-                        }
-                        
-                        // Write all chunks to file in order
-                        if (!this.dlInternals.cancelled) {
-                            this.dlState.message = 'Assembling file...';
-                            for (let i = 0; i < chunks.length; i++) {
-                                if (this.dlInternals.cancelled) break;
-                                
-                                const chunkData = chunkBuffers.get(i);
-                                if (chunkData) {
-                                    await writable.write(new Uint8Array(chunkData.buffer));
-                                }
-                            }
-                        }
-                        
-                        // Clean up
-                        chunkBuffers.clear();
+                        });
                     },
                     
                     async downloadSingleStream(url, writable, totalBytes) {
