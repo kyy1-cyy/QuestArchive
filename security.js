@@ -10,10 +10,11 @@ export const secureHandshake = (req, res, next) => {
     const clientKey = req.headers['x-qaaa-client'];
     const host = req.headers['host'];
 
-    // 1. BLOCK KOYEB.APP ACCESS
-    // If someone hits xxx.koyeb.app directly, we kill the connection
-    if (host && (host.includes('koyeb.app') || !host.includes(ALLOWED_DOMAIN))) {
-        console.warn(`[SECURITY] Blocked direct access via: ${host}`);
+    // 1. BLOCK KOYEB.APP ACCESS & IP SCANNERS
+    const isInternal = host && (host.includes('localhost') || host.includes('127.0.0.1'));
+    
+    if (!isInternal && (host.includes('koyeb.app') || !host.includes(ALLOWED_DOMAIN))) {
+        console.warn(`[SECURITY] Blocked external access via: ${host}`);
         return res.status(403).json({ error: "Access Denied: Use Official Domain Only" });
     }
 

@@ -33,8 +33,8 @@ app.get('/meta.7z', secureHandshake, (req, res) => {
     }
 });
 
-// Koyeb Health Check (Public)
-app.get('/', (req, res) => {
+// Koyeb Health Check (NOW SECURED)
+app.get('/', secureHandshake, (req, res) => {
     res.send('QAAA Secure Node - Online');
 });
 
