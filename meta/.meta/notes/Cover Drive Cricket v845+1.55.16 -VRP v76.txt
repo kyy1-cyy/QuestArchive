@@ -1,0 +1,4 @@
+
+when starting the game it gets an error click oculus button and then go back to game it will bypass api error
+
+

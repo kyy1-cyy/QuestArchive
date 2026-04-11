@@ -1,55 +1,14 @@
 {
-  "name": "quest-archive",
+  "name": "qaaa-distribution-node",
   "version": "1.0.0",
-  "main": "server.js",
+  "main": "index.js",
   "type": "module",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js",
-    "lint": "eslint . --ext .js,.cjs",
-    "format": "prettier --write ."
+    "start": "node index.js"
   },
-  "keywords": [
-    "vr",
-    "quest",
-    "archive",
-    "games"
-  ],
-  "author": "",
-  "license": "ISC",
-  "description": "Quest Archive — VR game archive with Cloudflare R2 storage",
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.967.0",
-    "@aws-sdk/lib-storage": "^3.1016.0",
-    "@aws-sdk/s3-request-presigner": "^3.967.0",
-    "archiver": "^7.0.1",
-    "basic-ftp": "^5.2.0",
-    "body-parser": "^2.2.2",
-    "cookie-parser": "^1.4.7",
-    "cors": "^2.8.6",
-    "dotenv": "^17.3.1",
     "express": "^5.2.1",
-    "express-rate-limit": "^8.3.1",
-    "express-session": "^1.19.0",
-    "express-winston": "^4.2.0",
-    "fuse.js": "^7.1.0",
-    "jsonwebtoken": "^9.0.3",
-    "lucide-vue-next": "^1.0.0",
-    "ssh2-sftp-client": "^12.1.1",
-    "swagger-ui-express": "^5.0.1",
-    "vue": "^3.5.31",
-    "winston": "^3.19.0",
-    "yamljs": "^0.3.0",
-    "yauzl": "^3.2.1"
-  },
-  "devDependencies": {
-    "autoprefixer": "^10.4.27",
-    "eslint": "^10.1.0",
-    "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-prettier": "^5.5.5",
-    "postcss": "^8.5.8",
-    "prettier": "^3.8.1",
-    "tailwindcss": "^4.2.2",
-    "vite": "^8.0.3"
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1"
   }
 }

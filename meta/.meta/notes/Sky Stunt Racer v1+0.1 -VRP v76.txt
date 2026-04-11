@@ -1,0 +1,2 @@
+start game go into store if IAP`s are not unlocked
+click buy for both items to unlock

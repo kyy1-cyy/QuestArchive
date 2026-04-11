@@ -1,0 +1,34 @@
+If the game doesnt launch or you revert to the demo for some reason, recopy the ioquake3quest folder to /sdcard/ or you may just need to overwrite pak0.pk3
+
+https://quake3quest.quakevr.com/
+
+----Players Guide to Quake3Quest 
+Single player
+Quake 3 features a Bot Tournament. Its a good way to learn the ropes before going into PvP online multiplayer on one on our vr-only servers.
+
+Skirmish:
+Here you can setup your own bot games. Select the map you like, add some bots and you are ready to go. This is as close as the single player mdoe can get to real PvP multiplayer. 
+
+
+Multiplayer Online:
+This is where the fun begins. The real deal. We have setup 6 VR-only Servers evenly located in the US and Europe for best ping.
+VR only Servers are bookmarked under "Server: Ouake3Quest".
+Use the discord channel quake3-multiplayer to find people to join you.
+Server status here: https://discord.com/channels/641218476198985728/945725087078838292
+
+Multiplayer on local wifi
+You can play Quest vs Quest vs PC vs android. True Crossplay. Easiest way is to create a game on Quest and let all other devices join. Make sure you unselect "pure server" when creating a game. Make sure all devices are connected to the same wifi.
+
+How to change your Screen name:
+As of now you will need to edit the q3config.cfg. it's located in ioquake3quest/baseq3. Copy it to your computer, open it with notepad editor and search for "seta name". Delete the preset name "vr_player" and change as you like.
+
+NOTE: If your gun gets missaligned in Multiplayer, press the "Y" button on your left controller to reset its position.
+
+In Game VR Menu:
+Check the Vr menu to adjust the game to your liking. 
+Leave framerate at 72hz for now! We will provide mappacks that will allow smooth 90hz later.
+*Set Gore to "Blood & Gibs" for original Quake 3 look. (recommended)
+Some features are still eperimental.
+
+Performance: Framerate is stable 72hz on Quest 2. Keep dynamic lighting off! 
+The vast majority of all 30 arena maps run pretty flawless, but some of the bigger CTF maps can have issues with framerate. 

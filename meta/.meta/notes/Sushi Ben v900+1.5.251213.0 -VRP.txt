@@ -1,0 +1,4 @@
+After about 10-15 minutes, an unlicensed error message may appear.
+If you cannot click past it, restart the game to continue playing.
+
+Progress will be saved up to the last checkpoint.

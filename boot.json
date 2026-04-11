@@ -1,0 +1,12 @@
+{
+  "active_mirrors": [
+    {
+      "id": "node-01",
+      "region": "Global",
+      "url": "https://questarchive.xyz",
+      "status": "Online"
+    }
+  ],
+  "meta_version": "1.0.0",
+  "handshake_version": "2.0"
+}

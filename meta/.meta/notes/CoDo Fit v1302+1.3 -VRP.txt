@@ -1,0 +1,3 @@
+if panel does not show when looking down restart the game
+
+

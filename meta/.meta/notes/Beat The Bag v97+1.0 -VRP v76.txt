@@ -1,0 +1,6 @@
+
+1. Enter any email address
+2. Close Game
+3. Reopen the game
+
+Subscription should be activated unlocking all content

@@ -1,0 +1,7 @@
+
+all unlocked items are behind you in main menu select before joining
+all players must be on same server auto does not work change in settings
+games can be created in priv game mode and public
+need to give room code that is generated to team up
+
+

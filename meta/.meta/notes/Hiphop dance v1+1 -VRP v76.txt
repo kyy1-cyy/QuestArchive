@@ -1,0 +1,9 @@
+1.  Hiphop dance is an dance VR app on Oculus Quest. We can see clearly virtual characters dance from any position, that is big difference from just video.
+2.  Song list is here:
+http://www.cqplanb.com/ccc/Hiphop_Dance-songlist.html
+3. We use microphone to react with rhythm, So If you refuse to open microphone permissions when first open app,there won't be reaction with rhythm. App still can work.
+3. Please make sure to review your surroundings and clear any obstacles in your play area before starting this game.
+4. You 'd better have sweat proof sleeve on your Quest headset, you will sweat a lot happily when playing this.
+5.  Due to Copyright of music, we don't include music tracks in this app. We support custom import .mp3 file songs into Quest and play.  This is how to https://www.youtube.com/watch?v=QfIdWHGalTY
+6. Will update new dance time and time,  If there are songs you wonder which are not in list, E-Mail: 
+408077086@qq.com

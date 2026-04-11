@@ -1,0 +1,9 @@
+
+**** To get game to work you must follow instructions exactly ****
+
+1. Rookie will install quest apk installer to your headset i have set all permissions for the installer
+2. You need to have your headset on and allow quest apk installer to install from unknown sources
+3. This will then allow you to click install in file manager to install Thief Simulator VR apk
+4. Once install has finished game can be started and played
+
+**** FAILURE TO FOLLOW THIS GUIDE WILL RESULT IN A INSTALLED FROM UNKNOWN SOURCE ERROR ****

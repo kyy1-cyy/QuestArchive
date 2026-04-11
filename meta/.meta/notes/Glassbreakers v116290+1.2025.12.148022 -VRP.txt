@@ -1,0 +1,1 @@
+Game Sometimes force closes a couple of times on first and second lauch seems to be ok after that

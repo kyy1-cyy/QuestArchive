@@ -1,0 +1,2 @@
+
+offline only at error screen click continue

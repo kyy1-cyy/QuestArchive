@@ -1,0 +1,1 @@
+can make an account with own email address works fine

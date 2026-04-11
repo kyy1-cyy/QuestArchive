@@ -1,0 +1,5 @@
+A simple wrapper to use the native Android file manager hidden in particular in the Horizon operating system.
+
+Can be run on Quest 1, Meta Quest 2/3 & Pro, Pico devices, etc...
+
+https://anagan79.itch.io/xr-native-android-file-manager

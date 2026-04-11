@@ -1,0 +1,3 @@
+https://github.com/threethan/LightningLauncher
+
+This version of Lightning Launcher will only launch VR apps correctly on Quest v66 or newer.

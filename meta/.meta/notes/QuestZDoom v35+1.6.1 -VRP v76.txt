@@ -1,0 +1,1 @@
+Only one version of the QuestZDoom Pack (Offical or unofficial) can be installed at once! If you have one installed and try to instal the other everything will be overwritten. Highly suggest you fully uninstall if you plan on switching from one to the other.

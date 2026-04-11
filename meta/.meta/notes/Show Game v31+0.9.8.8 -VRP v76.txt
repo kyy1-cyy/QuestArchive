@@ -1,0 +1,4 @@
+
+1. click to buy skin pack
+2. close inventory screen
+3. reopen inventory skin pack should be active
