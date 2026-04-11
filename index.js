@@ -2,36 +2,69 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3000;
-const SECRET_KEY = "mounir1359"; // Internal Secure Handshake Key
+const SECRET_KEY = "mounir1359"; // Must match the secret in the Electron app
+const ALLOWED_DOMAIN = "questarchive.xyz";
 
 app.use(cors());
 app.use(express.json());
 
-// --- SECURITY MIDDLEWARE ---
-// Every request must have the X-QAAA-CLIENT header
+// --- ADVANCED SECURITY MIDDLEWARE ---
 const secureHandshake = (req, res, next) => {
-    const clientHeader = req.headers['x-qaaa-client'];
-    if (clientHeader !== SECRET_KEY) {
+    const signature = req.headers['x-qaaa-signature'];
+    const timestamp = req.headers['x-qaaa-timestamp'];
+    const clientKey = req.headers['x-qaaa-client'];
+    const host = req.headers['host'];
+
+    // 1. Force the domain (Prevents direct IP scraping/scanning)
+    if (host && !host.includes(ALLOWED_DOMAIN)) {
+        console.warn(`[SECURITY] Invalid Host: ${host}. Connection dropped.`);
+        return res.status(404).json({ error: "Access Denied" }); // 404 to confuse scanners
+    }
+
+    // 2. Validate basic secret
+    if (clientKey !== SECRET_KEY) {
         console.warn(`[SECURITY] Blocked UNAUTHORIZED request from ${req.ip}`);
         return res.status(403).json({ error: "Unauthorized Client Signature" });
     }
+
+    // 3. Verify Rolling Ticket (HMAC)
+    if (!signature || !timestamp) {
+        return res.status(403).json({ error: "Missing Security Headers" });
+    }
+
+    // 4. Time-Window Check (Strict 60-second window to prevent Replay Attacks)
+    const now = Math.floor(Date.now() / 1000);
+    const diff = Math.abs(now - parseInt(timestamp));
+    if (diff > 60) {
+        return res.status(403).json({ error: "Handshake Expired" });
+    }
+
+    // 5. Signature Match
+    const expectedPayload = `${timestamp}:${req.method}:${req.path}`;
+    const expectedSignature = crypto.createHmac('sha256', SECRET_KEY)
+                                    .update(expectedPayload)
+                                    .digest('hex');
+
+    if (signature !== expectedSignature) {
+        console.error(`[SECURITY] SIGNATURE MATCH FAILED for ${req.ip}`);
+        return res.status(403).json({ error: "Security Breach: Invalid Token" });
+    }
+
     next();
 };
 
 // --- ROUTES ---
-
-// 1. Handshake Endpoint (Used by App to get current node status)
 app.get('/boot.json', secureHandshake, (req, res) => {
     const mirrors = JSON.parse(fs.readFileSync(path.join(__dirname, 'boot.json'), 'utf8'));
     res.json(mirrors);
 });
 
-// 2. Metadata Archive Endpoint
 app.get('/meta.7z', secureHandshake, (req, res) => {
     const metaPath = path.join(__dirname, 'meta.7z');
     if (fs.existsSync(metaPath)) {
@@ -42,17 +75,11 @@ app.get('/meta.7z', secureHandshake, (req, res) => {
     }
 });
 
-// 3. Health Check (Public - just for Koyeb)
+// Koyeb Health Check (Public)
 app.get('/', (req, res) => {
-    res.send('QAAA Distribution Node - Online');
+    res.send('QAAA Secure Node - Online');
 });
 
 app.listen(PORT, () => {
-    console.log(`
-    -------------------------------------------
-    QAAA SECURE DISTRIBUTION NODE
-    Port: ${PORT}
-    Status: ARMED & READY
-    -------------------------------------------
-    `);
+    console.log(`[SYS] QAAA Secure Distribution Node ARMED on PORT ${PORT}`);
 });
