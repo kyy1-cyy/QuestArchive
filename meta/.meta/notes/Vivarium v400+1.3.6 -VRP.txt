@@ -1,7 +1,0 @@
-if game does not load quit and restart straight away and it then loads i think this is an issue with current firmware as it is happening on a few games
-
-
-
-
-
-

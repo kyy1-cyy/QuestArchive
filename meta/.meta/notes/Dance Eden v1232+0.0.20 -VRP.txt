@@ -1,2 +1,0 @@
-
-Make account with email not meta login
